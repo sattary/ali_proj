@@ -21,6 +21,10 @@ class DataConfig:
     phi_key: str = "dphi"
     val_frac: float = 0.1
     workers: int = 4
+    augment: bool = True
+    flip_prob: float = 0.5
+    rotate90_prob: float = 0.5
+    noise_sigma: float = 0.0
 
 
 @dataclass
@@ -56,7 +60,10 @@ class LossConfig:
     w_wrap: float = 0.0
     int_wgrad: bool = False
     w_curv: float = 0.003
+    w_tv: float = 0.0
     w_data: float = 1.0
+    use_conf_weight: bool = False
+    w_conf_reg: float = 0.0
 
 
 @dataclass
@@ -68,6 +75,9 @@ class LoggingConfig:
     vis_max: int = 8
     val_interval: int = 1
     seed: int = 1337
+    use_tensorboard: bool = True
+    log_dir: str = "runs"
+    log_csv: bool = True
 
 
 @dataclass
@@ -136,5 +146,49 @@ def load_train_config(path: Optional[ConfigPath] = None) -> TrainConfig:
     p = Path(path)
     data = _load_mapping(p)
     return _update_dataclass(cfg, data)
+
+
+def apply_overrides(cfg: "TrainConfig", overrides: list[str]) -> "TrainConfig":
+    """
+    Apply dot-notation overrides of the form `section.field=value` to a TrainConfig.
+
+    Types are inferred from the current value in the config.
+    """
+
+    def _cast_value(current: Any, raw: str) -> Any:
+        if isinstance(current, bool):
+            return raw.lower() in {"1", "true", "yes", "y"}
+        if isinstance(current, int) and raw.isdigit():
+            return int(raw)
+        if isinstance(current, float):
+            try:
+                return float(raw)
+            except ValueError:
+                return current
+        return raw
+
+    for ov in overrides:
+        if "=" not in ov:
+            continue
+        key, raw_val = ov.split("=", 1)
+        parts = key.split(".")
+        if not parts:
+            continue
+        target = cfg
+        for name in parts[:-1]:
+            if not hasattr(target, name):
+                target = None
+                break
+            target = getattr(target, name)
+        if target is None:
+            continue
+        leaf = parts[-1]
+        if not hasattr(target, leaf):
+            continue
+        current = getattr(target, leaf)
+        new_val = _cast_value(current, raw_val)
+        setattr(target, leaf, new_val)
+
+    return cfg
 
 

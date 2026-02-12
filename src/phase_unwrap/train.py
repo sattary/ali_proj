@@ -4,17 +4,21 @@ import os
 import time
 from typing import Dict, Tuple
 
-import numpy as np
 import torch
 from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+try:  # optional TensorBoard dependency
+    from torch.utils.tensorboard import SummaryWriter
+except Exception:  # pragma: no cover
+    SummaryWriter = None  # type: ignore
+
 from .config import TrainConfig
 from .data import build_dataloaders
 from .losses import PhaseSupervisionLoss, compute_metrics
 from .model import EMA, build_model
-from .ops import adaptive_curvature_loss, affine_align
+from .ops import adaptive_curvature_loss, affine_align, tv_loss
 from .utils import ensure_dir, pick_device, set_seed
 from .visualize import save_epoch_visuals, save_training_curve
 
@@ -101,9 +105,23 @@ def train(cfg: TrainConfig) -> None:
 
     best_mae = float("inf")
 
-    epochs_x = []
-    train_losses = []
-    val_maes = []
+    epochs_x: list[int] = []
+    train_losses: list[float] = []
+    val_maes: list[float] = []
+
+    writer = None
+    if cfg.logging.use_tensorboard and SummaryWriter is not None:
+        writer = SummaryWriter(log_dir=cfg.logging.log_dir)
+
+    csv_file = None
+    if cfg.logging.log_csv:
+        os.makedirs(cfg.logging.out_dir, exist_ok=True)
+        csv_path = os.path.join(cfg.logging.out_dir, "train_log.csv")
+        # append mode; write header if file is new/empty
+        csv_exists = os.path.exists(csv_path) and os.path.getsize(csv_path) > 0
+        csv_file = open(csv_path, "a", encoding="utf-8")
+        if not csv_exists:
+            csv_file.write("epoch,train_loss,val_mae,val_rmse,best_mae\n")
 
     for epoch in range(1, cfg.optim.epochs + 1):
         t0 = time.time()
@@ -129,8 +147,11 @@ def train(cfg: TrainConfig) -> None:
                     # per-image affine align
                     phi_abs_align, a_batch, c_batch = affine_align(phi_abs, phi_gt)
 
-                    # training confidence mask
-                    conf_used = torch.ones_like(phi_abs_align)
+                    # training confidence mask (optionally learned from conf_logit)
+                    if cfg.loss.use_conf_weight:
+                        conf_used = torch.sigmoid(conf_logit).detach()
+                    else:
+                        conf_used = torch.ones_like(phi_abs_align)
 
                     # 1) absolute phase supervision (on aligned prediction)
                     L_phase, parts = loss_sup(
@@ -143,8 +164,18 @@ def train(cfg: TrainConfig) -> None:
                     # 2) curvature smoothness on aligned phase
                     L_curv = cfg.loss.w_curv * adaptive_curvature_loss(phi_abs_align, conf_used)
 
+                    # 3) total variation regularization on aligned phase
+                    L_tv = cfg.loss.w_tv * tv_loss(phi_abs_align, conf_used if cfg.loss.use_conf_weight else None)
+
+                    # optional confidence regularizer to avoid degenerate maps
+                    L_conf_reg = torch.tensor(0.0, device=device)
+                    if cfg.loss.use_conf_weight and cfg.loss.w_conf_reg > 0.0:
+                        conf_mean = conf_used.mean()
+                        target = 0.5
+                        L_conf_reg = (conf_mean - target).abs()
+
                     # final total loss
-                    loss = cfg.loss.w_data * L_phase + L_curv
+                    loss = cfg.loss.w_data * L_phase + L_curv + L_tv + cfg.loss.w_conf_reg * L_conf_reg
 
                 scaler.scale(loss).backward()
                 scaler.unscale_(opt)
@@ -181,9 +212,11 @@ def train(cfg: TrainConfig) -> None:
 
         # validation
         cur_val_mae = float("nan")
+        cur_val_rmse = float("nan")
         if (epoch % cfg.logging.val_interval == 0) and (val_loader is not None):
             eval_stats = run_eval(ema.m, val_loader, device, use_amp)
             cur_val_mae = eval_stats["MAE"]
+            cur_val_rmse = eval_stats["RMSE"]
 
             # dump visuals using EMA model on a small batch from val
             try:
@@ -244,6 +277,22 @@ def train(cfg: TrainConfig) -> None:
             os.path.join(cfg.logging.out_dir, "final.pth"),
         )
 
+        # log to TensorBoard / CSV
+        if writer is not None:
+            writer.add_scalar("train/loss", train_loss, epoch)
+            writer.add_scalar("val/mae", cur_val_mae, epoch)
+            if not np.isnan(cur_val_rmse):
+                writer.add_scalar("val/rmse", cur_val_rmse, epoch)
+            for i, group in enumerate(opt.param_groups):
+                writer.add_scalar(f"optim/lr_group_{i}", group.get("lr", 0.0), epoch)
+            writer.add_scalar("val/best_mae", best_mae, epoch)
+
+        if csv_file is not None:
+            csv_file.write(
+                f"{epoch},{train_loss},{cur_val_mae},{cur_val_rmse},{best_mae}\n"
+            )
+            csv_file.flush()
+
         epochs_x.append(epoch)
         train_losses.append(train_loss)
         val_maes.append(cur_val_mae)
@@ -252,5 +301,10 @@ def train(cfg: TrainConfig) -> None:
 
     # save training curve
     save_training_curve(epochs_x, train_losses, val_maes, cfg.logging.out_dir)
+
+    if writer is not None:
+        writer.close()
+    if csv_file is not None:
+        csv_file.close()
 
 

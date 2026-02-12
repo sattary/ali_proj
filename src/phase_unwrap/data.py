@@ -107,6 +107,64 @@ class MatPhaseDataset(Dataset):
         return I_input, phi_gt_t, I_raw_t
 
 
+class AugmentedPhaseDataset(Dataset):
+    """
+    Wrapper around MatPhaseDataset that applies simple geometric and noise
+    augmentations in a phase-aware way.
+    """
+
+    def __init__(self, base: MatPhaseDataset, cfg: DataConfig) -> None:
+        self.base = base
+        self.cfg = cfg
+
+    def __len__(self) -> int:
+        return len(self.base)
+
+    def _maybe_flip_rotate(
+        self, I_input: torch.Tensor, phi_gt: torch.Tensor, I_raw: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        # horizontal flip
+        if random.random() < self.cfg.flip_prob:
+            I_input = torch.flip(I_input, dims=[-1])
+            phi_gt = torch.flip(phi_gt, dims=[-1])
+            I_raw = torch.flip(I_raw, dims=[-1])
+        # vertical flip
+        if random.random() < self.cfg.flip_prob:
+            I_input = torch.flip(I_input, dims=[-2])
+            phi_gt = torch.flip(phi_gt, dims=[-2])
+            I_raw = torch.flip(I_raw, dims=[-2])
+        # rotate by k * 90 degrees
+        if random.random() < self.cfg.rotate90_prob:
+            k = random.randint(1, 3)
+            for _ in range(k):
+                I_input = I_input.transpose(-1, -2).flip(-1)
+                phi_gt = phi_gt.transpose(-1, -2).flip(-1)
+                I_raw = I_raw.transpose(-1, -2).flip(-1)
+        return I_input, phi_gt, I_raw
+
+    def _maybe_add_noise(
+        self, I_input: torch.Tensor, I_raw: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if self.cfg.noise_sigma <= 0.0:
+            return I_input, I_raw
+        sigma = self.cfg.noise_sigma
+        # add noise to normalized interferogram channel (index 0)
+        noise_I = torch.randn_like(I_input[0:1]) * sigma
+        I_input = I_input.clone()
+        I_input[0:1] = I_input[0:1] + noise_I
+        # mirror the same noise pattern onto raw intensity for consistency
+        if I_raw.numel() > 0:
+            I_raw = I_raw.clone()
+            I_raw = I_raw + noise_I
+        return I_input, I_raw
+
+    def __getitem__(self, idx: int):
+        I_input, phi_gt, I_raw = self.base[idx]
+        I_input, phi_gt, I_raw = self._maybe_flip_rotate(I_input, phi_gt, I_raw)
+        I_input, I_raw = self._maybe_add_noise(I_input, I_raw)
+        return I_input, phi_gt, I_raw
+
+
 def smart_split(paths: Sequence[str], seed: int = 1337, val_frac: float = 0.1) -> Tuple[List[str], List[str]]:
     """
     Shuffle filepaths and split into train / val sets.
@@ -159,6 +217,9 @@ def build_dataloaders(
     )
     if data_cfg.workers > 0:
         dl_kwargs["persistent_workers"] = True
+
+    if data_cfg.augment:
+        train_ds = AugmentedPhaseDataset(train_ds, data_cfg)
 
     train_loader = DataLoader(train_ds, **dl_kwargs)
 

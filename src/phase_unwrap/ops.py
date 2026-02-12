@@ -57,6 +57,29 @@ def adaptive_curvature_loss(phi_pred: torch.Tensor, conf_mask: torch.Tensor) -> 
     return wcurv.mean()
 
 
+def tv_loss(phi: torch.Tensor, conf_mask: torch.Tensor | None = None) -> torch.Tensor:
+    """
+    First-order anisotropic total variation loss on a phase field.
+
+    Args:
+        phi: [B, 1, H, W] phase tensor.
+        conf_mask: optional [B, 1, H, W] confidence weights in [0, 1].
+    """
+    # finite differences along H and W
+    dy = phi[..., 1:, :] - phi[..., :-1, :]
+    dx = phi[..., :, 1:] - phi[..., :, :-1]
+
+    tv = dy.abs().mean() + dx.abs().mean()
+
+    if conf_mask is not None:
+        # match shapes for weighting
+        conf_y = conf_mask[..., 1:, :]
+        conf_x = conf_mask[..., :, 1:]
+        tv = (conf_y * dy.abs()).mean() + (conf_x * dx.abs()).mean()
+
+    return tv
+
+
 def affine_align(pred: torch.Tensor, gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Solve per-image affine fit a * pred + c ≈ gt (least squares).

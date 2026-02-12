@@ -121,3 +121,38 @@ def save_training_curve(
     plt.close(fig)
 
 
+def save_inference_maps(
+    I_input: torch.Tensor,
+    phi_pred: torch.Tensor,
+    phi_gt: torch.Tensor | None,
+    out_dir: str,
+    tag: str,
+) -> None:
+    """
+    Save a single prediction (and optional GT/error) for inference.
+    """
+    ensure_dir(out_dir)
+
+    I0 = I_input[0, 0] if I_input.ndim == 4 else I_input[0]
+    fig, axs = plt.subplots(1, 3 if phi_gt is not None else 2, figsize=(12, 4))
+
+    axs[0].imshow(_to_np(I0), cmap="gray")
+    axs[0].set_title("I_norm[0]")
+    axs[0].axis("off")
+
+    axs[1].imshow(_to_np(phi_pred[0, 0]), cmap="viridis")
+    axs[1].set_title("Pred φ (rad)")
+    axs[1].axis("off")
+
+    if phi_gt is not None:
+        err = phi_pred - phi_gt
+        im = axs[2].imshow(_to_np(err[0, 0]), cmap="PuOr")
+        axs[2].set_title("Δφ (rad)")
+        axs[2].axis("off")
+        plt.colorbar(im, ax=axs[2], fraction=0.046)
+
+    plt.tight_layout()
+    fig.savefig(os.path.join(out_dir, f"{tag}.png"), dpi=150)
+    plt.close(fig)
+
+

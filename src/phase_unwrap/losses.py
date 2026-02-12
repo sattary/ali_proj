@@ -10,14 +10,21 @@ from .ops import FixedSobel
 
 def compute_metrics(phi_pred: torch.Tensor, phi_gt: torch.Tensor) -> Dict[str, torch.Tensor]:
     """
-    Compute MAE and RMSE between absolute phase predictions and ground truth.
+    Compute MAE, RMSE, and NRMSE between absolute phase predictions and ground truth.
 
     Both inputs are [B, 1, H, W] tensors. No phase wrapping is applied.
+    NRMSE is normalized by the dynamic range of the ground truth.
     """
     diff = phi_pred - phi_gt
     mae = diff.abs().mean()
     rmse = torch.sqrt((diff ** 2).mean().clamp_min(1e-12))
-    return {"MAE": mae.detach(), "RMSE": rmse.detach()}
+
+    gt_min = phi_gt.min()
+    gt_max = phi_gt.max()
+    denom = (gt_max - gt_min).clamp_min(1e-6)
+    nrmse = rmse / denom
+
+    return {"MAE": mae.detach(), "RMSE": rmse.detach(), "NRMSE": nrmse.detach()}
 
 
 class MAEGradCore(nn.Module):
