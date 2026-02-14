@@ -8,7 +8,9 @@ import torch.nn as nn
 from .ops import FixedSobel
 
 
-def compute_metrics(phi_pred: torch.Tensor, phi_gt: torch.Tensor) -> Dict[str, torch.Tensor]:
+def compute_metrics(
+    phi_pred: torch.Tensor, phi_gt: torch.Tensor
+) -> Dict[str, torch.Tensor]:
     """
     Compute MAE, RMSE, and NRMSE between absolute phase predictions and ground truth.
 
@@ -17,7 +19,7 @@ def compute_metrics(phi_pred: torch.Tensor, phi_gt: torch.Tensor) -> Dict[str, t
     """
     diff = phi_pred - phi_gt
     mae = diff.abs().mean()
-    rmse = torch.sqrt((diff ** 2).mean().clamp_min(1e-12))
+    rmse = torch.sqrt((diff**2).mean().clamp_min(1e-12))
 
     gt_min = phi_gt.min()
     gt_max = phi_gt.max()
@@ -38,7 +40,9 @@ class MAEGradCore(nn.Module):
     can optionally be weighted by sqrt(I_raw).
     """
 
-    def __init__(self, w_mae: float = 1.0, w_grad: float = 0.1, intensity_weighted: bool = False) -> None:
+    def __init__(
+        self, w_mae: float = 1.0, w_grad: float = 0.1, intensity_weighted: bool = False
+    ) -> None:
         super().__init__()
         self.w_mae = float(w_mae)
         self.w_grad = float(w_grad)
@@ -122,3 +126,45 @@ class PhaseSupervisionLoss(nn.Module):
         return total, parts_out
 
 
+class WrappedGradLoss(nn.Module):
+    """
+    Physics-informed loss: standardizes the logic that "gradients of absolute phase"
+    must match "gradients of wrapped phase" (modulo 2pi).
+
+    L_wg = | W(nabla phi_pred) - W(nabla phi_gt) |
+
+    where W is the wrapping operator (-pi, pi].
+    This allows the network to learn global phase jumps that disappear in the wrapped domain.
+    """
+
+    def __init__(self, w_grad=0.1):
+        super().__init__()
+        self.w_grad = w_grad
+        self.sobel = FixedSobel()
+
+    def wrap(self, x):
+        return torch.atan2(torch.sin(x), torch.cos(x))
+
+    def forward(
+        self,
+        phi_pred_abs: torch.Tensor,
+        phi_gt: torch.Tensor,
+        conf: torch.Tensor,
+    ) -> torch.Tensor:
+        # 1. Compute gradients
+        pgx, pgy = self.sobel(phi_pred_abs)
+        tgx, tgy = self.sobel(phi_gt)
+
+        # 2. Wrap the gradients
+        # Note: If phi_pred is absolute, its gradient might be > pi.
+        # Consistency requires W(grad(phi)) to match.
+        w_pgx, w_pgy = self.wrap(pgx), self.wrap(pgy)
+        w_tgx, w_tgy = self.wrap(tgx), self.wrap(tgy)
+
+        # 3. Compute error in wrapped gradient domain
+        # The error is the minimal difference modulo 2pi
+        diff_x = self.wrap(w_pgx - w_tgx)
+        diff_y = self.wrap(w_pgy - w_tgy)
+
+        loss = (conf * (diff_x.abs() + diff_y.abs())).mean()
+        return self.w_grad * loss
