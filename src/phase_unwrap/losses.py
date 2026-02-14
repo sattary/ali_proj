@@ -168,3 +168,29 @@ class WrappedGradLoss(nn.Module):
 
         loss = (conf * (diff_x.abs() + diff_y.abs())).mean()
         return self.w_grad * loss
+
+
+class ResidueLoss(nn.Module):
+    """
+    Binary Cross Entropy loss for residue detection.
+    Encourages the model to identify topological phase jumps.
+    """
+
+    def __init__(self, w_res: float = 1.0):
+        super().__init__()
+        self.w_res = w_res
+        self.bce = nn.BCEWithLogitsLoss(reduction="none")
+
+    def forward(
+        self, res_logit: torch.Tensor, res_gt: torch.Tensor, conf: torch.Tensor
+    ) -> torch.Tensor:
+        # res_gt: [B, 1, H, W] binary mask
+        # logit: [B, 1, H, W]
+
+        # Weighted BCE: Residues are sparse, so we weight them more if needed.
+        # But for now, standard BCE with spatial confidence masking.
+        loss = self.bce(res_logit, res_gt)
+
+        # Optionally apply positive weight for sparsity directly in BCE if needed
+        # For now, we scale by w_res and conf
+        return self.w_res * (loss * conf).mean()

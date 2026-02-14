@@ -44,7 +44,9 @@ def laplacian(u: torch.Tensor) -> torch.Tensor:
     )
 
 
-def adaptive_curvature_loss(phi_pred: torch.Tensor, conf_mask: torch.Tensor) -> torch.Tensor:
+def adaptive_curvature_loss(
+    phi_pred: torch.Tensor, conf_mask: torch.Tensor
+) -> torch.Tensor:
     """
     Smoothness / curvature penalty, weighted by conf_mask in [0,1].
 
@@ -80,7 +82,9 @@ def tv_loss(phi: torch.Tensor, conf_mask: torch.Tensor | None = None) -> torch.T
     return tv
 
 
-def affine_align(pred: torch.Tensor, gt: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def affine_align(
+    pred: torch.Tensor, gt: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Solve per-image affine fit a * pred + c ≈ gt (least squares).
 
@@ -103,7 +107,7 @@ def affine_align(pred: torch.Tensor, gt: torch.Tensor) -> tuple[torch.Tensor, to
     pred_centered = pred_flat - pred_mean
     gt_centered = gt_flat - gt_mean
 
-    var_pred = (pred_centered ** 2).mean(dim=1, keepdim=True) + 1e-6
+    var_pred = (pred_centered**2).mean(dim=1, keepdim=True) + 1e-6
     cov_pg = (pred_centered * gt_centered).mean(dim=1, keepdim=True)
 
     a = cov_pg / var_pred
@@ -116,3 +120,40 @@ def affine_align(pred: torch.Tensor, gt: torch.Tensor) -> tuple[torch.Tensor, to
     return pred_aligned, a, c
 
 
+def calculate_residues(phi: torch.Tensor) -> torch.Tensor:
+    """
+    Calculate residues in a phase field.
+    Residues are points where the sum of phase differences around a 2x2 loop
+    is non-zero (±2pi).
+
+    Args:
+        phi: [B, 1, H, W] phase tensor (can be absolute or wrapped).
+
+    Returns:
+        residues: [B, 1, H-1, W-1] float tensor with values in {-1, 0, 1}.
+                 Usually converted to abs() and padded to [H, W].
+    """
+    # 2x2 loop: (i,j) -> (i,j+1) -> (i+1,j+1) -> (i+1,j) -> (i,j)
+
+    def wrap(x):
+        return torch.atan2(torch.sin(x), torch.cos(x))
+
+    d1 = wrap(phi[:, :, :-1, 1:] - phi[:, :, :-1, :-1])
+    d2 = wrap(phi[:, :, 1:, 1:] - phi[:, :, :-1, 1:])
+    d3 = wrap(phi[:, :, 1:, :-1] - phi[:, :, 1:, 1:])
+    d4 = wrap(phi[:, :, :-1, :-1] - phi[:, :, 1:, :-1])
+
+    res = (d1 + d2 + d3 + d4) / (2 * torch.pi)
+    # round to nearest integer to handle float precision
+    return res.round()
+
+
+def get_residue_mask(phi: torch.Tensor) -> torch.Tensor:
+    """
+    Returns a binary mask [B, 1, H, W] where 1 indicates a residue.
+    Padded to match input resolution.
+    """
+    res = calculate_residues(phi).abs()
+    # pad to [H, W] - residues are defined on the dual grid (junctions)
+    # we pad right/bottom for simplicity
+    return F.pad(res, (0, 1, 0, 1), mode="constant", value=0)

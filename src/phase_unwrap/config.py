@@ -59,6 +59,7 @@ class LossConfig:
     w_mae: float = 1.0
     w_grad: float = 0.1
     w_wrapped_grad: float = 0.0
+    w_res: float = 0.0  # New: Weight for residue detection loss
     w_wrap: float = 0.0
     int_wgrad: bool = False
     w_curv: float = 0.003

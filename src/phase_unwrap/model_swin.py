@@ -397,8 +397,9 @@ class SwinUNet(nn.Module):
                 )
             )
 
-        # Output head
-        self.head = nn.Conv2d(embed_dim, num_classes, 1)
+        # Output heads
+        # 1: phi_raw, 2: residue_logit
+        self.head = nn.Conv2d(embed_dim, 2, 1)
         self.global_offset_head = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Flatten(),
@@ -445,14 +446,21 @@ class SwinUNet(nn.Module):
             x = self.dec_layers[i](x)
 
         # Final head
-        phi_raw = self.head(x)  # [B, 1, H, W]
+        out = self.head(x)  # [B, 2, H, W]
+        phi_raw = out[:, 0:1]
+        res_logit = out[:, 1:2]
 
         # Upsample to original resolution if patch_size > 1
         if self.patch_embed.patch_size[0] > 1:
             phi_raw = F.interpolate(
                 phi_raw, scale_factor=self.patch_embed.patch_size[0], mode="bilinear"
             )
+            res_logit = F.interpolate(
+                res_logit, scale_factor=self.patch_embed.patch_size[0], mode="bilinear"
+            )
 
         # Result tuple as expected by train loop
         # phi_raw, a_pred, b_pred_raw, conf_logit, k_off
-        return phi_raw, None, None, None, k_off
+        # We REPURPOSE conf_logit for res_logit to avoid breaking train loop signature if possible,
+        # or we update train loop. Let's update train loop to be more flexible.
+        return phi_raw, None, None, res_logit, k_off

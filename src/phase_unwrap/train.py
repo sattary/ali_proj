@@ -5,6 +5,7 @@ import time
 from typing import Dict, Tuple
 
 import torch
+import numpy as np
 from torch.cuda.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -97,6 +98,12 @@ def train(cfg: TrainConfig) -> None:
         from .losses import WrappedGradLoss
 
         loss_wrapped_grad = WrappedGradLoss(w_grad=1.0)  # weight handled at total sum
+
+    loss_res = None
+    if cfg.loss.w_res > 0:
+        from .losses import ResidueLoss
+
+        loss_res = ResidueLoss(w_res=1.0)
 
     opt = torch.optim.AdamW(
         model.parameters(),
@@ -202,6 +209,15 @@ def train(cfg: TrainConfig) -> None:
                         # Wait, I initialized it with w_grad=1.0. So I should multiply by cfg.loss.w_wrapped_grad here or pass it in init.
                         # In init I passed w_grad=1.0. So I should multiply here.
                         loss = loss + cfg.loss.w_wrapped_grad * L_wg
+
+                    if loss_res is not None:
+                        from .ops import get_residue_mask
+
+                        res_gt = get_residue_mask(phi_gt)
+                        # conf_logit is repurposed as res_logit in SwinUNet forward
+                        L_res = loss_res(conf_logit, res_gt, conf_used)
+                        loss = loss + cfg.loss.w_res * L_res
+                        parts["res"] = L_res.detach()
 
                 scaler.scale(loss).backward()
                 scaler.unscale_(opt)
