@@ -32,6 +32,7 @@ class ModelConfig:
     """Model and runtime configuration."""
 
     base: int = 16
+    model_type: str = "unet"  # "unet" or "swin"
     activation: str = "relu"  # "relu" or "silu"
     final_dropout: float = 0.3
     ema_decay: float = 0.999
@@ -57,6 +58,7 @@ class LossConfig:
 
     w_mae: float = 1.0
     w_grad: float = 0.1
+    w_wrapped_grad: float = 0.0
     w_wrap: float = 0.0
     int_wgrad: bool = False
     w_curv: float = 0.003
@@ -190,5 +192,3 @@ def apply_overrides(cfg: "TrainConfig", overrides: list[str]) -> "TrainConfig":
         setattr(target, leaf, new_val)
 
     return cfg
-
-

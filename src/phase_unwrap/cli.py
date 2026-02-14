@@ -88,17 +88,11 @@ def train(
     run_train(cfg)
 
 
-def main() -> None:
-    app()
-
-
-if __name__ == "__main__":
-    main()
-
-
 @app.command()
 def infer(
-    checkpoint: Path = typer.Option(..., "--checkpoint", "-k", help="Path to a trained checkpoint (.pth)."),
+    checkpoint: Path = typer.Option(
+        ..., "--checkpoint", "-k", help="Path to a trained checkpoint (.pth)."
+    ),
     data_dir: Path = typer.Option(
         Path("data/imgs"),
         "--input",
@@ -148,7 +142,9 @@ def infer(
     ckpt = torch.load(checkpoint, map_location=dev)
     state = ckpt.get("model_ema") or ckpt.get("model")
     if state is None:
-        raise typer.Exit("Checkpoint does not contain 'model' or 'model_ema' state_dict.")
+        raise typer.Exit(
+            "Checkpoint does not contain 'model' or 'model_ema' state_dict."
+        )
     model.load_state_dict(state)
     model.eval()
 
@@ -189,3 +185,10 @@ def infer(
             f"MAE={mean_mae:.4f}, RMSE={mean_rmse:.4f}, NRMSE={mean_nrmse:.4f}"
         )
 
+
+def main() -> None:
+    app()
+
+
+if __name__ == "__main__":
+    main()

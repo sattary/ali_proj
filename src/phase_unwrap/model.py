@@ -41,7 +41,14 @@ class Res2_DS_Block(nn.Module):
     Res2-style block with depthwise splits.
     """
 
-    def __init__(self, in_ch: int, out_ch: int, s: int = 4, expansion: float = 1.0, act: str = "relu") -> None:
+    def __init__(
+        self,
+        in_ch: int,
+        out_ch: int,
+        s: int = 4,
+        expansion: float = 1.0,
+        act: str = "relu",
+    ) -> None:
         super().__init__()
         mid = max(1, int(out_ch * expansion))
         self.s = max(2, s)
@@ -60,7 +67,14 @@ class Res2_DS_Block(nn.Module):
 
         self.dw = nn.ModuleList(
             [
-                nn.Conv2d(self.sizes[i], self.sizes[i], 3, padding=1, groups=self.sizes[i], bias=False)
+                nn.Conv2d(
+                    self.sizes[i],
+                    self.sizes[i],
+                    3,
+                    padding=1,
+                    groups=self.sizes[i],
+                    bias=False,
+                )
                 for i in range(self.s)
             ]
         )
@@ -90,7 +104,14 @@ class Res2_DS_Block(nn.Module):
 class UpBlockRes2(nn.Module):
     """Upsampling block with skip connection and Res2 block."""
 
-    def __init__(self, in_ch_cat: int, out_ch: int, s: int = 4, expansion: float = 1.0, act: str = "relu") -> None:
+    def __init__(
+        self,
+        in_ch_cat: int,
+        out_ch: int,
+        s: int = 4,
+        expansion: float = 1.0,
+        act: str = "relu",
+    ) -> None:
         super().__init__()
         self.conv = Res2_DS_Block(in_ch_cat, out_ch, s, expansion, act)
 
@@ -115,7 +136,13 @@ class UNetRes2_AbsPhase(nn.Module):
         - k_off     [B, 1, 1, 1]: global scalar offset to add to phi_raw
     """
 
-    def __init__(self, in_ch: int = 2, base: int = 32, act: str = "relu", final_dropout: float = 0.2) -> None:
+    def __init__(
+        self,
+        in_ch: int = 2,
+        base: int = 32,
+        act: str = "relu",
+        final_dropout: float = 0.2,
+    ) -> None:
         super().__init__()
         self.addcoords = AddCoords()
         C = lambda m: int(min(base * m, 1024))
@@ -164,7 +191,9 @@ class UNetRes2_AbsPhase(nn.Module):
         self.off_act = nn.ReLU(inplace=True) if act == "relu" else nn.SiLU(inplace=True)
         self.off_fc = nn.Conv2d(C(8), 1, 1)
 
-    def forward(self, x_in: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(
+        self, x_in: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # x_in: [B, 2, H, W]
         x0 = self.addcoords(x_in)
 
@@ -223,11 +252,21 @@ def build_model(cfg: ModelConfig) -> UNetRes2_AbsPhase:
     """
     Construct the UNetRes2_AbsPhase model from configuration.
     """
+    if cfg.model_type == "swin":
+        from .model_swin import SwinUNet
+
+        # Map config params to SwinUNet args if needed, or use defaults for now.
+        # SwinUNet defaults are: embed_dim=96, depths=[2, 2, 2, 2], num_heads=[3, 6, 12, 24]
+        # We can map 'base' to 'embed_dim' roughly.
+        return SwinUNet(
+            embed_dim=cfg.base * 4,  # e.g. 16*4 = 64
+            drop_rate=cfg.final_dropout,
+            # using default depths/heads for now
+        )
+
     return UNetRes2_AbsPhase(
         in_ch=2,
         base=cfg.base,
         act=cfg.activation,
         final_dropout=cfg.final_dropout,
     )
-
-

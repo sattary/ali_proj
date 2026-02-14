@@ -75,7 +75,9 @@ def train(cfg: TrainConfig) -> None:
     ensure_dir(cfg.logging.out_dir)
     ensure_dir(cfg.logging.vis_dir)
 
-    train_loader, val_loader = build_dataloaders(cfg.data, cfg.optim, device, seed=cfg.logging.seed)
+    train_loader, val_loader = build_dataloaders(
+        cfg.data, cfg.optim, device, seed=cfg.logging.seed
+    )
     print(
         f"[data] dir={cfg.data.data_dir} pattern={cfg.data.pattern} | "
         f"train={len(train_loader.dataset)} val={len(val_loader.dataset) if val_loader is not None else 0}"
@@ -89,6 +91,12 @@ def train(cfg: TrainConfig) -> None:
         w_wrap=cfg.loss.w_wrap,
         intensity_weighted=cfg.loss.int_wgrad,
     )
+
+    loss_wrapped_grad = None
+    if cfg.loss.w_wrapped_grad > 0:
+        from .losses import WrappedGradLoss
+
+        loss_wrapped_grad = WrappedGradLoss(w_grad=1.0)  # weight handled at total sum
 
     opt = torch.optim.AdamW(
         model.parameters(),
@@ -162,10 +170,14 @@ def train(cfg: TrainConfig) -> None:
                     )
 
                     # 2) curvature smoothness on aligned phase
-                    L_curv = cfg.loss.w_curv * adaptive_curvature_loss(phi_abs_align, conf_used)
+                    L_curv = cfg.loss.w_curv * adaptive_curvature_loss(
+                        phi_abs_align, conf_used
+                    )
 
                     # 3) total variation regularization on aligned phase
-                    L_tv = cfg.loss.w_tv * tv_loss(phi_abs_align, conf_used if cfg.loss.use_conf_weight else None)
+                    L_tv = cfg.loss.w_tv * tv_loss(
+                        phi_abs_align, conf_used if cfg.loss.use_conf_weight else None
+                    )
 
                     # optional confidence regularizer to avoid degenerate maps
                     L_conf_reg = torch.tensor(0.0, device=device)
@@ -175,7 +187,21 @@ def train(cfg: TrainConfig) -> None:
                         L_conf_reg = (conf_mean - target).abs()
 
                     # final total loss
-                    loss = cfg.loss.w_data * L_phase + L_curv + L_tv + cfg.loss.w_conf_reg * L_conf_reg
+                    loss = (
+                        cfg.loss.w_data * L_phase
+                        + L_curv
+                        + L_tv
+                        + cfg.loss.w_conf_reg * L_conf_reg
+                    )
+
+                    if loss_wrapped_grad is not None:
+                        # We apply it on aligned phase; you might argue for raw, but aligned is safer for unwrapping logic?
+                        # Actually wrapped grad consistency should hold for both. Aligned is better scaled.
+                        L_wg = loss_wrapped_grad(phi_abs_align, phi_gt, conf_used)
+                        # The weight is inside the class (w_grad=1.0) * cfg.loss.w_wrapped_grad
+                        # Wait, I initialized it with w_grad=1.0. So I should multiply by cfg.loss.w_wrapped_grad here or pass it in init.
+                        # In init I passed w_grad=1.0. So I should multiply here.
+                        loss = loss + cfg.loss.w_wrapped_grad * L_wg
 
                 scaler.scale(loss).backward()
                 scaler.unscale_(opt)
@@ -224,7 +250,9 @@ def train(cfg: TrainConfig) -> None:
                 I_input_v = I_input_v.to(device)
                 phi_gt_v = phi_gt_v.to(device)
                 with autocast(enabled=use_amp):
-                    phi_raw_v, a_pred_v, b_pred_raw_v, conf_logit_v, k_off_v = ema.m(I_input_v)
+                    phi_raw_v, a_pred_v, b_pred_raw_v, conf_logit_v, k_off_v = ema.m(
+                        I_input_v
+                    )
                     phi_abs_v = phi_raw_v + k_off_v
 
                 phi_abs_v_align, a_dbg, c_dbg = affine_align(phi_abs_v, phi_gt_v)
@@ -267,13 +295,16 @@ def train(cfg: TrainConfig) -> None:
                 )
         else:
             print(
-                f"Epoch {epoch} | train={train_loss:.4f} | "
-                f"time={time.time() - t0:.1f}s"
+                f"Epoch {epoch} | train={train_loss:.4f} | time={time.time() - t0:.1f}s"
             )
 
         # rolling checkpoint every epoch
         torch.save(
-            {"epoch": epoch, "model": model.state_dict(), "model_ema": ema.m.state_dict()},
+            {
+                "epoch": epoch,
+                "model": model.state_dict(),
+                "model_ema": ema.m.state_dict(),
+            },
             os.path.join(cfg.logging.out_dir, "final.pth"),
         )
 
@@ -306,5 +337,3 @@ def train(cfg: TrainConfig) -> None:
         writer.close()
     if csv_file is not None:
         csv_file.close()
-
-
