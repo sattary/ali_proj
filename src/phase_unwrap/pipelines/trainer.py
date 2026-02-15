@@ -15,13 +15,13 @@ try:  # optional TensorBoard dependency
 except Exception:  # pragma: no cover
     SummaryWriter = None  # type: ignore
 
-from .config import TrainConfig
-from .data import build_dataloaders
-from .losses import PhaseSupervisionLoss, compute_metrics
-from .model import EMA, build_model
-from .ops import adaptive_curvature_loss, affine_align, tv_loss
-from .utils import ensure_dir, pick_device, set_seed
-from .visualize import save_epoch_visuals, save_training_curve
+from ..config import TrainConfig
+from ..core.data import build_dataloaders
+from ..core.losses import PhaseSupervisionLoss, compute_metrics
+from ..core.models.unet import EMA, build_model
+from ..core.ops import adaptive_curvature_loss, affine_align, tv_loss
+from ..utils.misc import ensure_dir, pick_device, set_seed
+from ..utils.visualize import save_epoch_visuals, save_training_curve
 
 
 @torch.no_grad()
@@ -95,13 +95,13 @@ def train(cfg: TrainConfig) -> None:
 
     loss_wrapped_grad = None
     if cfg.loss.w_wrapped_grad > 0:
-        from .losses import WrappedGradLoss
+        from ..core.losses import WrappedGradLoss
 
         loss_wrapped_grad = WrappedGradLoss(w_grad=1.0)  # weight handled at total sum
 
     loss_res = None
     if cfg.loss.w_res > 0:
-        from .losses import ResidueLoss
+        from ..core.losses import ResidueLoss
 
         loss_res = ResidueLoss(w_res=1.0)
 
@@ -211,7 +211,7 @@ def train(cfg: TrainConfig) -> None:
                         loss = loss + cfg.loss.w_wrapped_grad * L_wg
 
                     if loss_res is not None:
-                        from .ops import get_residue_mask
+                        from ..core.ops import get_residue_mask
 
                         res_gt = get_residue_mask(phi_gt)
                         # conf_logit is repurposed as res_logit in SwinUNet forward

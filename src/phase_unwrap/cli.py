@@ -6,14 +6,23 @@ from typing import Optional
 import typer
 import torch
 
-from .config import TrainConfig, apply_overrides, load_train_config
-from .data import MatPhaseDataset, _to_chw
-from .model import build_model
-from .ops import affine_align
-from .losses import compute_metrics
-from .utils import pick_device
-from .train import train as run_train
-from .visualize import save_inference_maps
+from .config import (
+    TrainConfig,
+    ModelConfig,
+    DataConfig,
+    OptimizationConfig,
+    LossConfig,
+    LoggingConfig,
+    apply_overrides,
+    load_train_config,
+)
+from .core.data import MatPhaseDataset, _to_chw
+from .core.models.unet import build_model
+from .core.ops import affine_align
+from .core.losses import compute_metrics
+from .utils.misc import pick_device
+from .pipelines.trainer import train as run_train
+from .utils.visualize import save_inference_maps
 
 app = typer.Typer(help="Phase unwrapping / absolute phase reconstruction CLI.")
 

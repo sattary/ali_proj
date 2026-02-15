@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from .utils import ensure_dir
+from .misc import ensure_dir
 
 
 # Handle headless plotting (no GUI)
@@ -70,7 +70,9 @@ def save_epoch_visuals(
         bias = float(err_raw.mean().item())
         std = float(err_raw.std(unbiased=False).item())
 
-        im_err = axs[1, 1].imshow(_to_np(err_raw[0]), cmap=cmap_div, vmin=vmin, vmax=vmax)
+        im_err = axs[1, 1].imshow(
+            _to_np(err_raw[0]), cmap=cmap_div, vmin=vmin, vmax=vmax
+        )
         axs[1, 1].set_title("Δφ = Pred_aligned − GT (rad)")
         axs[1, 1].axis("off")
         cb_err = plt.colorbar(im_err, ax=axs[1, 1], fraction=0.046)
@@ -154,5 +156,3 @@ def save_inference_maps(
     plt.tight_layout()
     fig.savefig(os.path.join(out_dir, f"{tag}.png"), dpi=150)
     plt.close(fig)
-
-

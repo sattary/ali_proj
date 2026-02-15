@@ -9,7 +9,6 @@ configuration object.
 """
 
 from .config import TrainConfig, load_train_config
-from .train import train
+from .pipelines.trainer import train
 
-__all__ = ["TrainConfig", "load_train_config", "train"]
-
+__all__ = ["train"]

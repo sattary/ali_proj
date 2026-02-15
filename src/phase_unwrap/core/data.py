@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from .config import DataConfig, OptimizationConfig
+from phase_unwrap.config import DataConfig, OptimizationConfig
 
 try:
     import h5py  # type: ignore
@@ -56,7 +56,9 @@ class MatPhaseDataset(Dataset):
         I_raw    [1, H, W]: raw interferogram (for optional intensity weighting)
     """
 
-    def __init__(self, paths: Sequence[str], I_key: str = "I", phi_key: str = "dphi") -> None:
+    def __init__(
+        self, paths: Sequence[str], I_key: str = "I", phi_key: str = "dphi"
+    ) -> None:
         self.paths = list(paths)
         self.I_key = I_key
         self.phi_key = phi_key
@@ -165,7 +167,9 @@ class AugmentedPhaseDataset(Dataset):
         return I_input, phi_gt, I_raw
 
 
-def smart_split(paths: Sequence[str], seed: int = 1337, val_frac: float = 0.1) -> Tuple[List[str], List[str]]:
+def smart_split(
+    paths: Sequence[str], seed: int = 1337, val_frac: float = 0.1
+) -> Tuple[List[str], List[str]]:
     """
     Shuffle filepaths and split into train / val sets.
     """
@@ -203,8 +207,14 @@ def build_dataloaders(
 
     train_paths, val_paths = smart_split(paths, seed=seed, val_frac=data_cfg.val_frac)
 
-    train_ds = MatPhaseDataset(train_paths, I_key=data_cfg.I_key, phi_key=data_cfg.phi_key)
-    val_ds = MatPhaseDataset(val_paths, I_key=data_cfg.I_key, phi_key=data_cfg.phi_key) if len(val_paths) > 0 else None
+    train_ds = MatPhaseDataset(
+        train_paths, I_key=data_cfg.I_key, phi_key=data_cfg.phi_key
+    )
+    val_ds = (
+        MatPhaseDataset(val_paths, I_key=data_cfg.I_key, phi_key=data_cfg.phi_key)
+        if len(val_paths) > 0
+        else None
+    )
 
     use_cuda = device.type == "cuda"
 
@@ -235,5 +245,3 @@ def build_dataloaders(
         )
 
     return train_loader, val_loader
-
-

@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .config import ModelConfig
+from phase_unwrap.config import ModelConfig
 
 
 def meshgrid_ij(x: torch.Tensor, y: torch.Tensor, **kw):
