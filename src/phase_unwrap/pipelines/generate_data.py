@@ -3,6 +3,7 @@ import scipy.io as spio
 import os
 import argparse
 from tqdm import tqdm
+import h5py
 
 
 def generate_phase_map(N=128, num_blobs=5):
@@ -125,42 +126,90 @@ def generate_interferogram(phi, noise_level=0.1, speckle=True, shadow_prob=0.2):
     return I
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--out_dir", type=str, default="data/synthetic_v3")
-    parser.add_argument("--num_samples", type=int, default=100)
-    parser.add_argument("--size", type=int, default=128)
-    args = parser.parse_args()
+import h5py
 
-    os.makedirs(args.out_dir, exist_ok=True)
 
+def generate_dataset(
+    out_dir: str = "data/synthetic_v3",
+    num_samples: int = 100,
+    size: int = 128,
+    fmt: str = "h5",
+    shard_size: int = 10000,
+):
+    os.makedirs(out_dir, exist_ok=True)
     print(
-        f"Generating {args.num_samples} samples to {args.out_dir} (v3 - Stress Test)..."
+        f"Generating {num_samples} samples to {out_dir} (v3 - Stress Test) | format={fmt}..."
     )
 
-    for i in tqdm(range(args.num_samples)):
-        # 1. Base Phase
-        phi_gt = generate_phase_map(N=args.size, num_blobs=np.random.randint(1, 4))
+    if fmt == "mat":
+        # Legacy Mode
+        for i in tqdm(range(num_samples)):
+            phi_gt, I = _generate_single_sample(size)
+            save_path = os.path.join(out_dir, f"sample_{i:04d}.mat")
+            spio.savemat(save_path, {"I": I, "dphi": phi_gt})
+    else:
+        # HDF5 Mode (Sharded)
+        num_shards = (num_samples + shard_size - 1) // shard_size
+        sample_idx = 0
 
-        # 2. Add Geometry (Blocks)
-        if np.random.rand() > 0.4:
-            phi_gt = add_geometric_shapes(phi_gt, num_shapes=np.random.randint(1, 3))
+        for shard_id in range(num_shards):
+            start_idx = sample_idx
+            end_idx = min(sample_idx + shard_size, num_samples)
+            current_shard_size = end_idx - start_idx
 
-        # 3. Add Line Discontinuities (Shears)
-        if np.random.rand() > 0.5:
-            phi_gt = add_discontinuities(phi_gt, num_cuts=np.random.randint(1, 3))
+            shard_path = os.path.join(out_dir, f"train_shard_{shard_id:03d}.h5")
+            print(f"  Writing shard {shard_id + 1}/{num_shards}: {shard_path}")
 
-        # 4. Generate Interferogram with noise & shadows
-        I = generate_interferogram(
-            phi_gt, noise_level=np.random.uniform(0.05, 0.3), shadow_prob=0.3
-        )
+            # Pre-allocate arrays
+            I_batch = np.zeros((current_shard_size, 1, size, size), dtype=np.float32)
+            phi_batch = np.zeros((current_shard_size, 1, size, size), dtype=np.float32)
 
-        # Save
-        save_path = os.path.join(args.out_dir, f"sample_{i:04d}.mat")
-        spio.savemat(save_path, {"I": I, "dphi": phi_gt})
+            for local_i in tqdm(range(current_shard_size), leave=False):
+                phi_gt, I = _generate_single_sample(size)
+                I_batch[local_i, 0] = I
+                phi_batch[local_i, 0] = phi_gt
+
+            with h5py.File(shard_path, "w") as f:
+                f.create_dataset(
+                    "I", data=I_batch, compression="gzip", compression_opts=4
+                )
+                f.create_dataset(
+                    "phi", data=phi_batch, compression="gzip", compression_opts=4
+                )
+
+            sample_idx = end_idx
 
     print("Done.")
 
 
+def _generate_single_sample(size: int):
+    # 1. Base Phase
+    phi_gt = generate_phase_map(N=size, num_blobs=np.random.randint(1, 4))
+
+    # 2. Add Geometry (Blocks)
+    if np.random.rand() > 0.4:
+        phi_gt = add_geometric_shapes(phi_gt, num_shapes=np.random.randint(1, 3))
+
+    # 3. Add Line Discontinuities (Shears)
+    if np.random.rand() > 0.5:
+        phi_gt = add_discontinuities(phi_gt, num_cuts=np.random.randint(1, 3))
+
+    # 4. Generate Interferogram with noise & shadows
+    I = generate_interferogram(
+        phi_gt, noise_level=np.random.uniform(0.05, 0.3), shadow_prob=0.3
+    )
+    return phi_gt, I
+
+
 if __name__ == "__main__":
-    main()
+    # Minimal CLI for standalone usage (optional, but good for testing)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--out_dir", type=str, default="data/synthetic_v3")
+    parser.add_argument("--num_samples", type=int, default=100)
+    parser.add_argument("--size", type=int, default=128)
+    parser.add_argument("--fmt", type=str, default="h5", choices=["mat", "h5"])
+    parser.add_argument("--shard_size", type=int, default=10000)
+    args = parser.parse_args()
+    generate_dataset(
+        args.out_dir, args.num_samples, args.size, args.fmt, args.shard_size
+    )

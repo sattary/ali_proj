@@ -253,7 +253,7 @@ def build_model(cfg: ModelConfig) -> UNetRes2_AbsPhase:
     Construct the UNetRes2_AbsPhase model from configuration.
     """
     if cfg.model_type == "swin":
-        from .model_swin import SwinUNet
+        from .swin import SwinUNet
 
         # Map config params to SwinUNet args if needed, or use defaults for now.
         # SwinUNet defaults are: embed_dim=96, depths=[2, 2, 2, 2], num_heads=[3, 6, 12, 24]

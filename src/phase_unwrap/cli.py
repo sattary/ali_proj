@@ -23,6 +23,7 @@ from .core.losses import compute_metrics
 from .utils.misc import pick_device
 from .pipelines.trainer import train as run_train
 from .utils.visualize import save_inference_maps
+from .pipelines.generate_data import generate_dataset
 
 app = typer.Typer(help="Phase unwrapping / absolute phase reconstruction CLI.")
 
@@ -136,16 +137,17 @@ def infer(
 
     dev = pick_device(cfg.model.device)
 
-    # build dataset directly using MatPhaseDataset
-    import glob as _glob
-    import os as _os
+    # build dataset
+    from .core.data import discover_files, HDF5PhaseDataset, MatPhaseDataset
 
-    pattern = _os.path.join(str(data_dir), cfg.data.pattern)
-    paths = sorted(_glob.glob(pattern))
+    paths, fmt = discover_files(cfg.data)
     if not paths:
-        raise typer.Exit(f"No files match {pattern}")
+        raise typer.Exit(f"No files match pattern in {data_dir}")
 
-    ds = MatPhaseDataset(paths, I_key=cfg.data.I_key, phi_key=cfg.data.phi_key)
+    if fmt == "h5":
+        ds = HDF5PhaseDataset(paths, I_key="I", phi_key="phi")
+    else:
+        ds = MatPhaseDataset(paths, I_key=cfg.data.I_key, phi_key=cfg.data.phi_key)
 
     model = build_model(cfg.model).to(dev)
     ckpt = torch.load(checkpoint, map_location=dev)
@@ -193,6 +195,26 @@ def infer(
             f"Inference on {len(all_mae)} samples | "
             f"MAE={mean_mae:.4f}, RMSE={mean_rmse:.4f}, NRMSE={mean_nrmse:.4f}"
         )
+
+
+@app.command()
+def generate(
+    out_dir: Path = typer.Option(
+        Path("data/synthetic_v3"), "--out-dir", "-o", help="Output directory."
+    ),
+    num_samples: int = typer.Option(
+        100, "--num-samples", "-n", help="Number of samples to generate."
+    ),
+    size: int = typer.Option(128, "--size", "-s", help="Image size (NxN)."),
+    fmt: str = typer.Option("h5", "--fmt", help="Output format: 'mat' or 'h5'."),
+    shard_size: int = typer.Option(
+        10000, "--shard-size", help="Samples per HDF5 shard."
+    ),
+) -> None:
+    """
+    Generate synthetic phase and interferogram data (Stress Test v3).
+    """
+    generate_dataset(str(out_dir), num_samples, size, fmt, shard_size)
 
 
 def main() -> None:

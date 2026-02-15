@@ -167,6 +167,84 @@ class AugmentedPhaseDataset(Dataset):
         return I_input, phi_gt, I_raw
 
 
+class HDF5PhaseDataset(Dataset):
+    """
+    Dataset for reading from sharded HDF5 files.
+    """
+
+    def __init__(self, paths: Sequence[str], I_key: str = "I", phi_key: str = "phi"):
+        self.paths = sorted(list(paths))
+        self.I_key = I_key
+        self.phi_key = phi_key
+
+        self.shard_infos = []  # (start_idx, end_idx, path)
+        self.total_len = 0
+
+        # Scan shards to build index
+        for p in self.paths:
+            with h5py.File(p, "r") as f:
+                n = f[self.I_key].shape[0]
+            self.shard_infos.append((self.total_len, self.total_len + n, p))
+            self.total_len += n
+
+        # Cache for file handles (one per worker process)
+        self.archives = {}
+
+    def __len__(self) -> int:
+        return self.total_len
+
+    def __getitem__(self, idx: int):
+        if idx < 0:
+            idx += self.total_len
+        if idx >= self.total_len or idx < 0:
+            raise IndexError
+
+        # Find shard
+        # This linear scan is fast enough for <100 shards. Bisect for more.
+        shard_path = None
+        local_idx = 0
+        for start, end, path in self.shard_infos:
+            if start <= idx < end:
+                shard_path = path
+                local_idx = idx - start
+                break
+
+        if shard_path is None:
+            raise IndexError
+
+        # Open/Get handle
+        # h5py objects pickling issue with num_workers > 0 requires care.
+        # We rely on opening per process or re-opening.
+        # Simple robust way: open-read-close (fast on SSD/Linux page cache).
+        # Optimization: use a thread-local or process-local cache if needed.
+        # Here we do open-read-close for maximum stability.
+
+        with h5py.File(shard_path, "r") as f:
+            I_np = f[self.I_key][local_idx]  # [1, H, W]
+            phi_np = f[self.phi_key][local_idx]  # [1, H, W]
+
+        I_np = _to_chw(I_np).astype(np.float32, copy=False)
+        phi_np = _to_chw(phi_np).astype(np.float32, copy=False)
+
+        I_raw_t = torch.from_numpy(I_np).float()
+        phi_gt_t = torch.from_numpy(phi_np).float()
+
+        # normalize interferogram per-sample
+        mean = I_raw_t.mean(dim=(1, 2), keepdim=True)
+        std = I_raw_t.std(dim=(1, 2), keepdim=True).clamp_min(1e-6)
+        I_norm_t = (I_raw_t - mean) / std
+
+        # build phi_hint (same logic as MatPhaseDataset)
+        _, H, W = phi_gt_t.shape
+        cy, cx = H // 2, W // 2
+        ref_val = float(phi_gt_t[0, cy, cx].item())
+        phi_hint = torch.full_like(phi_gt_t, ref_val)
+
+        I_input = torch.cat([I_norm_t, phi_hint], dim=0)
+
+        return I_input, phi_gt_t, I_raw_t
+
+
 def smart_split(
     paths: Sequence[str], seed: int = 1337, val_frac: float = 0.1
 ) -> Tuple[List[str], List[str]]:
@@ -185,11 +263,25 @@ def smart_split(
     return train_paths, val_paths
 
 
-def discover_mat_files(cfg: DataConfig) -> List[str]:
-    """Discover .mat files under data_dir matching the given pattern."""
+def discover_files(cfg: DataConfig) -> Tuple[List[str], str]:
+    """
+    Discover files under data_dir matching the given pattern.
+    Returns paths and detected format ('mat' or 'h5').
+    """
     data_glob = os.path.join(cfg.data_dir, cfg.pattern)
     paths = sorted(glob.glob(data_glob))
-    return paths
+    if not paths:
+        # Fallback: check if user meant h5 but pattern is default *.mat
+        if cfg.pattern == "*.mat":
+            h5_glob = os.path.join(cfg.data_dir, "*.h5")
+            paths_h5 = sorted(glob.glob(h5_glob))
+            if paths_h5:
+                return paths_h5, "h5"
+
+    fmt = "mat"
+    if paths and paths[0].endswith(".h5"):
+        fmt = "h5"
+    return paths, fmt
 
 
 def build_dataloaders(
@@ -201,20 +293,31 @@ def build_dataloaders(
     """
     Construct training and validation DataLoaders from configuration.
     """
-    paths = discover_mat_files(data_cfg)
+    paths, fmt = discover_files(data_cfg)
     if not paths:
         raise RuntimeError(f"No files match {data_cfg.data_dir}/{data_cfg.pattern}")
 
     train_paths, val_paths = smart_split(paths, seed=seed, val_frac=data_cfg.val_frac)
 
-    train_ds = MatPhaseDataset(
-        train_paths, I_key=data_cfg.I_key, phi_key=data_cfg.phi_key
-    )
-    val_ds = (
-        MatPhaseDataset(val_paths, I_key=data_cfg.I_key, phi_key=data_cfg.phi_key)
-        if len(val_paths) > 0
-        else None
-    )
+    if fmt == "h5":
+        if h5py is None:
+            raise ImportError("h5py is required for HDF5 datasets.")
+        # Logic: HDF5PhaseDataset takes list of shards
+        train_ds = HDF5PhaseDataset(train_paths, I_key="I", phi_key="phi")
+        if len(val_paths) > 0:
+            val_ds = HDF5PhaseDataset(val_paths, I_key="I", phi_key="phi")
+        else:
+            val_ds = None
+    else:
+        # MAT
+        train_ds = MatPhaseDataset(
+            train_paths, I_key=data_cfg.I_key, phi_key=data_cfg.phi_key
+        )
+        val_ds = (
+            MatPhaseDataset(val_paths, I_key=data_cfg.I_key, phi_key=data_cfg.phi_key)
+            if len(val_paths) > 0
+            else None
+        )
 
     use_cuda = device.type == "cuda"
 

@@ -81,6 +81,10 @@ class LoggingConfig:
     use_tensorboard: bool = True
     log_dir: str = "runs"
     log_csv: bool = True
+    use_wandb: bool = False
+    wandb_project: str = "phase_unwrap"
+    wandb_entity: Optional[str] = None
+    resume_from: Optional[str] = None  # Path to checkpoint to resume from
 
 
 @dataclass

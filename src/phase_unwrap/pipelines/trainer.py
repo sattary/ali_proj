@@ -15,6 +15,11 @@ try:  # optional TensorBoard dependency
 except Exception:  # pragma: no cover
     SummaryWriter = None  # type: ignore
 
+try:
+    import wandb
+except ImportError:
+    wandb = None
+
 from ..config import TrainConfig
 from ..core.data import build_dataloaders
 from ..core.losses import PhaseSupervisionLoss, compute_metrics
@@ -118,7 +123,59 @@ def train(cfg: TrainConfig) -> None:
     scaler = GradScaler(enabled=use_amp)
     ema = EMA(model, decay=cfg.model.ema_decay)
 
+    start_epoch = 1
     best_mae = float("inf")
+
+    # ------------------
+    #  WandB Init
+    # ------------------
+    if cfg.logging.use_wandb:
+        if wandb is None:
+            print("Warning: use_wandb=True but wandb package not installed.")
+        else:
+            wandb.init(
+                project=cfg.logging.wandb_project,
+                entity=cfg.logging.wandb_entity,
+                config=cfg.__dict__ if hasattr(cfg, "__dict__") else str(cfg),
+                resume="allow" if cfg.logging.resume_from else None,
+            )
+
+    # ------------------
+    #  Resume Logic
+    # ------------------
+    if cfg.logging.resume_from:
+        ckpt_path = cfg.logging.resume_from
+        if os.path.exists(ckpt_path):
+            print(f"[resume] Loading checkpoint from {ckpt_path}")
+            ckpt = torch.load(ckpt_path, map_location=device)
+
+            # Load model weights
+            if "model" in ckpt:
+                model.load_state_dict(ckpt["model"])
+            if "model_ema" in ckpt:
+                ema.m.load_state_dict(ckpt["model_ema"])
+
+            # Load optimizer state
+            if "optimizer" in ckpt:
+                opt.load_state_dict(ckpt["optimizer"])
+
+            # Load scaler state
+            if "scaler" in ckpt:
+                scaler.load_state_dict(ckpt["scaler"])
+
+            # Load epoch
+            if "epoch" in ckpt:
+                start_epoch = ckpt["epoch"] + 1
+                sched.last_epoch = start_epoch - 1  # sync scheduler
+                print(f"[resume] Resumed from epoch {ckpt['epoch']}")
+
+            if "best_mae" in ckpt:
+                best_mae = ckpt["best_mae"]
+
+        else:
+            print(
+                f"Warning: resume_from={ckpt_path} does not exist. Starting from scratch."
+            )
 
     epochs_x: list[int] = []
     train_losses: list[float] = []
@@ -138,7 +195,7 @@ def train(cfg: TrainConfig) -> None:
         if not csv_exists:
             csv_file.write("epoch,train_loss,val_mae,val_rmse,best_mae\n")
 
-    for epoch in range(1, cfg.optim.epochs + 1):
+    for epoch in range(start_epoch, cfg.optim.epochs + 1):
         t0 = time.time()
         model.train()
         run_loss = 0.0
@@ -306,6 +363,9 @@ def train(cfg: TrainConfig) -> None:
                         "epoch": epoch,
                         "model": model.state_dict(),
                         "model_ema": ema.m.state_dict(),
+                        "optimizer": opt.state_dict(),
+                        "scaler": scaler.state_dict(),
+                        "best_mae": best_mae,
                     },
                     os.path.join(cfg.logging.out_dir, "best.pth"),
                 )
@@ -320,6 +380,9 @@ def train(cfg: TrainConfig) -> None:
                 "epoch": epoch,
                 "model": model.state_dict(),
                 "model_ema": ema.m.state_dict(),
+                "optimizer": opt.state_dict(),
+                "scaler": scaler.state_dict(),
+                "best_mae": best_mae,
             },
             os.path.join(cfg.logging.out_dir, "final.pth"),
         )
@@ -333,6 +396,19 @@ def train(cfg: TrainConfig) -> None:
             for i, group in enumerate(opt.param_groups):
                 writer.add_scalar(f"optim/lr_group_{i}", group.get("lr", 0.0), epoch)
             writer.add_scalar("val/best_mae", best_mae, epoch)
+
+        if cfg.logging.use_wandb and wandb is not None:
+            wandb.log(
+                {
+                    "train/loss": train_loss,
+                    "val/mae": cur_val_mae,
+                    "val/rmse": cur_val_rmse if not np.isnan(cur_val_rmse) else 0.0,
+                    "val/best_mae": best_mae,
+                    "epoch": epoch,
+                    "lr": opt.param_groups[0]["lr"],
+                },
+                step=epoch,
+            )
 
         if csv_file is not None:
             csv_file.write(

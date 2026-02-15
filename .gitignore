@@ -9,8 +9,17 @@ wheels/
 # Virtual environments
 .venv
 
-# data
+# data & results
 data/
+runs/
+viz/
+inference*/
+
+# logging
+wandb/
+
+# Jupyter
+.ipynb_checkpoints/
 
 # LaTeX
 *.aux
