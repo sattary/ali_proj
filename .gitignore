@@ -11,3 +11,14 @@ wheels/
 
 # data
 data/
+
+# LaTeX
+*.aux
+*.log
+*.out
+*.toc
+*.nav
+*.snm
+*.fdb_latexmk
+*.fls
+*.synctex.gz
