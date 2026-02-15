@@ -110,16 +110,33 @@ def train(cfg: TrainConfig) -> None:
 
         loss_res = ResidueLoss(w_res=1.0)
 
+    loss_ssim = None
+    if cfg.loss.u_ssim > 0:
+        from ..core.losses import SSIMLoss
+
+        loss_ssim = SSIMLoss(w_ssim=1.0)  # weight handled by cfg
+
     opt = torch.optim.AdamW(
         model.parameters(),
         lr=cfg.optim.lr,
         weight_decay=cfg.optim.weight_decay,
     )
-    sched = torch.optim.lr_scheduler.CosineAnnealingLR(
+    sched_cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
         opt,
-        T_max=max(1, cfg.optim.epochs),
+        T_max=max(1, cfg.optim.epochs - cfg.optim.warmup_epochs),
         eta_min=cfg.optim.eta_min,
     )
+    if cfg.optim.warmup_epochs > 0:
+        sched_warmup = torch.optim.lr_scheduler.LinearLR(
+            opt, start_factor=0.01, end_factor=1.0, total_iters=cfg.optim.warmup_epochs
+        )
+        sched = torch.optim.lr_scheduler.SequentialLR(
+            opt,
+            schedulers=[sched_warmup, sched_cosine],
+            milestones=[cfg.optim.warmup_epochs],
+        )
+    else:
+        sched = sched_cosine
     scaler = GradScaler(enabled=use_amp)
     ema = EMA(model, decay=cfg.model.ema_decay)
 
@@ -276,6 +293,16 @@ def train(cfg: TrainConfig) -> None:
                         loss = loss + cfg.loss.w_res * L_res
                         parts["res"] = L_res.detach()
 
+                    if loss_ssim is not None:
+                        # SSIM expects [B, 1, H, W] in [0, 1] usually.
+                        # Our phase is ~[-pi, pi].
+                        # A quick hack is to map it to [0, 1] for SSIM calc or just run on raw values.
+                        # The implementation in losses.py handles raw values fine but assumes local similarity.
+                        # We apply it on aligned phase.
+                        L_ssim = loss_ssim(phi_abs_align, phi_gt)
+                        loss = loss + cfg.loss.u_ssim * L_ssim
+                        parts["ssim"] = L_ssim.detach()
+
                 scaler.scale(loss).backward()
                 scaler.unscale_(opt)
                 torch.nn.utils.clip_grad_norm_(
@@ -303,6 +330,7 @@ def train(cfg: TrainConfig) -> None:
                     "tot": f"{float(loss.item()):.4f}",
                     "mae": f"{float(parts['mae']):.4f}",
                     "grad": f"{float(parts['grad']):.4f}",
+                    "ssim": f"{float(parts.get('ssim', 0.0)):.4f}",
                 }
             )
 

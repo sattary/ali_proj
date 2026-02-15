@@ -50,6 +50,7 @@ class OptimizationConfig:
     eta_min: float = 1e-6
     weight_decay: float = 1e-4
     grad_clip: float = 5.0
+    warmup_epochs: int = 5
 
 
 @dataclass
@@ -65,6 +66,9 @@ class LossConfig:
     w_curv: float = 0.003
     w_tv: float = 0.0
     w_data: float = 1.0
+    u_ssim: float = (
+        0.0  # Weight for SSIM loss (default 0.0 for backward compat, recommend 0.1)
+    )
     use_conf_weight: bool = False
     w_conf_reg: float = 0.0
 
