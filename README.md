@@ -115,9 +115,11 @@ uv sync
 
 ---
 
-## Quick Start
+## Recommended Workflow
 
-### 1. Generate Synthetic Data
+This workflow optimizes hyperparameters first, then trains the final model with tuned settings.
+
+### Step 0: Generate Training Data
 
 ```bash
 uv run phase-unwrap generate \
@@ -126,24 +128,9 @@ uv run phase-unwrap generate \
     --out-dir data/full
 ```
 
-### 2. Train
+### Step 1: Hyperparameter Search
 
-```bash
-uv run phase-unwrap train \
-    --data-dir data/full \
-    --epochs 200 \
-    --device auto
-```
-
-Resume from checkpoint:
-
-```bash
-uv run phase-unwrap train \
-    --data-dir data/full \
-    --resume runs/exp1/final.pth
-```
-
-### 3. Hyperparameter Search
+Find optimal learning rate, loss weights, batch size, and model capacity:
 
 ```bash
 uv run phase-unwrap tune \
@@ -152,16 +139,55 @@ uv run phase-unwrap tune \
     --tune-epochs 15
 ```
 
-### 4. Generate Publication Figures
+This creates `runs/optuna/best_config.yaml` with the optimal configuration.
+
+### Step 2: Train Final Model
+
+Train with tuned hyperparameters for the full duration:
 
 ```bash
-# Training curve
+uv run phase-unwrap train \
+    --data-dir data/full \
+    --config runs/optuna/best_config.yaml \
+    --run-name exp1
+```
+
+Resume from checkpoint if interrupted:
+
+```bash
+uv run phase-unwrap train \
+    --data-dir data/full \
+    --config runs/optuna/best_config.yaml \
+    --resume runs/exp1/final.pth
+```
+
+### Step 3: Evaluate and Visualize
+
+Generate publication-quality figures:
+
+```bash
+# Training progress
 uv run phase-unwrap plot training-curve --run-dir runs/exp1
 
-# Qualitative grid
+# Qualitative results
 uv run phase-unwrap plot qualitative \
     --checkpoint runs/exp1/best.pth \
     --data-dir data/full
+
+# Compare with classical baselines
+uv run phase-unwrap baselines \
+    --checkpoint runs/exp1/best.pth \
+    --n-samples 500
+
+# Test-time augmentation evaluation
+uv run phase-unwrap tta \
+    --checkpoint runs/exp1/best.pth \
+    --data-dir data/full
+
+# Noise robustness analysis
+uv run phase-unwrap noise-sweep \
+    --checkpoint runs/exp1/best.pth \
+    --snr-min 5.0 --snr-max 40.0 --n-steps 8
 
 # GradCAM interpretability
 uv run phase-unwrap plot gradcam \
@@ -170,48 +196,52 @@ uv run phase-unwrap plot gradcam \
     --layer enc5
 ```
 
-### 5. Export Model
+### Step 4: Export for Production
 
 ```bash
-# ONNX
+# ONNX format
 uv run phase-unwrap export-onnx \
     --checkpoint runs/exp1/best.pth \
     --out results/model.onnx
 
-# TorchScript
+# TorchScript format
 uv run phase-unwrap export-torchscript \
     --checkpoint runs/exp1/best.pth \
     --out results/model.pt
 
-# Latency benchmark
+# Benchmark inference speed
 uv run phase-unwrap benchmark \
     --checkpoint runs/exp1/best.pth \
     --device cpu --n-runs 200
 ```
 
-### 6. Evaluate Baselines
+---
+
+## Alternative Workflows
+
+### Quick Experiment (Skip Tuning)
+
+Use default hyperparameters for rapid prototyping:
 
 ```bash
-uv run phase-unwrap baselines \
-    --checkpoint runs/exp1/best.pth \
-    --n-samples 500
+uv run phase-unwrap train --data-dir data/full --epochs 50 --run-name quicktest
 ```
 
-### 7. Noise Robustness Sweep
+### Publication-Ready Evaluation
+
+Run multiple seeds and aggregate results:
 
 ```bash
-uv run phase-unwrap noise-sweep \
-    --checkpoint runs/exp1/best.pth \
-    --snr-min 5.0 --snr-max 40.0 --n-steps 8
-```
-
-### 8. Test-Time Augmentation
-
-```bash
-uv run phase-unwrap tta \
-    --checkpoint runs/exp1/best.pth \
+uv run phase-unwrap multiseed \
     --data-dir data/full \
-    --n-augments 8
+    --config runs/optuna/best_config.yaml \
+    --run-name final_model \
+    --seeds "42,1337,7,100,2024"
+
+# Generate comparison table
+uv run phase-unwrap latex-table \
+    --run-dir runs/final_model \
+    --out results/tables/metrics.tex
 ```
 
 ---
@@ -251,25 +281,49 @@ uv run pytest tests/ -q
 
 ---
 
-## Multi-Seed Evaluation
+## Advanced Features
 
-```bash
-uv run phase-unwrap multiseed \
-    --data-dir data/full \
-    --run-name ablation/baseline \
-    --seeds "42,1337,7,100,2024"
+### Ablation Studies
+
+Systematically evaluate the impact of architectural choices:
+
+```python
+from phase_unwrap.training.ablation import run_ablation
+from phase_unwrap.core.config import TrainConfig
+
+cfg = TrainConfig()
+cfg.data.data_dir = "data/full"
+
+ablations = {
+    "no_curvature": {"loss.w_curv": 0.0},
+    "no_gradient": {"loss.w_grad": 0.0},
+    "double_base": {"model.base": 64},
+    "silu_activation": {"model.activation": "silu"},
+}
+
+run_ablation(cfg, ablations, base_name="ablation_study")
 ```
 
-Produces `runs/ablation/baseline/aggregate.csv` with mean and standard deviation per epoch across all seeds.
+### Custom Dataset
 
----
+Use your own interferogram data by implementing a custom Dataset:
 
-## LaTeX Tables
+```python
+from torch.utils.data import Dataset
 
-```bash
-uv run phase-unwrap latex-table \
-    --run-dir runs/exp1 \
-    --out results/tables/metrics.tex
+class CustomInterferogramDataset(Dataset):
+    def __getitem__(self, idx):
+        # Load your interferogram I and ground truth phi
+        I = ...  # [1, H, W] normalized interferogram
+        phi = ...  # [1, H, W] unwrapped phase
+        
+        # Create hint from center value
+        H, W = phi.shape[-2:]
+        cy, cx = H // 2, W // 2
+        phi_hint = torch.full_like(phi, phi[0, cy, cx].item())
+        
+        I_input = torch.cat([I, phi_hint], dim=0)  # [2, H, W]
+        return I_input, phi, I
 ```
 
 ---
