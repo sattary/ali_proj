@@ -2,7 +2,7 @@
 Synthetic interferogram data generator.
 
 Faithful Python port of ``src/image_generation.m``.  Generates pairs of
-interferogram intensity images (I) and ground-truth unwrapped phase
+interferogram intensity images (interferogram) and ground-truth unwrapped phase
 fields (dphi), writing them to chunked HDF5 shards.
 
 Physics:
@@ -55,10 +55,10 @@ def generate_sample(
     rng: np.random.Generator,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Generate a single (I, dphi) pair.
+    Generate a single (interferogram, dphi) pair.
 
     Returns:
-        I:    float32 array of shape (128, 128) -- interferogram intensity.
+        interferogram:    float32 array of shape (128, 128) -- interferogram intensity.
         dphi: float32 array of shape (128, 128) -- unwrapped phase (min = 0).
     """
     # ---- phi1: randomized wavefront ----
@@ -89,13 +89,13 @@ def generate_sample(
     # ---- interference ----
     E1 = E0 * np.exp(1j * phi1)
     E2 = E0 * np.exp(1j * phi2)
-    I = np.abs(E1 + E2) ** 2
+    interferogram = np.abs(E1 + E2) ** 2
 
     # ---- ground truth unwrapped phase ----
     dp = phi1 - phi2
     dphi = dp - dp.min()
 
-    return I.astype(np.float32), dphi.astype(np.float32)
+    return interferogram.astype(np.float32), dphi.astype(np.float32)
 
 
 def generate_to_h5(
@@ -108,7 +108,7 @@ def generate_to_h5(
     Generate ``num_samples`` interferograms and write HDF5 shards.
 
     Each shard contains datasets:
-        - ``I``:   shape ``(shard_size, 1, 128, 128)``  float32
+        - ``interferogram``:   shape ``(shard_size, 1, 128, 128)``  float32
         - ``phi``: shape ``(shard_size, 1, 128, 128)``  float32
 
     Args:

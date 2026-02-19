@@ -28,13 +28,15 @@ from ..visualize.style import (
 )
 
 
-def _add_gaussian_noise(I: np.ndarray, snr_db: float) -> np.ndarray:
+def _add_gaussian_noise(interferogram: np.ndarray, snr_db: float) -> np.ndarray:
     """Add Gaussian noise to interferogram at a given SNR (dB)."""
-    signal_power = np.mean(I**2)
+    signal_power = np.mean(interferogram**2)
     snr_linear = 10.0 ** (snr_db / 10.0)
     noise_power = signal_power / snr_linear
-    noise = np.random.randn(*I.shape).astype(np.float32) * np.sqrt(noise_power)
-    return (I + noise).astype(np.float32)
+    noise = np.random.randn(*interferogram.shape).astype(np.float32) * np.sqrt(
+        noise_power
+    )
+    return (interferogram + noise).astype(np.float32)
 
 
 @torch.no_grad()

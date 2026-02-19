@@ -13,17 +13,17 @@ from ..core.ops import affine_align
 from ..data.generate import _build_grid, generate_sample
 
 
-def _unwrap_skimage(I: np.ndarray) -> np.ndarray:
+def _unwrap_skimage(interferogram: np.ndarray) -> np.ndarray:
     """Least-squares 2D phase unwrapping via skimage."""
     from skimage.restoration import unwrap_phase
 
-    wrapped = np.angle(np.exp(1j * I))
+    wrapped = np.angle(np.exp(1j * interferogram))
     return unwrap_phase(wrapped).astype(np.float32)
 
 
-def _unwrap_itoh(I: np.ndarray) -> np.ndarray:
+def _unwrap_itoh(interferogram: np.ndarray) -> np.ndarray:
     """Itoh's 1D method: unwrap along rows, then columns."""
-    wrapped = np.angle(np.exp(1j * I))
+    wrapped = np.angle(np.exp(1j * interferogram))
     unwrapped = np.copy(wrapped)
 
     for row in range(wrapped.shape[0]):

@@ -25,8 +25,6 @@ from ..data import build_dataloaders
 from ..model import build_model
 from .style import (
     DOUBLE_COL,
-    annotate_significance,
-    compute_statistical_test,
     create_nature_palette,
     nature_style,
     save_figure,

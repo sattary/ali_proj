@@ -26,7 +26,6 @@ from ..data import build_dataloaders
 from ..model import build_model
 from .style import (
     DOUBLE_COL,
-    compute_statistical_test,
     create_nature_palette,
     nature_style,
     save_figure,
@@ -110,7 +109,7 @@ def plot_prediction_scatter(
         # Panel 1: Hexbin scatter
         ax1 = fig.add_subplot(gs[0])
 
-        hb = ax1.hexbin(gt, pred, gridsize=50, cmap="Blues", mincnt=1, alpha=0.8)
+        ax1.hexbin(gt, pred, gridsize=50, cmap="Blues", mincnt=1, alpha=0.8)
 
         # Perfect prediction line
         min_val = min(gt.min(), pred.min())

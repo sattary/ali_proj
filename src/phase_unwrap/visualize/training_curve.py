@@ -16,11 +16,9 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-from scipy import stats
 
 from .style import (
     DOUBLE_COL,
-    NATURE_PALETTE,
     create_nature_palette,
     nature_style,
     save_figure,

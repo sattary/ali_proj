@@ -9,12 +9,10 @@ from __future__ import annotations
 
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 from pathlib import Path
 
 from .style import (
     DOUBLE_COL,
-    NATURE_PALETTE,
     annotate_significance,
     compute_statistical_test,
     create_nature_palette,
@@ -95,7 +93,7 @@ def plot_method_comparison(
         for idx, method in enumerate(methods):
             values = [results[method].get(m, 0) for m in metrics]
             offset = width * (idx - len(methods) / 2 + 0.5)
-            bars = ax2.bar(
+            ax2.bar(
                 x + offset,
                 values,
                 width,
@@ -159,7 +157,7 @@ def plot_method_comparison_bar(
                 data_groups.append(values)
 
             x = np.arange(len(methods))
-            bars = ax.bar(
+            ax.bar(
                 x,
                 means,
                 yerr=stds,

@@ -8,7 +8,6 @@ contour plot.
 
 from __future__ import annotations
 
-import copy
 from pathlib import Path
 
 import matplotlib.pyplot as plt

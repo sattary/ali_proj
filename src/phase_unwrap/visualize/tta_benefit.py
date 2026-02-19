@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
-from scipy import stats
 from torch.amp import autocast
 
 from ..core.config import load_train_config
@@ -169,7 +168,6 @@ def plot_tta_benefit(
         # Panel 2: Improvement distribution
         ax2 = fig.add_subplot(gs[1])
 
-        colors = [palette[2] if x > 0 else palette[3] for x in improvements]
 
         sns.histplot(improvements, kde=True, ax=ax2, color=palette[0], alpha=0.6)
         ax2.axvline(0, color="red", linestyle="--", linewidth=1.5)

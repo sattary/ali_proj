@@ -127,7 +127,7 @@ def plot_residual_analysis(
                 color=palette[1],
                 line_kws={"linewidth": 2},
             )
-        except:
+        except Exception:
             pass
 
         ax1.set_xlabel("Fitted Values [rad]", fontsize=9)

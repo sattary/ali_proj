@@ -20,7 +20,6 @@ from ..core.utils import pick_device
 from ..data import build_dataloaders
 from ..model import build_model
 from .style import (
-    CMAP_ERROR_ABS,
     CMAP_INTENSITY,
     DOUBLE_COL,
     add_colorbar,
