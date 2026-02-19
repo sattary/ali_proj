@@ -1,114 +1,306 @@
+"""
+Training loop for absolute phase reconstruction.
+
+Features:
+    - Per-epoch CSV metrics logging (MAE, RMSE, SSIM, PSNR, MaxErr, GradMAE)
+    - Full-state checkpointing for resume (model, optimizer, scheduler, scaler,
+      EMA, epoch, best_mae, RNG states)
+    - Config snapshot saved as YAML at run start
+    - Affine alignment at evaluation only (not during backprop)
+    - Linear LR warmup then cosine annealing (step-level)
+"""
+
 from __future__ import annotations
 
+import csv
 import os
+import random
 import time
-from typing import Dict, Tuple
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 import numpy as np
 import torch
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
+from torchmetrics.functional import structural_similarity_index_measure as ssim_fn
 from tqdm import tqdm
 
-from .config import TrainConfig
+from .config import TrainConfig, config_to_yaml
 from .data import build_dataloaders
-from .losses import PhaseSupervisionLoss, compute_metrics
+from .losses import MAEGradLoss, compute_metrics
 from .model import EMA, build_model
-from .ops import adaptive_curvature_loss, affine_align
+from .ops import FixedSobel, affine_align, curvature_loss
 from .utils import ensure_dir, pick_device, set_seed
-from .visualize import save_epoch_visuals, save_training_curve
+from .visualize import save_epoch_visuals
+
+# ---------------------------------------------------------------------------
+# Metrics CSV
+# ---------------------------------------------------------------------------
+CSV_COLUMNS = [
+    "epoch",
+    "train_loss",
+    "train_mae",
+    "train_grad",
+    "val_mae",
+    "val_rmse",
+    "val_ssim",
+    "val_psnr",
+    "val_max_err",
+    "val_grad_mae",
+    "lr",
+    "epoch_time_s",
+]
 
 
+def _init_csv(path: str) -> None:
+    with open(path, "w", newline="") as f:
+        csv.writer(f).writerow(CSV_COLUMNS)
+
+
+def _append_csv(path: str, row: Dict[str, Any]) -> None:
+    with open(path, "a", newline="") as f:
+        csv.writer(f).writerow([row.get(c, "") for c in CSV_COLUMNS])
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint helpers
+# ---------------------------------------------------------------------------
+def save_checkpoint(
+    path: str,
+    epoch: int,
+    model: torch.nn.Module,
+    ema: EMA,
+    optimizer: torch.optim.Optimizer,
+    scheduler: Any,
+    scaler: GradScaler,
+    best_mae: float,
+) -> None:
+    state = {
+        "epoch": epoch,
+        "best_mae": best_mae,
+        "model": model.state_dict(),
+        "model_ema": ema.m.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "scheduler": scheduler.state_dict(),
+        "scaler": scaler.state_dict(),
+        "rng_python": random.getstate(),
+        "rng_numpy": np.random.get_state(),
+        "rng_torch": torch.random.get_rng_state(),
+    }
+    if torch.cuda.is_available():
+        state["rng_cuda"] = torch.cuda.get_rng_state_all()
+    torch.save(state, path)
+
+
+def load_checkpoint(
+    path: str,
+    model: torch.nn.Module,
+    ema: EMA,
+    optimizer: torch.optim.Optimizer,
+    scheduler: Any,
+    scaler: GradScaler,
+    device: torch.device,
+) -> tuple[int, float]:
+    """Load full training state. Returns (start_epoch, best_mae)."""
+    ckpt = torch.load(path, map_location=device, weights_only=False)
+    model.load_state_dict(ckpt["model"])
+    ema.m.load_state_dict(ckpt["model_ema"])
+    optimizer.load_state_dict(ckpt["optimizer"])
+    scheduler.load_state_dict(ckpt["scheduler"])
+    scaler.load_state_dict(ckpt["scaler"])
+
+    random.setstate(ckpt["rng_python"])
+    np.random.set_state(ckpt["rng_numpy"])
+    torch.random.set_rng_state(ckpt["rng_torch"])
+    if "rng_cuda" in ckpt and torch.cuda.is_available():
+        torch.cuda.set_rng_state_all(ckpt["rng_cuda"])
+
+    return ckpt["epoch"], ckpt["best_mae"]
+
+
+# ---------------------------------------------------------------------------
+# Extended evaluation
+# ---------------------------------------------------------------------------
 @torch.no_grad()
 def run_eval(
     model: torch.nn.Module,
     loader: DataLoader | None,
     device: torch.device,
     use_amp: bool,
+    sobel: FixedSobel,
 ) -> Dict[str, float]:
     """
-    Evaluate using affine-aligned absolute phase.
+    Evaluate using affine-aligned predictions.
+
+    Returns: dict with MAE, RMSE, SSIM, PSNR, MaxErr, GradMAE.
     """
     if loader is None:
-        return {"MAE": float("nan"), "RMSE": float("nan")}
-    sums: Dict[str, float] = {"MAE": 0.0, "RMSE": 0.0}
+        return {
+            k: float("nan")
+            for k in ["MAE", "RMSE", "SSIM", "PSNR", "MaxErr", "GradMAE"]
+        }
+
+    sums: Dict[str, float] = {
+        k: 0.0 for k in ["MAE", "RMSE", "SSIM", "PSNR", "MaxErr", "GradMAE"]
+    }
     n = 0
+
     for I_input, phi_gt, I_raw in loader:
         I_input = I_input.to(device)
         phi_gt = phi_gt.to(device)
+        bs = I_input.size(0)
 
-        with autocast(enabled=use_amp):
-            phi_raw, a_pred, b_pred_raw, conf_logit, k_off = model(I_input)
+        with autocast(device_type=device.type, enabled=use_amp):
+            phi_raw, k_off = model(I_input)
             phi_abs = phi_raw + k_off
 
-        phi_abs_aligned, a_batch, c_batch = affine_align(phi_abs, phi_gt)
+        phi_aligned, _, _ = affine_align(phi_abs, phi_gt)
 
-        m = compute_metrics(phi_abs_aligned, phi_gt)
-        bs = I_input.size(0)
-        for k in sums:
-            sums[k] += float(m[k]) * bs
+        # core metrics
+        m = compute_metrics(phi_aligned, phi_gt)
+        sums["MAE"] += float(m["MAE"]) * bs
+        sums["RMSE"] += float(m["RMSE"]) * bs
+
+        # max error
+        max_err = (phi_aligned - phi_gt).abs().amax(dim=(1, 2, 3)).mean()
+        sums["MaxErr"] += float(max_err) * bs
+
+        # gradient MAE
+        pgx, pgy = sobel(phi_aligned)
+        tgx, tgy = sobel(phi_gt)
+        grad_mae = ((pgx - tgx).abs() + (pgy - tgy).abs()).mean()
+        sums["GradMAE"] += float(grad_mae) * bs
+
+        # SSIM -- normalize both to [0, 1] range for SSIM computation
+        gt_min = phi_gt.amin(dim=(1, 2, 3), keepdim=True)
+        gt_max = phi_gt.amax(dim=(1, 2, 3), keepdim=True)
+        data_range = (gt_max - gt_min).clamp_min(1e-6)
+        pred_norm = (phi_aligned - gt_min) / data_range
+        gt_norm = (phi_gt - gt_min) / data_range
+        ssim_val = ssim_fn(pred_norm, gt_norm, data_range=1.0)
+        sums["SSIM"] += float(ssim_val) * bs
+
+        # PSNR
+        mse = ((phi_aligned - phi_gt) ** 2).mean()
+        data_range_mean = data_range.mean()
+        psnr = 10.0 * torch.log10(data_range_mean**2 / mse.clamp_min(1e-12))
+        sums["PSNR"] += float(psnr) * bs
+
         n += bs
+
     if n == 0:
-        return {"MAE": float("nan"), "RMSE": float("nan")}
+        return {k: float("nan") for k in sums}
     return {k: sums[k] / n for k in sums}
 
 
-def train(cfg: TrainConfig) -> None:
-    """
-    Main training entrypoint operating on a structured configuration.
-    """
+# ---------------------------------------------------------------------------
+# Learning rate scheduler with warmup
+# ---------------------------------------------------------------------------
+def _build_warmup_scheduler(
+    optimizer: torch.optim.Optimizer,
+    warmup_steps: int,
+    cosine_T_max: int,
+    eta_min: float,
+) -> torch.optim.lr_scheduler.SequentialLR:
+    warmup = torch.optim.lr_scheduler.LinearLR(
+        optimizer, start_factor=1e-3, end_factor=1.0, total_iters=warmup_steps
+    )
+    cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=max(1, cosine_T_max), eta_min=eta_min
+    )
+    return torch.optim.lr_scheduler.SequentialLR(
+        optimizer, schedulers=[warmup, cosine], milestones=[warmup_steps]
+    )
+
+
+# ---------------------------------------------------------------------------
+# Main training loop
+# ---------------------------------------------------------------------------
+def train(cfg: TrainConfig, resume_path: Optional[str] = None) -> None:
+    """Main training entrypoint."""
     set_seed(cfg.logging.seed)
 
     device = pick_device(cfg.model.device)
     use_cuda = device.type == "cuda"
     use_amp = bool(use_cuda and cfg.model.use_amp)
 
+    run_dir = cfg.logging.run_dir
+    vis_dir = cfg.logging.vis_dir
+    ensure_dir(run_dir)
+    ensure_dir(vis_dir)
+
+    metrics_path = os.path.join(run_dir, "metrics.csv")
+
     print(
         f"[startup] device={device} | amp={use_amp} | "
         f"batch={cfg.optim.batch_size} | workers={cfg.data.workers}"
     )
+    print(f"[run_dir] {run_dir}")
 
-    ensure_dir(cfg.logging.out_dir)
-    ensure_dir(cfg.logging.vis_dir)
+    # save config snapshot
+    config_snap_path = os.path.join(run_dir, "config.yaml")
+    if not os.path.exists(config_snap_path):
+        Path(config_snap_path).write_text(config_to_yaml(cfg))
 
-    train_loader, val_loader = build_dataloaders(cfg.data, cfg.optim, device, seed=cfg.logging.seed)
+    train_loader, val_loader = build_dataloaders(
+        cfg.data, cfg.optim, device, seed=cfg.logging.seed
+    )
     print(
         f"[data] dir={cfg.data.data_dir} pattern={cfg.data.pattern} | "
-        f"train={len(train_loader.dataset)} val={len(val_loader.dataset) if val_loader is not None else 0}"
+        f"train={len(train_loader.dataset)} "
+        f"val={len(val_loader.dataset) if val_loader is not None else 0}"
     )
 
     model = build_model(cfg.model).to(device)
 
-    loss_sup = PhaseSupervisionLoss(
+    loss_fn = MAEGradLoss(
         w_mae=cfg.loss.w_mae,
         w_grad=cfg.loss.w_grad,
-        w_wrap=cfg.loss.w_wrap,
         intensity_weighted=cfg.loss.int_wgrad,
     )
+    eval_sobel = FixedSobel().to(device)
 
     opt = torch.optim.AdamW(
         model.parameters(),
         lr=cfg.optim.lr,
         weight_decay=cfg.optim.weight_decay,
     )
-    sched = torch.optim.lr_scheduler.CosineAnnealingLR(
-        opt,
-        T_max=max(1, cfg.optim.epochs),
-        eta_min=cfg.optim.eta_min,
+
+    total_steps = cfg.optim.epochs * len(train_loader)
+    warmup_steps = min(cfg.optim.warmup_steps, total_steps // 2)
+    sched = _build_warmup_scheduler(
+        opt, warmup_steps, total_steps - warmup_steps, cfg.optim.eta_min
     )
-    scaler = GradScaler(enabled=use_amp)
+    scaler = GradScaler(device=device.type, enabled=use_amp)
     ema = EMA(model, decay=cfg.model.ema_decay)
 
     best_mae = float("inf")
+    start_epoch = 1
 
-    epochs_x = []
-    train_losses = []
-    val_maes = []
+    # -- resume from checkpoint --
+    if resume_path is not None:
+        print(f"[resume] Loading checkpoint: {resume_path}")
+        last_epoch, best_mae = load_checkpoint(
+            resume_path, model, ema, opt, sched, scaler, device
+        )
+        start_epoch = last_epoch + 1
+        print(f"[resume] Continuing from epoch {start_epoch}, best MAE={best_mae:.6f}")
 
-    for epoch in range(1, cfg.optim.epochs + 1):
+    # init CSV (only if starting fresh)
+    if start_epoch == 1:
+        _init_csv(metrics_path)
+
+    epochs_x: list[int] = []
+    train_losses: list[float] = []
+    val_maes: list[float] = []
+
+    for epoch in range(start_epoch, cfg.optim.epochs + 1):
         t0 = time.time()
         model.train()
         run_loss = 0.0
+        run_mae = 0.0
+        run_grad = 0.0
         cnt = 0
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{cfg.optim.epochs}", leave=False)
@@ -120,30 +312,16 @@ def train(cfg: TrainConfig) -> None:
             opt.zero_grad(set_to_none=True)
 
             try:
-                with autocast(enabled=use_amp):
-                    phi_raw, a_pred, b_pred_raw, conf_logit, k_off = model(I_input)
-
-                    # predicted raw absolute phase before alignment
+                with autocast(device_type=device.type, enabled=use_amp):
+                    phi_raw, k_off = model(I_input)
                     phi_abs = phi_raw + k_off
 
-                    # per-image affine align
-                    phi_abs_align, a_batch, c_batch = affine_align(phi_abs, phi_gt)
-
-                    # training confidence mask
-                    conf_used = torch.ones_like(phi_abs_align)
-
-                    # 1) absolute phase supervision (on aligned prediction)
-                    L_phase, parts = loss_sup(
-                        phi_abs_align,
+                    L_phase, parts = loss_fn(
+                        phi_abs,
                         phi_gt,
                         I_raw if cfg.loss.int_wgrad else None,
-                        conf_used,
                     )
-
-                    # 2) curvature smoothness on aligned phase
-                    L_curv = cfg.loss.w_curv * adaptive_curvature_loss(phi_abs_align, conf_used)
-
-                    # final total loss
+                    L_curv = cfg.loss.w_curv * curvature_loss(phi_abs)
                     loss = cfg.loss.w_data * L_phase + L_curv
 
                 scaler.scale(loss).backward()
@@ -155,6 +333,7 @@ def train(cfg: TrainConfig) -> None:
                 )
                 scaler.step(opt)
                 scaler.update()
+                sched.step()
                 ema.update(model)
 
             except RuntimeError as e:
@@ -162,11 +341,13 @@ def train(cfg: TrainConfig) -> None:
                     print("CUDA OOM. Try smaller batch size.")
                     torch.cuda.empty_cache()
                     return
-                else:
-                    raise
+                raise
 
-            run_loss += float(loss.item()) * I_input.size(0)
-            cnt += I_input.size(0)
+            bs = I_input.size(0)
+            run_loss += float(loss.item()) * bs
+            run_mae += float(parts["mae"].item()) * bs
+            run_grad += float(parts["grad"].item()) * bs
+            cnt += bs
 
             pbar.set_postfix(
                 {
@@ -176,81 +357,99 @@ def train(cfg: TrainConfig) -> None:
                 }
             )
 
-        sched.step()
         train_loss = run_loss / max(1, cnt)
+        train_mae = run_mae / max(1, cnt)
+        train_grad = run_grad / max(1, cnt)
+        epoch_time = time.time() - t0
 
-        # validation
-        cur_val_mae = float("nan")
+        # -- validation --
+        eval_stats: Dict[str, float] = {}
         if (epoch % cfg.logging.val_interval == 0) and (val_loader is not None):
-            eval_stats = run_eval(ema.m, val_loader, device, use_amp)
-            cur_val_mae = eval_stats["MAE"]
+            eval_stats = run_eval(ema.m, val_loader, device, use_amp, eval_sobel)
 
-            # dump visuals using EMA model on a small batch from val
+            # save visuals
             try:
                 I_input_v, phi_gt_v, I_raw_v = next(iter(val_loader))
                 I_input_v = I_input_v.to(device)
                 phi_gt_v = phi_gt_v.to(device)
-                with autocast(enabled=use_amp):
-                    phi_raw_v, a_pred_v, b_pred_raw_v, conf_logit_v, k_off_v = ema.m(I_input_v)
+                with autocast(device_type=device.type, enabled=use_amp):
+                    phi_raw_v, k_off_v = ema.m(I_input_v)
                     phi_abs_v = phi_raw_v + k_off_v
-
-                phi_abs_v_align, a_dbg, c_dbg = affine_align(phi_abs_v, phi_gt_v)
-
-                pred_min = float(phi_abs_v_align.min().item())
-                pred_max = float(phi_abs_v_align.max().item())
-                gt_min = float(phi_gt_v.min().item())
-                gt_max = float(phi_gt_v.max().item())
-                print(
-                    f"[val debug] after align: pred_min={pred_min:.3f} "
-                    f"pred_max={pred_max:.3f} | gt_min={gt_min:.3f} gt_max={gt_max:.3f}"
-                )
-
+                phi_aligned_v, _, _ = affine_align(phi_abs_v, phi_gt_v)
                 save_epoch_visuals(
                     I_input_v.cpu(),
-                    phi_abs_v_align.detach().cpu(),
+                    phi_aligned_v.detach().cpu(),
                     phi_gt_v.cpu(),
-                    cfg.logging.vis_dir,
+                    vis_dir,
                     epoch,
                     cfg.logging.vis_max,
                 )
             except Exception as e:
-                print("Warning: saving visuals failed:", e)
+                print(f"Warning: saving visuals failed: {e}")
 
             print(
                 f"Epoch {epoch} | train={train_loss:.4f} | "
-                f"val MAE={eval_stats['MAE']:.4f} RMSE={eval_stats['RMSE']:.4f} | "
-                f"time={time.time() - t0:.1f}s"
+                f"MAE={eval_stats.get('MAE', 0):.4f} "
+                f"RMSE={eval_stats.get('RMSE', 0):.4f} "
+                f"SSIM={eval_stats.get('SSIM', 0):.4f} "
+                f"PSNR={eval_stats.get('PSNR', 0):.2f} "
+                f"MaxErr={eval_stats.get('MaxErr', 0):.4f} | "
+                f"time={epoch_time:.1f}s"
             )
 
-            if eval_stats["MAE"] < best_mae:
+            if eval_stats.get("MAE", float("inf")) < best_mae:
                 best_mae = eval_stats["MAE"]
-                torch.save(
-                    {
-                        "epoch": epoch,
-                        "model": model.state_dict(),
-                        "model_ema": ema.m.state_dict(),
-                    },
-                    os.path.join(cfg.logging.out_dir, "best.pth"),
+                save_checkpoint(
+                    os.path.join(run_dir, "best.pth"),
+                    epoch,
+                    model,
+                    ema,
+                    opt,
+                    sched,
+                    scaler,
+                    best_mae,
                 )
         else:
-            print(
-                f"Epoch {epoch} | train={train_loss:.4f} | "
-                f"time={time.time() - t0:.1f}s"
-            )
+            print(f"Epoch {epoch} | train={train_loss:.4f} | time={epoch_time:.1f}s")
 
-        # rolling checkpoint every epoch
-        torch.save(
-            {"epoch": epoch, "model": model.state_dict(), "model_ema": ema.m.state_dict()},
-            os.path.join(cfg.logging.out_dir, "final.pth"),
+        # rolling checkpoint
+        save_checkpoint(
+            os.path.join(run_dir, "final.pth"),
+            epoch,
+            model,
+            ema,
+            opt,
+            sched,
+            scaler,
+            best_mae,
+        )
+
+        # CSV row
+        current_lr = opt.param_groups[0]["lr"]
+        _append_csv(
+            metrics_path,
+            {
+                "epoch": epoch,
+                "train_loss": f"{train_loss:.6f}",
+                "train_mae": f"{train_mae:.6f}",
+                "train_grad": f"{train_grad:.6f}",
+                "val_mae": f"{eval_stats.get('MAE', ''):.6f}" if eval_stats else "",
+                "val_rmse": f"{eval_stats.get('RMSE', ''):.6f}" if eval_stats else "",
+                "val_ssim": f"{eval_stats.get('SSIM', ''):.6f}" if eval_stats else "",
+                "val_psnr": f"{eval_stats.get('PSNR', ''):.4f}" if eval_stats else "",
+                "val_max_err": f"{eval_stats.get('MaxErr', ''):.6f}"
+                if eval_stats
+                else "",
+                "val_grad_mae": f"{eval_stats.get('GradMAE', ''):.6f}"
+                if eval_stats
+                else "",
+                "lr": f"{current_lr:.8f}",
+                "epoch_time_s": f"{epoch_time:.2f}",
+            },
         )
 
         epochs_x.append(epoch)
         train_losses.append(train_loss)
-        val_maes.append(cur_val_mae)
+        val_maes.append(eval_stats.get("MAE", float("nan")))
 
-    print("Done. Best MAE:", best_mae)
-
-    # save training curve
-    save_training_curve(epochs_x, train_losses, val_maes, cfg.logging.out_dir)
-
-
+    print(f"Done. Best MAE: {best_mae}")

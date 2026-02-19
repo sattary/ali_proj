@@ -1,3 +1,19 @@
+"""
+UNetRes2 model for absolute phase reconstruction.
+
+Architecture:
+    - AddCoords augments the 2-channel input (I_norm, phi_hint) with
+      normalized (x, y) coordinate channels, yielding 4 input channels.
+    - A 5-level UNet encoder built from Res2-style depthwise-split
+      residual blocks, followed by a bottleneck.
+    - A symmetric decoder with bilinear upsampling and skip connections.
+    - A single pixelwise head producing phi_raw [B,1,H,W].
+    - A global scalar offset head (k_off) derived from bottleneck features
+      via 1x1 conv + global average pooling.
+
+The final absolute phase prediction is ``phi_abs = phi_raw + k_off``.
+"""
+
 from __future__ import annotations
 
 from copy import deepcopy
@@ -11,9 +27,7 @@ from .config import ModelConfig
 
 
 def meshgrid_ij(x: torch.Tensor, y: torch.Tensor, **kw):
-    """
-    Compatibility wrapper around torch.meshgrid for older PyTorch versions.
-    """
+    """Compatibility wrapper for older PyTorch meshgrid API."""
     try:
         return torch.meshgrid(x, y, indexing="ij", **kw)
     except TypeError:
@@ -21,12 +35,9 @@ def meshgrid_ij(x: torch.Tensor, y: torch.Tensor, **kw):
 
 
 class AddCoords(nn.Module):
-    """
-    Adds normalized x, y coordinate channels to the input tensor.
-    """
+    """Concatenate normalized (x, y) coordinate channels to the input."""
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: [B, C, H, W]
         b, c, h, w = x.shape
         yy, xx = meshgrid_ij(
             torch.linspace(-1, 1, h, device=x.device, dtype=x.dtype),
@@ -38,10 +49,20 @@ class AddCoords(nn.Module):
 
 class Res2_DS_Block(nn.Module):
     """
-    Res2-style block with depthwise splits.
+    Res2-style residual block with depthwise-separated channel groups.
+
+    1x1 expand -> split into ``s`` groups -> per-group DW 3x3 with
+    hierarchical residual connections -> concat -> 1x1 project + shortcut.
     """
 
-    def __init__(self, in_ch: int, out_ch: int, s: int = 4, expansion: float = 1.0, act: str = "relu") -> None:
+    def __init__(
+        self,
+        in_ch: int,
+        out_ch: int,
+        s: int = 4,
+        expansion: float = 1.0,
+        act: str = "relu",
+    ) -> None:
         super().__init__()
         mid = max(1, int(out_ch * expansion))
         self.s = max(2, s)
@@ -50,17 +71,21 @@ class Res2_DS_Block(nn.Module):
         self.bn1 = nn.BatchNorm2d(mid)
         self.act = nn.ReLU(inplace=True) if act == "relu" else nn.SiLU(inplace=True)
 
-        # Split mid channels into s groups
-        self.sizes = []
         base = mid // self.s
         rem = mid - base * self.s
-        for i in range(self.s):
-            self.sizes.append(base + (1 if i < rem else 0))
+        self.sizes = [base + (1 if i < rem else 0) for i in range(self.s)]
         self.offsets = [sum(self.sizes[:i]) for i in range(self.s)]
 
         self.dw = nn.ModuleList(
             [
-                nn.Conv2d(self.sizes[i], self.sizes[i], 3, padding=1, groups=self.sizes[i], bias=False)
+                nn.Conv2d(
+                    self.sizes[i],
+                    self.sizes[i],
+                    3,
+                    padding=1,
+                    groups=self.sizes[i],
+                    bias=False,
+                )
                 for i in range(self.s)
             ]
         )
@@ -88,9 +113,16 @@ class Res2_DS_Block(nn.Module):
 
 
 class UpBlockRes2(nn.Module):
-    """Upsampling block with skip connection and Res2 block."""
+    """Bilinear upsample + skip concatenation + Res2 block."""
 
-    def __init__(self, in_ch_cat: int, out_ch: int, s: int = 4, expansion: float = 1.0, act: str = "relu") -> None:
+    def __init__(
+        self,
+        in_ch_cat: int,
+        out_ch: int,
+        s: int = 4,
+        expansion: float = 1.0,
+        act: str = "relu",
+    ) -> None:
         super().__init__()
         self.conv = Res2_DS_Block(in_ch_cat, out_ch, s, expansion, act)
 
@@ -101,24 +133,24 @@ class UpBlockRes2(nn.Module):
 
 class UNetRes2_AbsPhase(nn.Module):
     """
-    UNet-style encoder-decoder with Res2 blocks and a global offset head.
+    UNet encoder-decoder with Res2 blocks and a global offset head.
 
-    Input:
-        I_input [B, 2, H, W] = [I_norm, phi_hint]
-        After AddCoords -> 4 channels going into the first conv.
-
-    Outputs:
-        - phi_raw   [B, 1, H, W]: local phase structure
-        - a_pred    [B, 1, H, W]: optional / unused background term
-        - b_pred_raw[B, 1, H, W]: amplitude (softplus if used)
-        - conf_logit[B, 1, H, W]: confidence logit (sigmoid if used)
-        - k_off     [B, 1, 1, 1]: global scalar offset to add to phi_raw
+    Input:  [B, 2, H, W]  (I_norm, phi_hint)
+    Output: (phi_raw [B,1,H,W], k_off [B,1,1,1])
     """
 
-    def __init__(self, in_ch: int = 2, base: int = 32, act: str = "relu", final_dropout: float = 0.2) -> None:
+    def __init__(
+        self,
+        in_ch: int = 2,
+        base: int = 32,
+        act: str = "relu",
+        final_dropout: float = 0.2,
+    ) -> None:
         super().__init__()
         self.addcoords = AddCoords()
-        C = lambda m: int(min(base * m, 1024))
+
+        def C(m: int) -> int:
+            return int(min(base * m, 1024))
 
         # encoder
         self.enc1 = nn.Sequential(
@@ -126,26 +158,20 @@ class UNetRes2_AbsPhase(nn.Module):
             Res2_DS_Block(C(1), C(1), 4, 1.0, act),
         )
         self.enc2 = nn.Sequential(
-            nn.MaxPool2d(2),
-            Res2_DS_Block(C(1), C(2), 4, 1.0, act),
+            nn.MaxPool2d(2), Res2_DS_Block(C(1), C(2), 4, 1.0, act)
         )
         self.enc3 = nn.Sequential(
-            nn.MaxPool2d(2),
-            Res2_DS_Block(C(2), C(4), 4, 1.0, act),
+            nn.MaxPool2d(2), Res2_DS_Block(C(2), C(4), 4, 1.0, act)
         )
         self.enc4 = nn.Sequential(
-            nn.MaxPool2d(2),
-            Res2_DS_Block(C(4), C(8), 4, 1.0, act),
+            nn.MaxPool2d(2), Res2_DS_Block(C(4), C(8), 4, 1.0, act)
         )
         self.enc5 = nn.Sequential(
-            nn.MaxPool2d(2),
-            Res2_DS_Block(C(8), C(16), 4, 1.0, act),
+            nn.MaxPool2d(2), Res2_DS_Block(C(8), C(16), 4, 1.0, act)
         )
 
         # bottleneck
-        self.bott = nn.Sequential(
-            Res2_DS_Block(C(16), C(32), 4, 1.0, act),
-        )
+        self.bott = nn.Sequential(Res2_DS_Block(C(16), C(32), 4, 1.0, act))
 
         # decoder
         self.up4 = UpBlockRes2(C(32) + C(16), C(16), 4, 1.0, act)
@@ -156,16 +182,15 @@ class UNetRes2_AbsPhase(nn.Module):
 
         self.final_dropout = nn.Dropout2d(final_dropout)
 
-        # pixelwise head for [phi_raw, a_pred, b_raw, conf_logit]
-        self.head_pix = nn.Conv2d(C(1), 4, 1)
+        # pixelwise head: phi_raw only (was 4 channels, 3 were unused)
+        self.head_pix = nn.Conv2d(C(1), 1, 1)
 
-        # global offset head k_off
+        # global offset head
         self.off_conv = nn.Conv2d(C(32), C(8), 1)
         self.off_act = nn.ReLU(inplace=True) if act == "relu" else nn.SiLU(inplace=True)
         self.off_fc = nn.Conv2d(C(8), 1, 1)
 
-    def forward(self, x_in: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        # x_in: [B, 2, H, W]
+    def forward(self, x_in: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         x0 = self.addcoords(x_in)
 
         e1 = self.enc1(x0)
@@ -184,25 +209,19 @@ class UNetRes2_AbsPhase(nn.Module):
 
         d0 = self.final_dropout(d0)
 
-        pix_out = self.head_pix(d0)
-        phi_raw = pix_out[:, 0:1]
-        a_pred = pix_out[:, 1:2]
-        b_pred_raw = pix_out[:, 2:3]
-        conf_logit = pix_out[:, 3:4]
+        phi_raw = self.head_pix(d0)  # [B, 1, H, W]
 
         # global offset from bottleneck
         z = self.off_conv(b)
         z = self.off_act(z)
         k_off = self.off_fc(z)
-        k_off = k_off.mean(dim=(2, 3), keepdim=True)
+        k_off = k_off.mean(dim=(2, 3), keepdim=True)  # [B, 1, 1, 1]
 
-        return phi_raw, a_pred, b_pred_raw, conf_logit, k_off
+        return phi_raw, k_off
 
 
 class EMA:
-    """
-    Exponential moving average shadow model for evaluation and visualization.
-    """
+    """Exponential moving average shadow model for smoother evaluation."""
 
     def __init__(self, model: nn.Module, decay: float = 0.999) -> None:
         self.m = deepcopy(model).eval()
@@ -220,14 +239,10 @@ class EMA:
 
 
 def build_model(cfg: ModelConfig) -> UNetRes2_AbsPhase:
-    """
-    Construct the UNetRes2_AbsPhase model from configuration.
-    """
+    """Construct the model from configuration."""
     return UNetRes2_AbsPhase(
         in_ch=2,
         base=cfg.base,
         act=cfg.activation,
         final_dropout=cfg.final_dropout,
     )
-
-

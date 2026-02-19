@@ -1,0 +1,42 @@
+# Default training configuration.
+# All values match the built-in defaults in phase_unwrap.config.
+
+data:
+  data_dir: "data/full"
+  pattern: "*.h5"
+  I_key: "I"
+  phi_key: "phi"
+  val_frac: 0.1
+  workers: 4
+  augment: true
+
+model:
+  base: 16
+  activation: "relu"
+  final_dropout: 0.3
+  ema_decay: 0.999
+  device: "auto"
+  use_amp: false
+
+optim:
+  epochs: 40
+  batch_size: 40
+  lr: 3.0e-4
+  eta_min: 1.0e-6
+  weight_decay: 1.0e-4
+  grad_clip: 5.0
+  warmup_steps: 500
+
+loss:
+  w_mae: 1.0
+  w_grad: 0.1
+  int_wgrad: false
+  w_curv: 0.003
+  w_data: 1.0
+
+logging:
+  run_name: "default"
+  runs_root: "runs"
+  vis_max: 8
+  val_interval: 1
+  seed: 1337

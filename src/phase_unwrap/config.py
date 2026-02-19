@@ -1,13 +1,21 @@
+"""
+Structured configuration for training and data generation.
+
+All hyperparameters are organized into typed dataclass groups.
+Configuration can be loaded from JSON or YAML files, with missing
+fields falling back to built-in defaults.
+"""
+
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import asdict, dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 try:
     import yaml  # type: ignore
-except Exception:  # pragma: no cover - optional dependency
+except Exception:  # pragma: no cover
     yaml = None
 
 
@@ -16,11 +24,12 @@ class DataConfig:
     """Data-related configuration."""
 
     data_dir: str = "data"
-    pattern: str = "*.mat"
+    pattern: str = "*.h5"
     I_key: str = "I"
-    phi_key: str = "dphi"
+    phi_key: str = "phi"
     val_frac: float = 0.1
     workers: int = 4
+    augment: bool = True
 
 
 @dataclass
@@ -45,6 +54,7 @@ class OptimizationConfig:
     eta_min: float = 1e-6
     weight_decay: float = 1e-4
     grad_clip: float = 5.0
+    warmup_steps: int = 500
 
 
 @dataclass
@@ -53,7 +63,6 @@ class LossConfig:
 
     w_mae: float = 1.0
     w_grad: float = 0.1
-    w_wrap: float = 0.0
     int_wgrad: bool = False
     w_curv: float = 0.003
     w_data: float = 1.0
@@ -63,11 +72,19 @@ class LossConfig:
 class LoggingConfig:
     """Logging, output, and reproducibility options."""
 
-    out_dir: str = "runs/affine_align"
-    vis_dir: str = "viz/affine_align"
+    run_name: str = "default"
+    runs_root: str = "runs"
     vis_max: int = 8
     val_interval: int = 1
     seed: int = 1337
+
+    @property
+    def run_dir(self) -> str:
+        return str(Path(self.runs_root) / self.run_name)
+
+    @property
+    def vis_dir(self) -> str:
+        return str(Path(self.runs_root) / self.run_name / "visuals")
 
 
 @dataclass
@@ -115,7 +132,6 @@ def _load_mapping(path: Path) -> Dict[str, Any]:
                 "Install `pyyaml` or use JSON instead."
             )
         return yaml.safe_load(text) or {}
-    # Default: try JSON first, then YAML if available.
     try:
         return json.loads(text)
     except Exception:
@@ -125,11 +141,7 @@ def _load_mapping(path: Path) -> Dict[str, Any]:
 
 
 def load_train_config(path: Optional[ConfigPath] = None) -> TrainConfig:
-    """
-    Load a TrainConfig from an optional JSON/YAML file.
-
-    If `path` is None, returns a config populated with built-in defaults.
-    """
+    """Load a TrainConfig from an optional JSON/YAML file."""
     cfg = TrainConfig()
     if path is None:
         return cfg
@@ -138,3 +150,9 @@ def load_train_config(path: Optional[ConfigPath] = None) -> TrainConfig:
     return _update_dataclass(cfg, data)
 
 
+def config_to_yaml(cfg: TrainConfig) -> str:
+    """Serialize a TrainConfig to YAML string."""
+    d = asdict(cfg)
+    if yaml is not None:
+        return yaml.dump(d, default_flow_style=False, sort_keys=False)
+    return json.dumps(d, indent=2)
