@@ -134,6 +134,35 @@ def multiseed(
     run_multiseed(cfg, base_run_name=run_name, seeds=seed_list)
 
 
+@app.command()
+def tune(
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="JSON or YAML config file."
+    ),
+    data_dir: Optional[Path] = typer.Option(
+        None, "--data-dir", help="Override data directory."
+    ),
+    device: Optional[str] = typer.Option(
+        None, "--device", help="'auto', 'cuda', or 'cpu'."
+    ),
+    n_trials: int = typer.Option(50, "--n-trials", help="Number of Optuna trials."),
+    tune_epochs: int = typer.Option(15, "--tune-epochs", help="Epochs per trial."),
+    study_name: str = typer.Option(
+        "phase_unwrap_hpo", "--study-name", help="Optuna study name."
+    ),
+) -> None:
+    """Run Optuna hyperparameter search (TPE + MedianPruner)."""
+    from .tune import run_tuning
+
+    cfg: TrainConfig = load_train_config(config)
+    if data_dir is not None:
+        cfg.data.data_dir = str(data_dir)
+    if device is not None:
+        cfg.model.device = device
+
+    run_tuning(cfg, n_trials=n_trials, tune_epochs=tune_epochs, study_name=study_name)
+
+
 # ---------------------------------------------------------------------------
 # Plot sub-app
 # ---------------------------------------------------------------------------
