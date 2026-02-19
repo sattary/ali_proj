@@ -1,5 +1,7 @@
 """
-Noise robustness sweep: evaluate a trained model across SNR levels.
+Enhanced noise robustness sweep with seaborn violin plots.
+
+Shows full error distribution at each SNR level, not just mean±std.
 """
 
 from __future__ import annotations
@@ -9,6 +11,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 import torch
 from torch.amp import autocast
 
@@ -17,7 +20,12 @@ from ..core.ops import affine_align
 from ..core.utils import pick_device
 from ..data.generate import _build_grid, generate_sample
 from ..model import build_model
-from ..visualize.style import LINE_COLORS, SINGLE_COL, nature_style, save_figure
+from ..visualize.style import (
+    DOUBLE_COL,
+    create_nature_palette,
+    nature_style,
+    save_figure,
+)
 
 
 def _add_gaussian_noise(I: np.ndarray, snr_db: float) -> np.ndarray:
@@ -32,7 +40,7 @@ def _add_gaussian_noise(I: np.ndarray, snr_db: float) -> np.ndarray:
 @torch.no_grad()
 def noise_robustness_sweep(
     checkpoint_path: str,
-    out_path: str = "results/figs/noise_robustness.png",
+    out_path: str = "results/figs/noise_robustness",
     snr_range: tuple[float, float] = (5.0, 40.0),
     n_snr_steps: int = 8,
     n_samples: int = 100,
@@ -40,7 +48,14 @@ def noise_robustness_sweep(
     config_path: str | None = None,
     device_str: str = "auto",
 ) -> dict[str, list[float]]:
-    """Sweep SNR levels and record MAE at each, then plot."""
+    """
+    Sweep SNR levels with enhanced seaborn visualization.
+
+    Features:
+    - Violin plots at each SNR level showing full distribution
+    - Individual sample tracking
+    - Statistical trend analysis
+    """
     run_dir = str(Path(checkpoint_path).parent)
     cfg_path = config_path or str(Path(run_dir) / "config.yaml")
     cfg = load_train_config(cfg_path if Path(cfg_path).exists() else None)
@@ -55,8 +70,11 @@ def noise_robustness_sweep(
     x, y, r2 = _build_grid()
 
     snr_levels = np.linspace(snr_range[0], snr_range[1], n_snr_steps)
-    results: dict[str, list[float]] = {"snr_db": [], "mae": [], "std": []}
     snr_eval = list(snr_levels) + [float("inf")]
+
+    # Store all individual MAEs, not just statistics
+    all_maes_by_snr: dict[float, list[float]] = {}
+    results: dict[str, list[float]] = {"snr_db": [], "mae": [], "std": []}
 
     for snr_db in snr_eval:
         maes: list[float] = []
@@ -93,47 +111,101 @@ def noise_robustness_sweep(
         label = "clean" if math.isinf(snr_db) else f"{snr_db:.0f}"
         print(f"  SNR={label:>5s} dB | MAE={mean_mae:.4f} +/- {std_mae:.4f}")
 
+        all_maes_by_snr[snr_db] = maes
         results["snr_db"].append(snr_db)
         results["mae"].append(mean_mae)
         results["std"].append(std_mae)
 
     with nature_style():
-        fig, ax = plt.subplots(figsize=(SINGLE_COL, SINGLE_COL * 0.75))
+        palette = create_nature_palette(6)
+        fig = plt.figure(figsize=(DOUBLE_COL, DOUBLE_COL * 0.5))
+        gs = fig.add_gridspec(1, 2, width_ratios=[1.5, 1], wspace=0.3)
+
+        # Panel 1: Violin plot grid
+        ax1 = fig.add_subplot(gs[0])
+
+        # Prepare data for seaborn
+        plot_data_snr = []
+        plot_data_mae = []
+
+        for snr_db, maes in all_maes_by_snr.items():
+            label = "Clean" if math.isinf(snr_db) else f"{snr_db:.0f} dB"
+            for mae in maes:
+                plot_data_snr.append(label)
+                plot_data_mae.append(mae)
+
+        import pandas as pd
+
+        df = pd.DataFrame({"SNR": plot_data_snr, "MAE": plot_data_mae})
+
+        # Create violin plot
+        sns.violinplot(
+            data=df, x="SNR", y="MAE", ax=ax1, palette="Blues", inner="box", linewidth=1
+        )
+
+        # Overlay mean points
+        sns.pointplot(
+            data=df,
+            x="SNR",
+            y="MAE",
+            ax=ax1,
+            color="red",
+            markers="D",
+            scale=0.8,
+            linestyles="",
+            ci=None,
+        )
+
+        ax1.set_xlabel("SNR Level", fontsize=9)
+        ax1.set_ylabel("MAE [rad]", fontsize=9)
+        ax1.set_title("Error Distribution by SNR", fontsize=10)
+        ax1.tick_params(axis="x", rotation=45)
+        ax1.grid(True, alpha=0.3, axis="y")
+
+        # Panel 2: Mean trend with confidence
+        ax2 = fig.add_subplot(gs[1])
 
         noisy_mask = [not math.isinf(s) for s in results["snr_db"]]
-        clean_mask = [math.isinf(s) for s in results["snr_db"]]
-
         snr_noisy = [s for s, m in zip(results["snr_db"], noisy_mask) if m]
         mae_noisy = [m for m, mask in zip(results["mae"], noisy_mask) if mask]
         std_noisy = [s for s, mask in zip(results["std"], noisy_mask) if mask]
 
-        ax.errorbar(
-            snr_noisy,
-            mae_noisy,
-            yerr=std_noisy,
-            color=LINE_COLORS[0],
+        sns.lineplot(
+            x=snr_noisy,
+            y=mae_noisy,
+            ax=ax2,
+            color=palette[0],
             marker="o",
-            capsize=3,
-            linewidth=1.0,
-            markersize=4,
-            label="Noisy",
+            linewidth=2,
+            markersize=8,
+        )
+        ax2.fill_between(
+            snr_noisy,
+            np.array(mae_noisy) - np.array(std_noisy),
+            np.array(mae_noisy) + np.array(std_noisy),
+            alpha=0.2,
+            color=palette[0],
         )
 
-        if any(clean_mask):
-            clean_mae = [m for m, mask in zip(results["mae"], clean_mask) if mask][0]
-            ax.axhline(
+        # Clean baseline
+        if any(not m for m in noisy_mask):
+            clean_idx = [i for i, m in enumerate(noisy_mask) if not m][0]
+            clean_mae = results["mae"][clean_idx]
+            ax2.axhline(
                 clean_mae,
-                color=LINE_COLORS[2],
+                color=palette[2],
                 linestyle="--",
-                linewidth=0.8,
-                label=f"Clean (MAE={clean_mae:.3f})",
+                linewidth=2,
+                label=f"Clean ({clean_mae:.3f})",
             )
 
-        ax.set_xlabel("SNR [dB]")
-        ax.set_ylabel("MAE [rad]")
-        ax.set_title("Noise Robustness")
-        ax.legend(fontsize=6)
-        fig.tight_layout(pad=0.5)
+        ax2.set_xlabel("SNR [dB]", fontsize=9)
+        ax2.set_ylabel("Mean MAE [rad]", fontsize=9)
+        ax2.set_title("Degradation Curve", fontsize=10)
+        ax2.legend(fontsize=7)
+        ax2.grid(True, alpha=0.3)
+
+        plt.suptitle("Noise Robustness Analysis", fontsize=11, y=1.02)
 
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         save_figure(fig, out_path)

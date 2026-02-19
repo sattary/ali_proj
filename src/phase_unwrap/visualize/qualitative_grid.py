@@ -1,8 +1,7 @@
 """
-Qualitative results grid: Interferogram | GT Phase | Predicted Phase | Error.
+Enhanced qualitative results grid with seaborn styling.
 
-Loads a trained checkpoint, runs inference on a data batch, and produces
-a publication-ready figure with proper colorbars and LaTeX labels.
+Publication-ready 4-column grid with statistical annotations.
 """
 
 from __future__ import annotations
@@ -11,20 +10,21 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 import torch
 from torch.amp import autocast
 
-from ..core.config import TrainConfig, load_train_config
-from ..data import build_dataloaders
-from ..model import build_model
+from ..core.config import load_train_config
 from ..core.ops import affine_align
 from ..core.utils import pick_device
+from ..data import build_dataloaders
+from ..model import build_model
 from .style import (
     CMAP_ERROR_ABS,
     CMAP_INTENSITY,
-    CMAP_CONTINUOUS,
     DOUBLE_COL,
     add_colorbar,
+    create_nature_palette,
     nature_style,
     save_figure,
 )
@@ -34,16 +34,16 @@ from .style import (
 def plot_qualitative_grid(
     checkpoint_path: str,
     data_dir: str,
-    out_path: str = "results/figs/qualitative_grid.png",
+    out_path: str = "results/figs/qualitative_grid",
     n_samples: int = 4,
     config_path: str | None = None,
 ) -> None:
     """
-    Generate N-row qualitative results grid.
+    Enhanced N-row qualitative results grid with seaborn aesthetics.
 
     Columns: Interferogram | Ground Truth | Prediction | Absolute Error
+    Includes per-sample MAE annotations.
     """
-    # load config from run dir or defaults
     run_dir = str(Path(checkpoint_path).parent)
     cfg_path = config_path or str(Path(run_dir) / "config.yaml")
     cfg = load_train_config(cfg_path if Path(cfg_path).exists() else None)
@@ -52,7 +52,6 @@ def plot_qualitative_grid(
 
     device = pick_device(cfg.model.device)
     model = build_model(cfg.model).to(device)
-
     # weights_only=False: loading trusted checkpoint from own training runs
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
     model.load_state_dict(ckpt.get("model_ema", ckpt["model"]))
@@ -83,11 +82,15 @@ def plot_qualitative_grid(
     raw_np = I_raw.numpy()
     err_np = np.abs(pred_np - gt_np)
 
+    # Calculate per-sample MAE
+    sample_maes = [err_np[i].mean() for i in range(n_samples)]
+
     with nature_style():
+        palette = create_nature_palette(6)
         fig, axes = plt.subplots(
             n_samples,
             4,
-            figsize=(DOUBLE_COL, DOUBLE_COL * 0.25 * n_samples),
+            figsize=(DOUBLE_COL, DOUBLE_COL * 0.26 * n_samples),
         )
         if n_samples == 1:
             axes = axes[np.newaxis, :]
@@ -109,12 +112,16 @@ def plot_qualitative_grid(
             vmin_phase = min(gt_img.min(), pred_img.min())
             vmax_phase = max(gt_img.max(), pred_img.max())
 
+            # Use seaborn color palettes
+            phase_cmap = sns.color_palette("viridis", as_cmap=True)
+            error_cmap = sns.color_palette("rocket", as_cmap=True)
+
             im0 = axes[row, 0].imshow(I_img, cmap=CMAP_INTENSITY, aspect="equal")
             add_colorbar(axes[row, 0], im0)
 
             im1 = axes[row, 1].imshow(
                 gt_img,
-                cmap=CMAP_CONTINUOUS,
+                cmap=phase_cmap,
                 aspect="equal",
                 vmin=vmin_phase,
                 vmax=vmax_phase,
@@ -123,14 +130,14 @@ def plot_qualitative_grid(
 
             im2 = axes[row, 2].imshow(
                 pred_img,
-                cmap=CMAP_CONTINUOUS,
+                cmap=phase_cmap,
                 aspect="equal",
                 vmin=vmin_phase,
                 vmax=vmax_phase,
             )
             add_colorbar(axes[row, 2], im2, label="[rad]")
 
-            im3 = axes[row, 3].imshow(err_img, cmap=CMAP_ERROR_ABS, aspect="equal")
+            im3 = axes[row, 3].imshow(err_img, cmap=error_cmap, aspect="equal")
             add_colorbar(axes[row, 3], im3, label="[rad]")
 
             for col in range(4):
@@ -138,10 +145,30 @@ def plot_qualitative_grid(
                 axes[row, col].set_yticks([])
                 axes[row, col].spines[:].set_visible(False)
 
+            # Add MAE annotation
+            axes[row, 3].text(
+                0.98,
+                0.98,
+                f"MAE: {sample_maes[row]:.4f}",
+                transform=axes[row, 3].transAxes,
+                fontsize=7,
+                ha="right",
+                va="top",
+                color="white" if sample_maes[row] > err_img.mean() else "black",
+                bbox=dict(boxstyle="round", facecolor=palette[0], alpha=0.8),
+            )
+
         for col, title in enumerate(col_titles):
-            axes[0, col].set_title(title, fontsize=7, pad=4)
+            axes[0, col].set_title(title, fontsize=8, pad=5)
+
+        plt.suptitle(
+            f"Qualitative Results (Mean MAE: {np.mean(sample_maes):.4f} rad)",
+            fontsize=10,
+            y=0.98,
+        )
 
         fig.tight_layout(pad=0.5)
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         save_figure(fig, out_path)
         print(f"Saved qualitative grid: {out_path}")
+        print(f"  Per-sample MAEs: {[f'{m:.4f}' for m in sample_maes]}")
