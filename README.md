@@ -242,10 +242,13 @@ git config user.email "you@example.com"
 git config user.name "Your Name"
 
 # 3. Train with auto-push (pushes every 1000 epochs)
+#    Uses multi-GPU automatically on Kaggle (2x T4)
 uv run phase-unwrap train \
     --epochs 10000 \
     --run-name exp_10k \
+    --batch-size 40 \
     --auto-push-interval 1000 \
+    --multi-gpu \
     --device cuda
 
 # 4. Resume if interrupted
@@ -253,7 +256,10 @@ uv run phase-unwrap train \
     --resume runs/exp_10k/final.pth \
     --epochs 10000 \
     --run-name exp_10k \
-    --auto-push-interval 1000
+    --batch-size 40 \
+    --auto-push-interval 1000 \
+    --multi-gpu \
+    --device cuda
 ```
 
 ### Auto-Push Options
@@ -266,6 +272,36 @@ uv run phase-unwrap train \
 | `--auto-push-pat TOKEN` | GitHub Personal Access Token | Uses `GITHUB_PAT` env var |
 
 **Note:** Auto-push only works in Kaggle or Colab environments unless `--force-auto-push` is used.
+
+### Multi-GPU Training (Kaggle 2x T4)
+
+Train using both T4 GPUs on Kaggle for ~1.8x speedup:
+
+```bash
+# Use all available GPUs (auto-detected on Kaggle)
+uv run phase-unwrap train \
+    --epochs 10000 \
+    --run-name exp_10k \
+    --batch-size 40 \
+    --multi-gpu
+
+# Use specific GPUs
+uv run phase-unwrap train \
+    --epochs 10000 \
+    --batch-size 40 \
+    --multi-gpu \
+    --gpu-ids "0,1"
+```
+
+**Batch Size Semantics:**
+- `--batch-size 40` with `--multi-gpu` on 2 GPUs = 20 per GPU × 2 = 40 total
+- The batch size you specify is the **total effective batch size**
+- Each GPU processes `batch_size / num_gpus` samples
+
+**Checkpoint Compatibility:**
+- Single GPU → Multi-GPU: ✓ Works (state dict loads correctly)
+- Multi-GPU → Single GPU: ✓ Works (unwraps automatically)
+- Resume on different GPU count: ✓ Fully supported
 
 ---
 
@@ -291,6 +327,10 @@ phase-unwrap train \
     --auto-push-dry-run              # Test auto-push setup
     --force-auto-push                # Force enable (testing)
     --auto-push-pat TOKEN            # GitHub PAT
+    
+    # Multi-GPU training
+    --multi-gpu                      # Use all GPUs with DataParallel
+    --gpu-ids "0,1"                  # Specific GPU IDs (default: all)
 ```
 
 ### Data Generation
