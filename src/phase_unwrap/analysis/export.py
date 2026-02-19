@@ -27,6 +27,7 @@ def export_onnx(
     cfg = load_train_config(cfg_file if Path(cfg_file).exists() else None)
 
     model = build_model(cfg.model)
+    # weights_only=False: loading trusted checkpoint from own training runs
     ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     model.load_state_dict(ckpt.get("model_ema", ckpt["model"]))
     model.eval()
@@ -74,6 +75,7 @@ def export_torchscript(
     cfg = load_train_config(cfg_file if Path(cfg_file).exists() else None)
 
     model = build_model(cfg.model)
+    # weights_only=False: loading trusted checkpoint from own training runs
     ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     model.load_state_dict(ckpt.get("model_ema", ckpt["model"]))
     model.eval()
@@ -109,6 +111,7 @@ def benchmark_inference(
 
     dev = pick_device(device)
     model = build_model(cfg.model).to(dev)
+    # weights_only=False: loading trusted checkpoint from own training runs
     ckpt = torch.load(checkpoint_path, map_location=dev, weights_only=False)
     model.load_state_dict(ckpt.get("model_ema", ckpt["model"]))
     model.eval()

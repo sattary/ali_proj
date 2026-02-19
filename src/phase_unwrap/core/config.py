@@ -36,7 +36,7 @@ class DataConfig:
 class ModelConfig:
     """Model and runtime configuration."""
 
-    base: int = 16
+    base: int = 32
     activation: str = "relu"  # "relu" or "silu"
     final_dropout: float = 0.3
     ema_decay: float = 0.999
@@ -48,7 +48,7 @@ class ModelConfig:
 class OptimizationConfig:
     """Optimization hyperparameters."""
 
-    epochs: int = 40
+    epochs: int = 200
     batch_size: int = 40
     lr: float = 3e-4
     eta_min: float = 1e-6
@@ -64,7 +64,7 @@ class LossConfig:
     w_mae: float = 1.0
     w_grad: float = 0.1
     int_wgrad: bool = False
-    w_curv: float = 0.003
+    w_curv: float = 0.01
     w_data: float = 1.0
 
 

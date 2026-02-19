@@ -46,7 +46,15 @@ def sample_batch() -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     I_mean = I_raw.mean(dim=(2, 3), keepdim=True)
     I_std = I_raw.std(dim=(2, 3), keepdim=True) + 1e-6
     I_norm = (I_raw - I_mean) / I_std
-    phi_hint = torch.angle(torch.exp(1j * I_raw))
+    # Use center value from GT as phi_hint (matches H5ShardDataset behavior)
+    _, _, H, W = phi_gt.shape
+    cy, cx = H // 2, W // 2
+    phi_hint = torch.stack(
+        [
+            torch.full_like(phi_gt[i], float(phi_gt[i, 0, cy, cx].item()))
+            for i in range(phi_gt.size(0))
+        ]
+    )
     I_input = torch.cat([I_norm, phi_hint], dim=1)  # [2, 2, 128, 128]
 
     return I_input, phi_gt, I_raw

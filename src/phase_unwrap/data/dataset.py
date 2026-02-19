@@ -70,7 +70,7 @@ class H5ShardDataset(Dataset):
                 lo = mid + 1
         return lo, idx - self._cumulative[lo]
 
-    def __getitem__(self, idx: int):
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         shard_idx, local_idx = self._locate(idx)
         f = self._get_shard_handle(shard_idx)
 
@@ -103,6 +103,20 @@ class H5ShardDataset(Dataset):
 
         I_input = torch.cat([I_norm_t, phi_hint], dim=0)
         return I_input, phi_gt_t, I_raw_t
+
+    def close(self) -> None:
+        """Close all open HDF5 file handles."""
+        for handle in self._handles.values():
+            handle.close()
+        self._handles.clear()
+
+    def __enter__(self) -> "H5ShardDataset":
+        """Context manager entry."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Context manager exit - ensures all handles are closed."""
+        self.close()
 
 
 def smart_split(

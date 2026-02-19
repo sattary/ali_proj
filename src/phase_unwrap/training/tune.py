@@ -10,11 +10,17 @@ from pathlib import Path
 from typing import Optional
 
 import optuna
+import torch
 from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
+from torch.amp import GradScaler, autocast
 
 from ..core.config import TrainConfig, config_to_yaml
-from ..core.utils import ensure_dir, set_seed
+from ..core.losses import MAEGradLoss
+from ..core.ops import affine_align, curvature_loss
+from ..core.utils import ensure_dir, pick_device, set_seed
+from ..data import build_dataloaders
+from ..model import EMA, build_model
 
 
 def _create_objective(base_cfg: TrainConfig, tune_epochs: int):
@@ -34,15 +40,6 @@ def _create_objective(base_cfg: TrainConfig, tune_epochs: int):
 
         cfg.logging.run_name = f"optuna/trial_{trial.number:04d}"
         cfg.optim.epochs = tune_epochs
-
-        import torch
-        from torch.amp import GradScaler, autocast
-
-        from ..core.losses import MAEGradLoss
-        from ..core.ops import affine_align, curvature_loss
-        from ..core.utils import pick_device
-        from ..data import build_dataloaders
-        from ..model import EMA, build_model
 
         set_seed(cfg.logging.seed)
         device = pick_device(cfg.model.device)

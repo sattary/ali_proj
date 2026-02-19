@@ -94,6 +94,7 @@ def evaluate_tta(
 
     device = pick_device(cfg.model.device)
     model = build_model(cfg.model).to(device)
+    # weights_only=False: loading trusted checkpoint from own training runs
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
     model.load_state_dict(ckpt.get("model_ema", ckpt["model"]))
     model.eval()

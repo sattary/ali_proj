@@ -95,6 +95,7 @@ def load_checkpoint(
     device: torch.device,
 ) -> tuple[int, float]:
     """Load full training state. Returns (start_epoch, best_mae)."""
+    # weights_only=False: loading trusted checkpoint from own training runs
     ckpt = torch.load(path, map_location=device, weights_only=False)
     model.load_state_dict(ckpt["model"])
     ema.m.load_state_dict(ckpt["model_ema"])
@@ -271,10 +272,6 @@ def train(cfg: TrainConfig, resume_path: Optional[str] = None) -> None:
     if start_epoch == 1:
         _init_csv(metrics_path)
 
-    epochs_x: list[int] = []
-    train_losses: list[float] = []
-    val_maes: list[float] = []
-
     for epoch in range(start_epoch, cfg.optim.epochs + 1):
         t0 = time.time()
         model.train()
@@ -423,9 +420,5 @@ def train(cfg: TrainConfig, resume_path: Optional[str] = None) -> None:
                 "epoch_time_s": f"{epoch_time:.2f}",
             },
         )
-
-        epochs_x.append(epoch)
-        train_losses.append(train_loss)
-        val_maes.append(eval_stats.get("MAE", float("nan")))
 
     print(f"Done. Best MAE: {best_mae}")
