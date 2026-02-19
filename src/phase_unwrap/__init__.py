@@ -10,6 +10,13 @@ Sub-package layout:
     visualize/ - publication figures
 """
 
+import os
+
+# Fix matplotlib backend for Kaggle/Colab environments
+# Must be set before any matplotlib imports
+if os.environ.get("MPLBACKEND") == "module://matplotlib_inline.backend_inline":
+    os.environ["MPLBACKEND"] = "Agg"
+
 from .core.config import TrainConfig, load_train_config
 from .training.train import train
 
