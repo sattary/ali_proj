@@ -63,8 +63,21 @@ def train(
     auto_push_pat: Optional[str] = typer.Option(
         None, "--auto-push-pat", help="GitHub PAT (or set GITHUB_PAT env var)."
     ),
+    # Multi-GPU options
+    multi_gpu: bool = typer.Option(
+        False,
+        "--multi-gpu",
+        help="Use all available GPUs with DataParallel.",
+    ),
+    gpu_ids: Optional[str] = typer.Option(
+        None,
+        "--gpu-ids",
+        help="Comma-separated GPU IDs (e.g., '0,1'). Default: use all.",
+    ),
 ) -> None:
     """Train the UNetRes2 absolute phase reconstruction model."""
+    import torch
+
     cfg: TrainConfig = load_train_config(config)
 
     if data_dir is not None:
@@ -77,6 +90,19 @@ def train(
         cfg.optim.epochs = epochs
     if batch_size is not None:
         cfg.optim.batch_size = batch_size
+
+    # Parse GPU IDs if provided
+    gpu_id_list: Optional[list[int]] = None
+    if gpu_ids is not None:
+        gpu_id_list = [int(x.strip()) for x in gpu_ids.split(",")]
+
+    # Auto-enable multi-GPU on Kaggle if 2+ GPUs detected
+    if not multi_gpu and torch.cuda.is_available():
+        from .training.multi_gpu import detect_kaggle_multi_gpu
+
+        if detect_kaggle_multi_gpu():
+            multi_gpu = True
+            print("[kaggle] Auto-enabling multi-GPU mode")
 
     # Create auto-push callback if requested
     auto_push_callback = None
@@ -103,6 +129,8 @@ def train(
         cfg,
         resume_path=str(resume) if resume else None,
         auto_push_callback=auto_push_callback,
+        multi_gpu=multi_gpu,
+        gpu_ids=gpu_id_list,
     )
 
 
