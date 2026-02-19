@@ -134,6 +134,123 @@ def multiseed(
     run_multiseed(cfg, base_run_name=run_name, seeds=seed_list)
 
 
+# ---------------------------------------------------------------------------
+# Plot sub-app
+# ---------------------------------------------------------------------------
+plot_app = typer.Typer(help="Generate publication-quality figures.")
+app.add_typer(plot_app, name="plot")
+
+
+@plot_app.command("training-curve")
+def plot_training_curve_cmd(
+    run_dir: str = typer.Option(..., "--run-dir", help="Path to run directory."),
+    out: Optional[str] = typer.Option(None, "--out", help="Output file path."),
+    no_lr: bool = typer.Option(False, "--no-lr", help="Omit LR subplot."),
+) -> None:
+    """Dual-axis training loss + val MAE. Supports multi-seed (shaded bands)."""
+    from .visualize import plot_training_curve
+
+    plot_training_curve(run_dir, out_path=out, show_lr=not no_lr)
+
+
+@plot_app.command("qualitative")
+def plot_qualitative_cmd(
+    checkpoint: str = typer.Option(
+        ..., "--checkpoint", help="Path to model checkpoint."
+    ),
+    data_dir: str = typer.Option(..., "--data-dir", help="Dataset directory."),
+    out: str = typer.Option("results/figs/qualitative_grid.png", "--out"),
+    n_samples: int = typer.Option(4, "--n-samples", help="Number of rows in the grid."),
+    config: Optional[str] = typer.Option(
+        None, "--config", help="Override config file."
+    ),
+) -> None:
+    """Interferogram | GT | Prediction | Error grid."""
+    from .visualize import plot_qualitative_grid
+
+    plot_qualitative_grid(
+        checkpoint, data_dir, out_path=out, n_samples=n_samples, config_path=config
+    )
+
+
+@plot_app.command("phase-profile")
+def plot_phase_profile_cmd(
+    checkpoint: str = typer.Option(
+        ..., "--checkpoint", help="Path to model checkpoint."
+    ),
+    data_dir: str = typer.Option(..., "--data-dir", help="Dataset directory."),
+    out: str = typer.Option("results/figs/phase_profile.png", "--out"),
+    sample_idx: int = typer.Option(0, "--sample-idx", help="Which sample to plot."),
+    config: Optional[str] = typer.Option(
+        None, "--config", help="Override config file."
+    ),
+) -> None:
+    """1D cross-section through center row/column: GT vs prediction with residuals."""
+    from .visualize import plot_phase_profile
+
+    plot_phase_profile(
+        checkpoint, data_dir, out_path=out, sample_idx=sample_idx, config_path=config
+    )
+
+
+@plot_app.command("error-hist")
+def plot_error_hist_cmd(
+    checkpoint: str = typer.Option(
+        ..., "--checkpoint", help="Path to model checkpoint."
+    ),
+    data_dir: str = typer.Option(..., "--data-dir", help="Dataset directory."),
+    out: str = typer.Option("results/figs/error_histogram.png", "--out"),
+    config: Optional[str] = typer.Option(
+        None, "--config", help="Override config file."
+    ),
+) -> None:
+    """Per-sample MAE histogram + CDF with annotated percentiles."""
+    from .visualize import plot_error_histogram
+
+    plot_error_histogram(checkpoint, data_dir, out_path=out, config_path=config)
+
+
+@plot_app.command("loss-landscape")
+def plot_loss_landscape_cmd(
+    checkpoint: str = typer.Option(
+        ..., "--checkpoint", help="Path to model checkpoint."
+    ),
+    data_dir: str = typer.Option(..., "--data-dir", help="Dataset directory."),
+    out: str = typer.Option("results/figs/loss_landscape.png", "--out"),
+    grid_size: int = typer.Option(31, "--grid-size", help="Resolution of 2D grid."),
+    alpha_range: float = typer.Option(1.0, "--alpha-range", help="Perturbation range."),
+    num_eval_samples: int = typer.Option(
+        500, "--num-eval-samples", help="Samples per loss evaluation."
+    ),
+    config: Optional[str] = typer.Option(
+        None, "--config", help="Override config file."
+    ),
+) -> None:
+    """2D loss surface contour (Li et al., 2018 filter-normalized)."""
+    from .visualize import plot_loss_landscape
+
+    plot_loss_landscape(
+        checkpoint,
+        data_dir,
+        out_path=out,
+        grid_size=grid_size,
+        alpha_range=alpha_range,
+        num_eval_samples=num_eval_samples,
+        config_path=config,
+    )
+
+
+@plot_app.command("convergence")
+def plot_convergence_cmd(
+    run_dir: str = typer.Option(..., "--run-dir", help="Path to run directory."),
+    out: Optional[str] = typer.Option(None, "--out", help="Output file path."),
+) -> None:
+    """Loss components + learning rate schedule."""
+    from .visualize import plot_convergence
+
+    plot_convergence(run_dir, out_path=out)
+
+
 def main() -> None:
     app()
 
