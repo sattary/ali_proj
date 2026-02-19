@@ -61,13 +61,26 @@ class AutoPushCallback:
 
         # Determine repo directory
         if repo_dir is None:
-            # Look for .git in parent directories
-            current = self.run_dir
-            while current != current.parent:
-                if (current / ".git").exists():
-                    repo_dir = str(current)
+            # Search strategy: check multiple starting points
+            search_paths = [
+                self.run_dir,  # Start from run directory
+                Path.cwd(),  # Current working directory
+                Path(__file__).parent.parent.parent.parent,  # Package root
+            ]
+
+            for start_path in search_paths:
+                current = start_path
+                # Search up to 5 levels up to avoid infinite loops
+                for _ in range(5):
+                    if current == current.parent:
+                        break
+                    if (current / ".git").exists():
+                        repo_dir = str(current)
+                        break
+                    current = current.parent
+
+                if repo_dir is not None:
                     break
-                current = current.parent
 
         if repo_dir is None:
             raise RuntimeError(
