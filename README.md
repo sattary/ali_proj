@@ -108,7 +108,7 @@ All predictions are affine-aligned to ground truth before metric computation to 
 
 ```bash
 # Requires Python 3.10+, uv package manager
-git clone https://github.com/<user>/ali_proj.git
+git clone https://github.com/sattary/ali_proj.git
 cd ali_proj
 uv sync
 ```
