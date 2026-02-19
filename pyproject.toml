@@ -26,3 +26,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/phase_unwrap"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "scikit-image>=0.26.0",
+]
