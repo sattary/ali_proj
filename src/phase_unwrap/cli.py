@@ -44,6 +44,25 @@ def train(
     resume: Optional[Path] = typer.Option(
         None, "--resume", help="Path to checkpoint for resume."
     ),
+    # Auto-push options
+    auto_push_interval: Optional[int] = typer.Option(
+        None,
+        "--auto-push-interval",
+        help="Enable auto-push every N epochs (Kaggle/Colab only).",
+    ),
+    auto_push_dry_run: bool = typer.Option(
+        False,
+        "--auto-push-dry-run",
+        help="Test auto-push setup without actually pushing.",
+    ),
+    force_auto_push: bool = typer.Option(
+        False,
+        "--force-auto-push",
+        help="Force auto-push even outside Kaggle/Colab (for testing).",
+    ),
+    auto_push_pat: Optional[str] = typer.Option(
+        None, "--auto-push-pat", help="GitHub PAT (or set GITHUB_PAT env var)."
+    ),
 ) -> None:
     """Train the UNetRes2 absolute phase reconstruction model."""
     cfg: TrainConfig = load_train_config(config)
@@ -59,7 +78,32 @@ def train(
     if batch_size is not None:
         cfg.optim.batch_size = batch_size
 
-    run_train(cfg, resume_path=str(resume) if resume else None)
+    # Create auto-push callback if requested
+    auto_push_callback = None
+    if auto_push_interval is not None:
+        from .git_automation import AutoPushCallback
+        from .git_automation.cli_integration import validate_auto_push_config
+
+        validate_auto_push_config(
+            auto_push_interval=auto_push_interval,
+            auto_push_dry_run=auto_push_dry_run,
+            force_auto_push=force_auto_push,
+        )
+
+        auto_push_callback = AutoPushCallback(
+            run_dir=cfg.logging.run_dir,
+            push_interval=auto_push_interval,
+            pat=auto_push_pat,
+            dry_run=auto_push_dry_run,
+            force=force_auto_push,
+            include_checkpoints=True,
+        )
+
+    run_train(
+        cfg,
+        resume_path=str(resume) if resume else None,
+        auto_push_callback=auto_push_callback,
+    )
 
 
 @app.command()
