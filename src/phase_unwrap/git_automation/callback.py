@@ -210,12 +210,55 @@ class AutoPushCallback:
                     zip_path=zip_path,
                 )
 
+                # Cleanup old checkpoints to save space
+                ckpt_deleted = self._cleanup_old_checkpoints()
+                if ckpt_deleted > 0:
+                    print(
+                        f"  Cleaned up {ckpt_deleted} old checkpoint(s) to save space"
+                    )
+
             return success
 
         except Exception as e:
             print(f"✗ Auto-push failed at epoch {epoch}: {e}")
             # Don't raise - let training continue
             return False
+
+    def _cleanup_old_checkpoints(self) -> int:
+        """
+        Delete intermediate checkpoint files to save space.
+        Keeps only best.pth and latest.pth (or checkpoint_epoch_N.pth if latest not present).
+
+        Returns:
+            Number of deleted checkpoint files.
+        """
+        checkpoints_dir = self.run_dir / "checkpoints"
+        if not checkpoints_dir.exists():
+            return 0
+
+        # Patterns to keep
+        keep_patterns = ["best.pth", "latest.pth"]
+
+        # Find all .pth files
+        all_checkpoints = list(checkpoints_dir.glob("*.pth"))
+        if not all_checkpoints:
+            return 0
+
+        deleted_count = 0
+
+        for ckpt_file in all_checkpoints:
+            # Check if file should be kept
+            should_keep = any(pattern in ckpt_file.name for pattern in keep_patterns)
+
+            if not should_keep:
+                try:
+                    ckpt_file.unlink()
+                    print(f"  Deleted old checkpoint: {ckpt_file.name}")
+                    deleted_count += 1
+                except OSError as e:
+                    print(f"  Warning: Could not delete {ckpt_file.name}: {e}")
+
+        return deleted_count
 
     def on_train_end(self, final_metrics: Optional[Dict[str, Any]] = None) -> None:
         """

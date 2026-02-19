@@ -96,6 +96,11 @@ class ZipPacker:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
+        # Cleanup old zips to save space (keep only latest)
+        deleted = self._cleanup_old_zips()
+        if deleted > 0:
+            print(f"  Cleaned up {deleted} old zip(s) to save space")
+
         # Generate zip filename
         run_name = self.run_dir.name
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -136,3 +141,29 @@ class ZipPacker:
         # Sort by modification time
         latest = max(zip_files, key=lambda p: p.stat().st_mtime)
         return str(latest)
+
+    def _cleanup_old_zips(self) -> int:
+        """
+        Delete all existing zip files in run directory to save space.
+        Keeps only the latest (current) zip if it exists.
+
+        Returns:
+            Number of deleted zip files.
+        """
+        zip_files = list(self.run_dir.glob("*.zip"))
+        if not zip_files:
+            return 0
+
+        # Sort by modification time, delete all except the newest
+        sorted_zips = sorted(zip_files, key=lambda p: p.stat().st_mtime, reverse=True)
+        deleted_count = 0
+
+        for zip_file in sorted_zips[1:]:  # Skip the first (newest) one
+            try:
+                zip_file.unlink()
+                print(f"  Deleted old zip: {zip_file.name}")
+                deleted_count += 1
+            except OSError as e:
+                print(f"  Warning: Could not delete {zip_file.name}: {e}")
+
+        return deleted_count
