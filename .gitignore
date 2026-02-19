@@ -11,6 +11,7 @@ wheels/
 
 # Data (large, generated)
 data/
+!src/phase_unwrap/data/
 
 # Training runs (checkpoints, metrics, visuals)
 runs/
