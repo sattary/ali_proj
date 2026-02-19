@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 import torch
 
-from phase_unwrap.config import TrainConfig
-from phase_unwrap.generate import _build_grid
+from phase_unwrap.core.config import TrainConfig
+from phase_unwrap.data.generate import _build_grid
 
 
 @pytest.fixture
@@ -31,7 +31,7 @@ def sample_batch() -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     rng = np.random.default_rng(42)
     x, y, r2 = _build_grid()
 
-    from phase_unwrap.generate import generate_sample
+    from phase_unwrap.data.generate import generate_sample
 
     Is, phis = [], []
     for _ in range(2):

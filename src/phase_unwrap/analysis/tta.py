@@ -1,8 +1,5 @@
 """
 Test-time augmentation (TTA) for phase prediction.
-
-Predicts on 4 rotations x 2 flips = 8 augmented views,
-averages the predictions for improved accuracy at inference time.
 """
 
 from __future__ import annotations
@@ -13,27 +10,22 @@ from typing import Sequence
 import torch
 from torch.amp import autocast
 
-from .config import load_train_config
-from .model import build_model
-from .ops import affine_align
-from .utils import pick_device
+from ..core.config import load_train_config
+from ..core.ops import affine_align
+from ..core.utils import pick_device
+from ..data import build_dataloaders
+from ..model import build_model
 
 
 def _rotate90(x: torch.Tensor, k: int) -> torch.Tensor:
-    """Rotate tensor by k*90 degrees (counterclockwise)."""
     return torch.rot90(x, k, dims=(2, 3))
 
 
 def _unrotate90(x: torch.Tensor, k: int) -> torch.Tensor:
-    """Inverse of _rotate90."""
     return torch.rot90(x, -k, dims=(2, 3))
 
 
 def _hflip(x: torch.Tensor) -> torch.Tensor:
-    return x.flip(dims=(3,))
-
-
-def _unhflip(x: torch.Tensor) -> torch.Tensor:
     return x.flip(dims=(3,))
 
 
@@ -54,16 +46,9 @@ def predict_tta(
     ),
 ) -> torch.Tensor:
     """
-    TTA prediction: average over geometric augmentations.
+    TTA: average predictions over 4 rotations x 2 flips (D4 group).
 
-    Args:
-        model:    Trained model in eval mode.
-        I_input:  [B, 2, H, W] input tensor.
-        device:   Compute device.
-        augments: Which augmentations to use. Subset of all 8.
-
-    Returns:
-        phi_abs: [B, 1, H, W] averaged absolute phase prediction.
+    Returns phi_abs: [B, 1, H, W].
     """
     model.eval()
     I_input = I_input.to(device)
@@ -71,7 +56,7 @@ def predict_tta(
 
     for aug in augments:
         flip = aug.startswith("hflip")
-        k = int(aug[-1])  # rotation count
+        k = int(aug[-1])
 
         x = _hflip(I_input) if flip else I_input
         x = _rotate90(x, k)
@@ -80,10 +65,9 @@ def predict_tta(
             phi_raw, k_off = model(x)
             phi_abs = phi_raw + k_off
 
-        # undo augmentation
         phi_abs = _unrotate90(phi_abs, k)
         if flip:
-            phi_abs = _unhflip(phi_abs)
+            phi_abs = _hflip(phi_abs)
 
         preds.append(phi_abs)
 
@@ -98,13 +82,10 @@ def evaluate_tta(
     config_path: str | None = None,
 ) -> dict[str, float]:
     """
-    Evaluate model with and without TTA for comparison.
+    Compare model MAE with and without TTA on the validation set.
 
-    Returns:
-        Dict with 'mae_noaug' and 'mae_tta'.
+    Returns dict with 'mae_noaug', 'mae_tta', 'improvement_pct'.
     """
-    from .data import build_dataloaders
-
     run_dir = str(Path(checkpoint_path).parent)
     cfg_path = config_path or str(Path(run_dir) / "config.yaml")
     cfg = load_train_config(cfg_path if Path(cfg_path).exists() else None)
@@ -145,14 +126,12 @@ def evaluate_tta(
         I_input = I_input.to(device)
         phi_gt = phi_gt.to(device)
 
-        # no augmentation
         with autocast(device_type=device.type, enabled=False):
             phi_raw, k_off = model(I_input)
             phi_noaug = phi_raw + k_off
         aligned_noaug, _, _ = affine_align(phi_noaug, phi_gt)
         total_noaug += float((aligned_noaug - phi_gt).abs().mean()) * I_input.size(0)
 
-        # TTA
         phi_tta = predict_tta(model, I_input, device, augments=augs)
         aligned_tta, _, _ = affine_align(phi_tta, phi_gt)
         total_tta += float((aligned_tta - phi_gt).abs().mean()) * I_input.size(0)

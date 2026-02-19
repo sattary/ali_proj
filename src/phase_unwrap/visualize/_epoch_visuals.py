@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from ..utils import ensure_dir
+from ..core.utils import ensure_dir
 
 # Handle headless plotting (no GUI)
 _HEADLESS = not os.environ.get("DISPLAY")

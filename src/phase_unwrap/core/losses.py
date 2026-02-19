@@ -1,12 +1,5 @@
 """
 Loss functions for absolute phase supervision.
-
-Rationale for removals vs ``try.py.bak``:
-    - ``conf`` mask parameter: was always ``torch.ones_like(...)`` -- removed.
-    - ``PhaseSupervisionLoss`` wrapper with ``w_wrap``: wrap term was always
-      weighted 0.0 (correct for absolute phase) -- deleted entirely.
-    - The remaining ``MAEGradLoss`` is the sole loss module.
-    - ``intensity_weighted`` (``--int-wgrad``) is kept per user request.
 """
 
 from __future__ import annotations
@@ -61,16 +54,6 @@ class MAEGradLoss(nn.Module):
         phi_gt: torch.Tensor,
         I_raw: torch.Tensor | None = None,
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
-        """
-        Args:
-            phi_pred: [B, 1, H, W] predicted absolute phase.
-            phi_gt:   [B, 1, H, W] ground-truth absolute phase.
-            I_raw:    [B, 1, H, W] raw interferogram (for intensity weighting).
-
-        Returns:
-            total: scalar loss.
-            parts: dict with detached ``mae`` and ``grad`` components.
-        """
         abs_err = (phi_pred - phi_gt).abs()
 
         pgx, pgy = self.sobel(phi_pred)

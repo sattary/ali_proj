@@ -1,9 +1,5 @@
 """
-Classical phase unwrapping baselines for comparison.
-
-Wraps scikit-image 2D unwrapping and custom Goldstein branch-cut
-as thin adapters to run on the same test data and produce identical
-metric comparisons.
+Classical phase unwrapping baselines.
 """
 
 from __future__ import annotations
@@ -13,43 +9,29 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from .generate import _build_grid, generate_sample
-from .ops import affine_align
+from ..core.ops import affine_align
+from ..data.generate import _build_grid, generate_sample
 
 
 def _unwrap_skimage(I: np.ndarray) -> np.ndarray:
-    """
-    Least-squares 2D phase unwrapping via skimage.
-
-    Input:  I (H, W) interferogram intensity.
-    Output: unwrapped phase (H, W).
-    """
+    """Least-squares 2D phase unwrapping via skimage."""
     from skimage.restoration import unwrap_phase
 
-    # extract wrapped phase from interferogram
-    # I = |E1 + E2|^2 = 2 + 2*cos(dphi)  =>  dphi = arccos((I/2 - 1).clip(-1,1))
-    # but more robust: use Hilbert/angle approach
     wrapped = np.angle(np.exp(1j * I))
     return unwrap_phase(wrapped).astype(np.float32)
 
 
 def _unwrap_itoh(I: np.ndarray) -> np.ndarray:
-    """
-    Itoh's method: 1D unwrapping along rows then columns.
-
-    Fastest classical method but fails on discontinuities.
-    """
+    """Itoh's 1D method: unwrap along rows, then columns."""
     wrapped = np.angle(np.exp(1j * I))
     unwrapped = np.copy(wrapped)
 
-    # unwrap along rows
     for row in range(wrapped.shape[0]):
         diff = np.diff(wrapped[row])
         diff[diff > np.pi] -= 2 * np.pi
         diff[diff < -np.pi] += 2 * np.pi
         unwrapped[row, 1:] = wrapped[row, 0] + np.cumsum(diff)
 
-    # unwrap along columns (refine)
     for col in range(unwrapped.shape[1]):
         diff = np.diff(unwrapped[:, col])
         diff[diff > np.pi] -= 2 * np.pi
@@ -63,12 +45,7 @@ def evaluate_baselines(
     n_samples: int = 200,
     seed: int = 42,
 ) -> dict[str, dict[str, float]]:
-    """
-    Evaluate classical methods on synthetic test data.
-
-    Returns:
-        Dict of {method_name: {mae: float, rmse: float}}.
-    """
+    """Evaluate classical methods on synthetic test data."""
     x, y, r2 = _build_grid()
     rng = np.random.default_rng(seed)
 
@@ -81,23 +58,20 @@ def evaluate_baselines(
         name: {"mae": [], "rmse": []} for name in methods
     }
 
-    for i in range(n_samples):
+    for _ in range(n_samples):
         I_clean, dphi_gt = generate_sample(x, y, r2, rng)
 
         for name, method in methods.items():
             try:
                 pred = method(I_clean)
-
-                # affine align (same as DL pipeline)
                 pred_t = torch.from_numpy(pred).unsqueeze(0).unsqueeze(0)
                 gt_t = torch.from_numpy(dphi_gt).unsqueeze(0).unsqueeze(0)
                 aligned, _, _ = affine_align(pred_t, gt_t)
 
-                mae = float((aligned - gt_t).abs().mean().item())
-                rmse = float(((aligned - gt_t) ** 2).mean().sqrt().item())
-
-                results[name]["mae"].append(mae)
-                results[name]["rmse"].append(rmse)
+                results[name]["mae"].append(float((aligned - gt_t).abs().mean().item()))
+                results[name]["rmse"].append(
+                    float(((aligned - gt_t) ** 2).mean().sqrt().item())
+                )
             except Exception:
                 results[name]["mae"].append(float("nan"))
                 results[name]["rmse"].append(float("nan"))
@@ -117,8 +91,8 @@ def evaluate_baselines(
         }
 
         print(
-            f"  {name:30s}  MAE={summary[name]['mae_mean']:.4f} +/- "
-            f"{summary[name]['mae_std']:.4f}  "
+            f"  {name:30s}  MAE={summary[name]['mae_mean']:.4f} "
+            f"+/- {summary[name]['mae_std']:.4f}  "
             f"RMSE={summary[name]['rmse_mean']:.4f}"
         )
 
@@ -133,17 +107,12 @@ def evaluate_dl_baseline(
     device_str: str = "cpu",
     config_path: str | None = None,
 ) -> dict[str, float]:
-    """
-    Evaluate the DL model on the same samples used for classical baselines.
-
-    Returns:
-        Dict with mae_mean, mae_std, rmse_mean, rmse_std.
-    """
+    """Evaluate the DL model on the same samples as the classical baselines."""
     from torch.amp import autocast
 
-    from .config import load_train_config
-    from .model import build_model
-    from .utils import pick_device
+    from ..core.config import load_train_config
+    from ..core.utils import pick_device
+    from ..model import build_model
 
     run_dir = str(Path(checkpoint_path).parent)
     cfg_path = config_path or str(Path(run_dir) / "config.yaml")
@@ -169,8 +138,9 @@ def evaluate_dl_baseline(
         I_norm = (I_clean - I_mean) / I_std
         phi_hint = np.angle(np.exp(1j * I_clean))
 
-        inp = np.stack([I_norm, phi_hint], axis=0)
-        inp_t = torch.from_numpy(inp).unsqueeze(0).to(device)
+        inp_t = (
+            torch.from_numpy(np.stack([I_norm, phi_hint], 0)).unsqueeze(0).to(device)
+        )
         gt_t = torch.from_numpy(dphi_gt).unsqueeze(0).unsqueeze(0).to(device)
 
         with autocast(device_type=device.type, enabled=False):
@@ -192,7 +162,7 @@ def evaluate_dl_baseline(
     }
 
     print(
-        f"  UNetRes2 (Ours)                MAE={result['mae_mean']:.4f} +/- "
-        f"{result['mae_std']:.4f}  RMSE={result['rmse_mean']:.4f}"
+        f"  UNetRes2 (Ours)                MAE={result['mae_mean']:.4f} "
+        f"+/- {result['mae_std']:.4f}  RMSE={result['rmse_mean']:.4f}"
     )
     return result

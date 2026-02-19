@@ -1,17 +1,5 @@
 """
 UNetRes2 model for absolute phase reconstruction.
-
-Architecture:
-    - AddCoords augments the 2-channel input (I_norm, phi_hint) with
-      normalized (x, y) coordinate channels, yielding 4 input channels.
-    - A 5-level UNet encoder built from Res2-style depthwise-split
-      residual blocks, followed by a bottleneck.
-    - A symmetric decoder with bilinear upsampling and skip connections.
-    - A single pixelwise head producing phi_raw [B,1,H,W].
-    - A global scalar offset head (k_off) derived from bottleneck features
-      via 1x1 conv + global average pooling.
-
-The final absolute phase prediction is ``phi_abs = phi_raw + k_off``.
 """
 
 from __future__ import annotations
@@ -23,7 +11,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .config import ModelConfig
+from ..core.config import ModelConfig
 
 
 def meshgrid_ij(x: torch.Tensor, y: torch.Tensor, **kw):
@@ -152,7 +140,6 @@ class UNetRes2_AbsPhase(nn.Module):
         def C(m: int) -> int:
             return int(min(base * m, 1024))
 
-        # encoder
         self.enc1 = nn.Sequential(
             Res2_DS_Block(in_ch + 2, C(1), 4, 1.0, act),
             Res2_DS_Block(C(1), C(1), 4, 1.0, act),
@@ -169,11 +156,8 @@ class UNetRes2_AbsPhase(nn.Module):
         self.enc5 = nn.Sequential(
             nn.MaxPool2d(2), Res2_DS_Block(C(8), C(16), 4, 1.0, act)
         )
-
-        # bottleneck
         self.bott = nn.Sequential(Res2_DS_Block(C(16), C(32), 4, 1.0, act))
 
-        # decoder
         self.up4 = UpBlockRes2(C(32) + C(16), C(16), 4, 1.0, act)
         self.up3 = UpBlockRes2(C(16) + C(8), C(8), 4, 1.0, act)
         self.up2 = UpBlockRes2(C(8) + C(4), C(4), 4, 1.0, act)
@@ -181,11 +165,8 @@ class UNetRes2_AbsPhase(nn.Module):
         self.up0 = UpBlockRes2(C(2) + C(1), C(1), 4, 1.0, act)
 
         self.final_dropout = nn.Dropout2d(final_dropout)
-
-        # pixelwise head: phi_raw only (was 4 channels, 3 were unused)
         self.head_pix = nn.Conv2d(C(1), 1, 1)
 
-        # global offset head
         self.off_conv = nn.Conv2d(C(32), C(8), 1)
         self.off_act = nn.ReLU(inplace=True) if act == "relu" else nn.SiLU(inplace=True)
         self.off_fc = nn.Conv2d(C(8), 1, 1)
@@ -208,20 +189,18 @@ class UNetRes2_AbsPhase(nn.Module):
         d0 = self.up0(d1, e1)
 
         d0 = self.final_dropout(d0)
+        phi_raw = self.head_pix(d0)
 
-        phi_raw = self.head_pix(d0)  # [B, 1, H, W]
-
-        # global offset from bottleneck
         z = self.off_conv(b)
         z = self.off_act(z)
         k_off = self.off_fc(z)
-        k_off = k_off.mean(dim=(2, 3), keepdim=True)  # [B, 1, 1, 1]
+        k_off = k_off.mean(dim=(2, 3), keepdim=True)
 
         return phi_raw, k_off
 
 
 class EMA:
-    """Exponential moving average shadow model for smoother evaluation."""
+    """Exponential moving average shadow model."""
 
     def __init__(self, model: nn.Module, decay: float = 0.999) -> None:
         self.m = deepcopy(model).eval()

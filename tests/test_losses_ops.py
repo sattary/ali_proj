@@ -7,8 +7,8 @@ from __future__ import annotations
 import torch
 import pytest
 
-from phase_unwrap.losses import MAEGradLoss, compute_metrics
-from phase_unwrap.ops import FixedSobel, affine_align, curvature_loss
+from phase_unwrap.core.losses import MAEGradLoss, compute_metrics
+from phase_unwrap.core.ops import FixedSobel, affine_align, curvature_loss
 
 
 class TestComputeMetrics:

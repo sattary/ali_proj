@@ -15,8 +15,8 @@ from typing import Optional
 
 import typer
 
-from .config import TrainConfig, load_train_config
-from .train import train as run_train
+from .core.config import TrainConfig, load_train_config
+from .training.train import train as run_train
 
 app = typer.Typer(help="Phase unwrapping / absolute phase reconstruction CLI.")
 
@@ -76,7 +76,7 @@ def generate(
     seed: int = typer.Option(1337, "--seed", help="RNG seed."),
 ) -> None:
     """Generate synthetic interferogram data to HDF5 shards."""
-    from .generate import generate_to_h5
+    from .data.generate import generate_to_h5
 
     generate_to_h5(
         out_dir=out_dir, num_samples=num_samples, shard_size=shard_size, seed=seed
@@ -111,7 +111,7 @@ def multiseed(
     ),
 ) -> None:
     """Run N training runs with different seeds, then aggregate results."""
-    from .multiseed import run_multiseed
+    from .training.multiseed import run_multiseed
 
     cfg: TrainConfig = load_train_config(config)
     if data_dir is not None:
@@ -152,7 +152,7 @@ def tune(
     ),
 ) -> None:
     """Run Optuna hyperparameter search (TPE + MedianPruner)."""
-    from .tune import run_tuning
+    from .training.tune import run_tuning
 
     cfg: TrainConfig = load_train_config(config)
     if data_dir is not None:
@@ -293,7 +293,7 @@ def plot_gradcam_cmd(
     config: Optional[str] = typer.Option(None, "--config"),
 ) -> None:
     """GradCAM attention overlay on interferograms."""
-    from .gradcam import plot_gradcam
+    from .analysis.gradcam import plot_gradcam
 
     plot_gradcam(
         checkpoint,
@@ -316,7 +316,7 @@ def export_onnx_cmd(
     config: Optional[str] = typer.Option(None, "--config"),
 ) -> None:
     """Export model to ONNX format."""
-    from .export import export_onnx
+    from .analysis.export import export_onnx
 
     export_onnx(checkpoint, out_path=out, opset=opset, config_path=config)
 
@@ -328,7 +328,7 @@ def export_ts_cmd(
     config: Optional[str] = typer.Option(None, "--config"),
 ) -> None:
     """Export model to TorchScript (traced) format."""
-    from .export import export_torchscript
+    from .analysis.export import export_torchscript
 
     export_torchscript(checkpoint, out_path=out, config_path=config)
 
@@ -342,7 +342,7 @@ def benchmark_cmd(
     config: Optional[str] = typer.Option(None, "--config"),
 ) -> None:
     """Benchmark inference latency and throughput."""
-    from .export import benchmark_inference
+    from .analysis.export import benchmark_inference
 
     benchmark_inference(
         checkpoint,
@@ -368,7 +368,7 @@ def noise_sweep_cmd(
     config: Optional[str] = typer.Option(None, "--config"),
 ) -> None:
     """Evaluate model robustness across SNR levels."""
-    from .noise_sweep import noise_robustness_sweep
+    from .analysis.noise_sweep import noise_robustness_sweep
 
     noise_robustness_sweep(
         checkpoint,
@@ -394,7 +394,7 @@ def baselines_cmd(
     config: Optional[str] = typer.Option(None, "--config"),
 ) -> None:
     """Evaluate classical unwrapping baselines (+ DL if checkpoint given)."""
-    from .baselines import evaluate_baselines, evaluate_dl_baseline
+    from .analysis.baselines import evaluate_baselines, evaluate_dl_baseline
 
     print("Classical baselines:")
     evaluate_baselines(n_samples=n_samples)
@@ -419,7 +419,7 @@ def tta_cmd(
     config: Optional[str] = typer.Option(None, "--config"),
 ) -> None:
     """Evaluate with test-time augmentation (TTA)."""
-    from .tta import evaluate_tta
+    from .analysis.tta import evaluate_tta
 
     evaluate_tta(checkpoint, data_dir, n_augments=n_augments, config_path=config)
 
@@ -436,7 +436,7 @@ def latex_table_cmd(
     epoch: int = typer.Option(-1, "--epoch", help="Which epoch (-1 = last)."),
 ) -> None:
     """Export metrics to a LaTeX booktabs table."""
-    from .export_latex import metrics_to_latex
+    from .analysis.export_latex import metrics_to_latex
 
     table = metrics_to_latex(run_dir, out_path=out, epoch=epoch)
     print(table)

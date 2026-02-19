@@ -1,8 +1,5 @@
 """
 Multi-seed training runner.
-
-Executes N independent training runs with different random seeds,
-then aggregates per-epoch metrics into mean +/- std summary.
 """
 
 from __future__ import annotations
@@ -10,14 +7,13 @@ from __future__ import annotations
 import csv
 import os
 from copy import deepcopy
-from pathlib import Path
 from typing import List
 
 import numpy as np
 
-from .config import TrainConfig
+from ..core.config import TrainConfig
+from ..core.utils import ensure_dir
 from .train import CSV_COLUMNS, train
-from .utils import ensure_dir
 
 
 def _read_metrics_csv(path: str) -> list[dict[str, str]]:
@@ -37,10 +33,7 @@ def _aggregate(run_dirs: List[str], out_path: str) -> None:
         print("No metrics.csv files found to aggregate.")
         return
 
-    # numeric columns (exclude epoch)
     numeric_cols = [c for c in CSV_COLUMNS if c != "epoch"]
-
-    # find common epochs
     min_epochs = min(len(d) for d in all_data)
 
     agg_header = ["epoch"]
@@ -96,7 +89,6 @@ def run_multiseed(
         train(seed_cfg)
         run_dirs.append(seed_cfg.logging.run_dir)
 
-    # aggregate
     agg_path = os.path.join(base_dir, "aggregate.csv")
     _aggregate(run_dirs, agg_path)
 

@@ -1,8 +1,5 @@
 """
 Noise robustness sweep: evaluate a trained model across SNR levels.
-
-Generates test data at varying noise levels, evaluates the model,
-and produces a MAE-vs-SNR plot for the paper.
 """
 
 from __future__ import annotations
@@ -15,12 +12,12 @@ import numpy as np
 import torch
 from torch.amp import autocast
 
-from .config import load_train_config
-from .generate import NX, NY, _build_grid, generate_sample
-from .model import build_model
-from .ops import affine_align
-from .utils import pick_device
-from .visualize.style import SINGLE_COL, LINE_COLORS, nature_style, save_figure
+from ..core.config import load_train_config
+from ..core.ops import affine_align
+from ..core.utils import pick_device
+from ..data.generate import _build_grid, generate_sample
+from ..model import build_model
+from ..visualize.style import LINE_COLORS, SINGLE_COL, nature_style, save_figure
 
 
 def _add_gaussian_noise(I: np.ndarray, snr_db: float) -> np.ndarray:
@@ -43,22 +40,7 @@ def noise_robustness_sweep(
     config_path: str | None = None,
     device_str: str = "auto",
 ) -> dict[str, list[float]]:
-    """
-    Sweep SNR levels and record MAE at each.
-
-    Args:
-        checkpoint_path: Trained model checkpoint.
-        out_path:        Output figure path.
-        snr_range:       (min_snr_db, max_snr_db).
-        n_snr_steps:     Number of SNR levels to evaluate.
-        n_samples:       Samples per SNR level.
-        seed:            RNG seed.
-        config_path:     Optional config override.
-        device_str:      Device string.
-
-    Returns:
-        Dict with 'snr_db' and 'mae' lists.
-    """
+    """Sweep SNR levels and record MAE at each, then plot."""
     run_dir = str(Path(checkpoint_path).parent)
     cfg_path = config_path or str(Path(run_dir) / "config.yaml")
     cfg = load_train_config(cfg_path if Path(cfg_path).exists() else None)
@@ -70,36 +52,32 @@ def noise_robustness_sweep(
     model.eval()
 
     x, y, r2 = _build_grid()
-    rng = np.random.default_rng(seed)
 
     snr_levels = np.linspace(snr_range[0], snr_range[1], n_snr_steps)
     results: dict[str, list[float]] = {"snr_db": [], "mae": [], "std": []}
-
-    # also add a "clean" (inf SNR) baseline
     snr_eval = list(snr_levels) + [float("inf")]
 
     for snr_db in snr_eval:
         maes: list[float] = []
-        test_rng = np.random.default_rng(seed)  # same samples each SNR
+        test_rng = np.random.default_rng(seed)
 
         for _ in range(n_samples):
             I_clean, dphi = generate_sample(x, y, r2, test_rng)
 
-            if math.isinf(snr_db):
-                I_noisy = I_clean
-            else:
-                I_noisy = _add_gaussian_noise(I_clean, snr_db)
+            I_noisy = (
+                I_clean if math.isinf(snr_db) else _add_gaussian_noise(I_clean, snr_db)
+            )
 
-            # normalize (same as data.py preprocessing)
             I_mean = I_noisy.mean()
             I_std = I_noisy.std() + 1e-6
             I_norm = (I_noisy - I_mean) / I_std
-
-            # crude wrapped phase hint
             phi_hint = np.angle(np.exp(1j * I_noisy))
 
-            inp = np.stack([I_norm, phi_hint], axis=0)  # (2, H, W)
-            inp_t = torch.from_numpy(inp).unsqueeze(0).to(device)
+            inp_t = (
+                torch.from_numpy(np.stack([I_norm, phi_hint], 0))
+                .unsqueeze(0)
+                .to(device)
+            )
             gt_t = torch.from_numpy(dphi).unsqueeze(0).unsqueeze(0).to(device)
 
             with autocast(device_type=device.type, enabled=False):
@@ -107,12 +85,10 @@ def noise_robustness_sweep(
                 phi_abs = phi_raw + k_off
 
             aligned, _, _ = affine_align(phi_abs, gt_t)
-            mae = float((aligned - gt_t).abs().mean().item())
-            maes.append(mae)
+            maes.append(float((aligned - gt_t).abs().mean().item()))
 
         mean_mae = float(np.mean(maes))
         std_mae = float(np.std(maes))
-
         label = "clean" if math.isinf(snr_db) else f"{snr_db:.0f}"
         print(f"  SNR={label:>5s} dB | MAE={mean_mae:.4f} +/- {std_mae:.4f}")
 
@@ -120,11 +96,9 @@ def noise_robustness_sweep(
         results["mae"].append(mean_mae)
         results["std"].append(std_mae)
 
-    # plot
     with nature_style():
         fig, ax = plt.subplots(figsize=(SINGLE_COL, SINGLE_COL * 0.75))
 
-        # split clean baseline from noisy
         noisy_mask = [not math.isinf(s) for s in results["snr_db"]]
         clean_mask = [math.isinf(s) for s in results["snr_db"]]
 
@@ -144,7 +118,6 @@ def noise_robustness_sweep(
             label="Noisy",
         )
 
-        # clean baseline as horizontal dashed line
         if any(clean_mask):
             clean_mae = [m for m, mask in zip(results["mae"], clean_mask) if mask][0]
             ax.axhline(
@@ -159,10 +132,10 @@ def noise_robustness_sweep(
         ax.set_ylabel("MAE [rad]")
         ax.set_title("Noise Robustness")
         ax.legend(fontsize=6)
-
         fig.tight_layout(pad=0.5)
+
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         save_figure(fig, out_path)
-        print(f"Saved noise robustness plot: {out_path}")
+        print(f"Saved: {out_path}")
 
     return results

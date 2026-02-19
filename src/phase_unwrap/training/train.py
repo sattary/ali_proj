@@ -1,13 +1,5 @@
 """
 Training loop for absolute phase reconstruction.
-
-Features:
-    - Per-epoch CSV metrics logging (MAE, RMSE, SSIM, PSNR, MaxErr, GradMAE)
-    - Full-state checkpointing for resume (model, optimizer, scheduler, scaler,
-      EMA, epoch, best_mae, RNG states)
-    - Config snapshot saved as YAML at run start
-    - Affine alignment at evaluation only (not during backprop)
-    - Linear LR warmup then cosine annealing (step-level)
 """
 
 from __future__ import annotations
@@ -26,13 +18,13 @@ from torch.utils.data import DataLoader
 from torchmetrics.functional import structural_similarity_index_measure as ssim_fn
 from tqdm import tqdm
 
-from .config import TrainConfig, config_to_yaml
-from .data import build_dataloaders
-from .losses import MAEGradLoss, compute_metrics
-from .model import EMA, build_model
-from .ops import FixedSobel, affine_align, curvature_loss
-from .utils import ensure_dir, pick_device, set_seed
-from .visualize import save_epoch_visuals
+from ..core.config import TrainConfig, config_to_yaml
+from ..core.losses import MAEGradLoss, compute_metrics
+from ..core.ops import FixedSobel, affine_align, curvature_loss
+from ..core.utils import ensure_dir, pick_device, set_seed
+from ..data import build_dataloaders
+from ..model import EMA, build_model
+from ..visualize import save_epoch_visuals
 
 # ---------------------------------------------------------------------------
 # Metrics CSV
@@ -130,11 +122,7 @@ def run_eval(
     use_amp: bool,
     sobel: FixedSobel,
 ) -> Dict[str, float]:
-    """
-    Evaluate using affine-aligned predictions.
-
-    Returns: dict with MAE, RMSE, SSIM, PSNR, MaxErr, GradMAE.
-    """
+    """Evaluate using affine-aligned predictions."""
     if loader is None:
         return {
             k: float("nan")
@@ -157,22 +145,18 @@ def run_eval(
 
         phi_aligned, _, _ = affine_align(phi_abs, phi_gt)
 
-        # core metrics
         m = compute_metrics(phi_aligned, phi_gt)
         sums["MAE"] += float(m["MAE"]) * bs
         sums["RMSE"] += float(m["RMSE"]) * bs
 
-        # max error
         max_err = (phi_aligned - phi_gt).abs().amax(dim=(1, 2, 3)).mean()
         sums["MaxErr"] += float(max_err) * bs
 
-        # gradient MAE
         pgx, pgy = sobel(phi_aligned)
         tgx, tgy = sobel(phi_gt)
         grad_mae = ((pgx - tgx).abs() + (pgy - tgy).abs()).mean()
         sums["GradMAE"] += float(grad_mae) * bs
 
-        # SSIM -- normalize both to [0, 1] range for SSIM computation
         gt_min = phi_gt.amin(dim=(1, 2, 3), keepdim=True)
         gt_max = phi_gt.amax(dim=(1, 2, 3), keepdim=True)
         data_range = (gt_max - gt_min).clamp_min(1e-6)
@@ -181,7 +165,6 @@ def run_eval(
         ssim_val = ssim_fn(pred_norm, gt_norm, data_range=1.0)
         sums["SSIM"] += float(ssim_val) * bs
 
-        # PSNR
         mse = ((phi_aligned - phi_gt) ** 2).mean()
         data_range_mean = data_range.mean()
         psnr = 10.0 * torch.log10(data_range_mean**2 / mse.clamp_min(1e-12))
@@ -195,7 +178,7 @@ def run_eval(
 
 
 # ---------------------------------------------------------------------------
-# Learning rate scheduler with warmup
+# Learning rate scheduler
 # ---------------------------------------------------------------------------
 def _build_warmup_scheduler(
     optimizer: torch.optim.Optimizer,
@@ -238,7 +221,6 @@ def train(cfg: TrainConfig, resume_path: Optional[str] = None) -> None:
     )
     print(f"[run_dir] {run_dir}")
 
-    # save config snapshot
     config_snap_path = os.path.join(run_dir, "config.yaml")
     if not os.path.exists(config_snap_path):
         Path(config_snap_path).write_text(config_to_yaml(cfg))
@@ -278,7 +260,6 @@ def train(cfg: TrainConfig, resume_path: Optional[str] = None) -> None:
     best_mae = float("inf")
     start_epoch = 1
 
-    # -- resume from checkpoint --
     if resume_path is not None:
         print(f"[resume] Loading checkpoint: {resume_path}")
         last_epoch, best_mae = load_checkpoint(
@@ -287,7 +268,6 @@ def train(cfg: TrainConfig, resume_path: Optional[str] = None) -> None:
         start_epoch = last_epoch + 1
         print(f"[resume] Continuing from epoch {start_epoch}, best MAE={best_mae:.6f}")
 
-    # init CSV (only if starting fresh)
     if start_epoch == 1:
         _init_csv(metrics_path)
 
@@ -362,12 +342,10 @@ def train(cfg: TrainConfig, resume_path: Optional[str] = None) -> None:
         train_grad = run_grad / max(1, cnt)
         epoch_time = time.time() - t0
 
-        # -- validation --
         eval_stats: Dict[str, float] = {}
         if (epoch % cfg.logging.val_interval == 0) and (val_loader is not None):
             eval_stats = run_eval(ema.m, val_loader, device, use_amp, eval_sobel)
 
-            # save visuals
             try:
                 I_input_v, phi_gt_v, I_raw_v = next(iter(val_loader))
                 I_input_v = I_input_v.to(device)
@@ -412,7 +390,6 @@ def train(cfg: TrainConfig, resume_path: Optional[str] = None) -> None:
         else:
             print(f"Epoch {epoch} | train={train_loss:.4f} | time={epoch_time:.1f}s")
 
-        # rolling checkpoint
         save_checkpoint(
             os.path.join(run_dir, "final.pth"),
             epoch,
@@ -424,7 +401,6 @@ def train(cfg: TrainConfig, resume_path: Optional[str] = None) -> None:
             best_mae,
         )
 
-        # CSV row
         current_lr = opt.param_groups[0]["lr"]
         _append_csv(
             metrics_path,

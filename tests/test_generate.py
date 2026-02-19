@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 
-from phase_unwrap.generate import NX, NY, _build_grid, generate_sample, generate_to_h5
+from phase_unwrap.data.generate import NX, NY, _build_grid, generate_sample, generate_to_h5
 
 
 class TestGenerateSample:

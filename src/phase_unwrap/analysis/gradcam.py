@@ -1,9 +1,5 @@
 """
 GradCAM visualization for UNetRes2.
-
-Overlays class activation maps on the interferogram to show
-which spatial regions the network attends to when predicting
-the absolute phase.
 """
 
 from __future__ import annotations
@@ -16,20 +12,15 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from .config import load_train_config
-from .data import build_dataloaders
-from .model import build_model
-from .utils import pick_device
-from .visualize.style import DOUBLE_COL, nature_style, save_figure
+from ..core.config import load_train_config
+from ..core.utils import pick_device
+from ..data import build_dataloaders
+from ..model import build_model
+from ..visualize.style import DOUBLE_COL, nature_style, save_figure
 
 
 class _GradCAM:
-    """
-    GradCAM for arbitrary target layers.
-
-    Registers forward/backward hooks to capture activations and
-    gradients, then computes the weighted activation map.
-    """
+    """GradCAM with forward/backward hooks on any target layer."""
 
     def __init__(self, model: torch.nn.Module, target_layer: torch.nn.Module):
         self.model = model
@@ -46,40 +37,27 @@ class _GradCAM:
         self.gradients = grad_out[0].detach()
 
     def __call__(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """
-        Run forward + backward and return the GradCAM heatmap.
-
-        Returns:
-            cam: [B, 1, H, W] heatmap (upsampled to input resolution).
-            phi_abs: [B, 1, H, W] model prediction.
-        """
         self.model.zero_grad()
         phi_raw, k_off = self.model(x)
         phi_abs = phi_raw + k_off
 
-        # backward: gradient of mean predicted phase w.r.t. target layer
-        # (what spatial regions contribute most to the predicted phase)
         target = phi_abs.mean()
         target.backward()
 
         if self.activations is None or self.gradients is None:
             raise RuntimeError("Hooks did not fire. Check target layer.")
 
-        # global average pooling of gradients
-        weights = self.gradients.mean(dim=(2, 3), keepdim=True)  # [B, C, 1, 1]
-        cam = (weights * self.activations).sum(dim=1, keepdim=True)  # [B, 1, H, W]
+        weights = self.gradients.mean(dim=(2, 3), keepdim=True)
+        cam = (weights * self.activations).sum(dim=1, keepdim=True)
         cam = F.relu(cam)
 
-        # normalize to [0, 1]
         cam_min = cam.amin(dim=(2, 3), keepdim=True)
         cam_max = cam.amax(dim=(2, 3), keepdim=True)
         cam = (cam - cam_min) / (cam_max - cam_min + 1e-8)
 
-        # upsample to input resolution
         cam = F.interpolate(
             cam, size=x.shape[-2:], mode="bilinear", align_corners=False
         )
-
         return cam.detach(), phi_abs.detach()
 
 
@@ -92,16 +70,15 @@ def plot_gradcam(
     config_path: str | None = None,
 ) -> None:
     """
-    Generate GradCAM overlay visualization.
+    Generate GradCAM overlay visualization (3-column: input, heatmap, overlay).
 
     Args:
-        checkpoint_path: Trained model checkpoint.
-        data_dir:        Dataset directory.
-        out_path:        Output figure path.
-        n_samples:       Number of samples to visualize.
-        target_layer_name: Which encoder stage to target.
-            Options: 'enc1', 'enc2', 'enc3', 'enc4', 'enc5', 'bott'.
-        config_path:     Optional config override.
+        checkpoint_path:    Trained model checkpoint.
+        data_dir:           Dataset directory.
+        out_path:           Output figure path.
+        n_samples:          Number of samples to visualize.
+        target_layer_name:  Encoder stage: enc1..enc5, bott.
+        config_path:        Optional config override.
     """
     run_dir = str(Path(checkpoint_path).parent)
     cfg_path = config_path or str(Path(run_dir) / "config.yaml")
@@ -113,8 +90,6 @@ def plot_gradcam(
     model = build_model(cfg.model).to(device)
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
     model.load_state_dict(ckpt.get("model_ema", ckpt["model"]))
-    # GradCAM needs gradients, so don't call .eval() on batchnorm
-    # but disable dropout
     model.final_dropout.eval()
 
     target_layer = getattr(model, target_layer_name, None)
@@ -158,20 +133,16 @@ def plot_gradcam(
             I_img = I_raw_np[row, 0]
             heatmap = cam_np[row, 0]
 
-            # normalize interferogram for display
             I_disp = (I_img - I_img.min()) / (I_img.max() - I_img.min() + 1e-8)
 
             axes[row, 0].imshow(I_disp, cmap="gray", aspect="equal")
             axes[row, 0].set_xticks([])
             axes[row, 0].set_yticks([])
 
-            _im_cam = axes[row, 1].imshow(
-                heatmap, cmap="jet", aspect="equal", vmin=0, vmax=1
-            )
+            axes[row, 1].imshow(heatmap, cmap="jet", aspect="equal", vmin=0, vmax=1)
             axes[row, 1].set_xticks([])
             axes[row, 1].set_yticks([])
 
-            # overlay
             axes[row, 2].imshow(I_disp, cmap="gray", aspect="equal")
             axes[row, 2].imshow(
                 heatmap, cmap="jet", alpha=0.4, aspect="equal", vmin=0, vmax=1

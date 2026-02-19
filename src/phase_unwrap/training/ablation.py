@@ -1,28 +1,23 @@
 """
 Automated ablation study runner.
-
-Takes a mapping of ablation names to config overrides, runs each
-configuration with multi-seed, and produces a comparison LaTeX table.
 """
 
 from __future__ import annotations
 
 import os
 from copy import deepcopy
-from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
-from .config import TrainConfig, config_to_yaml
-from .export_latex import comparison_to_latex
+from ..core.config import TrainConfig
+from ..core.utils import ensure_dir
 from .multiseed import run_multiseed
-from .utils import ensure_dir
 
 
 def _apply_overrides(cfg: TrainConfig, overrides: Dict[str, Any]) -> TrainConfig:
     """
-    Apply flat key=value overrides to a config.
+    Apply flat key=value overrides to a config using dot notation.
 
-    Keys use dot notation: 'loss.w_grad', 'optim.lr', etc.
+    Example: 'loss.w_grad' -> cfg.loss.w_grad = value
     """
     for key, val in overrides.items():
         parts = key.split(".")
@@ -42,21 +37,21 @@ def run_ablation(
     out_table: str = "results/tables/ablation.tex",
 ) -> str:
     """
-    Run an ablation study.
+    Run an ablation study and produce a LaTeX comparison table.
 
     Args:
         base_cfg:   Base training configuration.
-        ablations:  Mapping of {ablation_label: {config_key: value}}.
-                    Example: {"no_grad": {"loss.w_grad": 0.0},
-                              "high_grad": {"loss.w_grad": 1.0}}
+        ablations:  Mapping of {label: {config_key: value}}.
         base_name:  Parent directory name under runs/.
-        seeds:      List of seeds for multi-seed runs.
-        metrics:    Which metrics to include in the table.
+        seeds:      Seeds for multi-seed runs.
+        metrics:    Metrics to include in the table.
         out_table:  Output LaTeX file path.
 
     Returns:
         LaTeX table string.
     """
+    from ..analysis.export_latex import comparison_to_latex
+
     ablation_dir = os.path.join(base_cfg.logging.runs_root, base_name)
     ensure_dir(ablation_dir)
 
@@ -72,13 +67,9 @@ def run_ablation(
         _apply_overrides(cfg, overrides)
 
         group_name = f"{base_name}/{label}"
-
         run_multiseed(cfg, base_run_name=group_name, seeds=list(seeds))
-
-        # use the aggregate from the multi-seed run
         run_dirs[label] = os.path.join(cfg.logging.runs_root, group_name)
 
-    # generate comparison table
     table = comparison_to_latex(
         run_dirs=run_dirs,
         out_path=out_table,

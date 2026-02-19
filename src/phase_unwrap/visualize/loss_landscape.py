@@ -17,11 +17,11 @@ import torch
 from torch.amp import autocast
 from tqdm import tqdm
 
-from ..config import load_train_config
+from ..core.config import load_train_config
 from ..data import build_dataloaders
-from ..losses import MAEGradLoss
+from ..core.losses import MAEGradLoss
 from ..model import build_model
-from ..utils import pick_device
+from ..core.utils import pick_device
 from .style import SINGLE_COL, nature_style, save_figure
 
 

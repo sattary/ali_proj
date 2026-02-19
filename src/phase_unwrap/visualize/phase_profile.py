@@ -13,11 +13,11 @@ import numpy as np
 import torch
 from torch.amp import autocast
 
-from ..config import load_train_config
+from ..core.config import load_train_config
 from ..data import build_dataloaders
 from ..model import build_model
-from ..ops import affine_align
-from ..utils import pick_device
+from ..core.ops import affine_align
+from ..core.utils import pick_device
 from .style import DOUBLE_COL, LINE_COLORS, nature_style, save_figure
 
 

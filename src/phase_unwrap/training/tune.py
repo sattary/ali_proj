@@ -1,16 +1,5 @@
 """
 Optuna-based hyperparameter tuning.
-
-Runs N trials with MedianPruner to kill underperforming configurations
-early.  Uses an SQLite backend so studies survive Kaggle/Colab restarts.
-
-Search space (default):
-    - lr:            log-uniform [1e-5, 1e-3]
-    - w_grad:        uniform [0.01, 1.0]
-    - w_curv:        uniform [0.0, 0.05]
-    - batch_size:    categorical {8, 16, 32, 64}
-    - base:          categorical {8, 16, 32}
-    - warmup_steps:  categorical {100, 500, 1000}
 """
 
 from __future__ import annotations
@@ -24,26 +13,14 @@ import optuna
 from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
 
-from .config import TrainConfig, config_to_yaml
-from .utils import ensure_dir, set_seed
+from ..core.config import TrainConfig, config_to_yaml
+from ..core.utils import ensure_dir, set_seed
 
 
-def _create_objective(
-    base_cfg: TrainConfig,
-    tune_epochs: int,
-):
-    """
-    Build an Optuna objective closure.
-
-    Each trial:
-    1. Samples hyperparameters from the search space.
-    2. Trains for `tune_epochs` epochs.
-    3. Reports val MAE at each epoch for pruning.
-    4. Returns best val MAE as the objective.
-    """
+def _create_objective(base_cfg: TrainConfig, tune_epochs: int):
+    """Build an Optuna objective closure."""
 
     def objective(trial: optuna.Trial) -> float:
-        # ---- sample hyperparameters ----
         cfg = deepcopy(base_cfg)
 
         cfg.optim.lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
@@ -55,19 +32,17 @@ def _create_objective(
             "warmup_steps", [100, 500, 1000]
         )
 
-        # unique run name per trial
         cfg.logging.run_name = f"optuna/trial_{trial.number:04d}"
         cfg.optim.epochs = tune_epochs
 
-        # ---- inline training loop (lightweight, pruning-aware) ----
         import torch
         from torch.amp import GradScaler, autocast
 
-        from .data import build_dataloaders
-        from .losses import MAEGradLoss
-        from .model import EMA, build_model
-        from .ops import affine_align, curvature_loss
-        from .utils import pick_device
+        from ..core.losses import MAEGradLoss
+        from ..core.ops import affine_align, curvature_loss
+        from ..core.utils import pick_device
+        from ..data import build_dataloaders
+        from ..model import EMA, build_model
 
         set_seed(cfg.logging.seed)
         device = pick_device(cfg.model.device)
@@ -124,15 +99,13 @@ def _create_objective(
                     phi_raw, k_off = model(I_input)
                     phi_abs = phi_raw + k_off
                     L_phase, _ = loss_fn(
-                        phi_abs,
-                        phi_gt,
-                        I_raw if cfg.loss.int_wgrad else None,
+                        phi_abs, phi_gt, I_raw if cfg.loss.int_wgrad else None
                     )
                     L_curv = cfg.loss.w_curv * curvature_loss(phi_abs)
                     loss = cfg.loss.w_data * L_phase + L_curv
 
                 if not torch.isfinite(loss):
-                    print(f"  Trial {trial.number}: NaN/Inf loss at epoch {epoch}")
+                    print(f"  Trial {trial.number}: NaN/Inf at epoch {epoch}")
                     raise optuna.TrialPruned()
 
                 scaler.scale(loss).backward()
@@ -145,7 +118,6 @@ def _create_objective(
                 sched.step()
                 ema.update(model)
 
-            # ---- eval ----
             if val_loader is not None:
                 ema.m.eval()
                 total_mae = 0.0
@@ -166,7 +138,6 @@ def _create_objective(
                 val_mae = total_mae / max(1, n)
                 best_mae = min(best_mae, val_mae)
 
-                # report to Optuna for pruning
                 trial.report(val_mae, epoch)
                 if trial.should_prune():
                     raise optuna.TrialPruned()
@@ -188,19 +159,7 @@ def run_tuning(
     study_name: str = "phase_unwrap_hpo",
     storage: Optional[str] = None,
 ) -> optuna.Study:
-    """
-    Run Optuna hyperparameter search.
-
-    Args:
-        cfg:         Base config (data paths, device, etc.).
-        n_trials:    Number of trials (hyperparameter configurations).
-        tune_epochs: Epochs per trial (shorter than full training).
-        study_name:  Study name (also used for SQLite DB if no storage given).
-        storage:     Optuna storage URL. Defaults to SQLite in runs/optuna/.
-
-    Returns:
-        The completed Optuna study object.
-    """
+    """Run Optuna hyperparameter search (TPE + MedianPruner, SQLite resume)."""
     optuna_dir = os.path.join(cfg.logging.runs_root, "optuna")
     ensure_dir(optuna_dir)
 
@@ -211,14 +170,10 @@ def run_tuning(
     study = optuna.create_study(
         study_name=study_name,
         storage=storage,
-        load_if_exists=True,  # resume-safe
+        load_if_exists=True,
         direction="minimize",
         sampler=TPESampler(seed=cfg.logging.seed),
-        pruner=MedianPruner(
-            n_startup_trials=5,
-            n_warmup_steps=3,
-            interval_steps=1,
-        ),
+        pruner=MedianPruner(n_startup_trials=5, n_warmup_steps=3, interval_steps=1),
     )
 
     objective = _create_objective(cfg, tune_epochs)
@@ -228,18 +183,17 @@ def run_tuning(
         print(f"Study already has {len(study.trials)} trials (requested {n_trials}).")
     else:
         print(
-            f"Running {remaining} trials ({len(study.trials)} existing, {n_trials} target)"
+            f"Running {remaining} trials "
+            f"({len(study.trials)} existing, {n_trials} target)"
         )
         study.optimize(objective, n_trials=remaining, show_progress_bar=True)
 
-    # ---- report ----
     print(f"\nBest trial: #{study.best_trial.number}")
     print(f"  Best val MAE: {study.best_value:.6f}")
     print("  Best params:")
     for k, v in study.best_params.items():
         print(f"    {k}: {v}")
 
-    # save best params YAML
     best_cfg = deepcopy(cfg)
     best_cfg.optim.lr = study.best_params["lr"]
     best_cfg.loss.w_grad = study.best_params["w_grad"]
@@ -251,6 +205,5 @@ def run_tuning(
     best_config_path = os.path.join(optuna_dir, "best_config.yaml")
     Path(best_config_path).write_text(config_to_yaml(best_cfg))
     print(f"\nBest config saved: {best_config_path}")
-    print(f"Train with: phase-unwrap train --config {best_config_path} --epochs 200")
 
     return study
