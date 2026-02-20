@@ -378,13 +378,21 @@ def tune(
     # Auto-push callback for after HPO completes
     auto_push_callback = None
     if auto_push:
-        from .git_automation import ZipPacker, GitPusher
-        from .git_automation.cli_integration import validate_auto_push_config
+        from .git_automation.environment import is_kaggle, is_colab
 
-        validate_auto_push_config(
-            auto_push_interval=0,  # Not used for tune
-            auto_push_dry_run=auto_push_dry_run,
-            force_auto_push=False,
+        # Validate: need PAT or dry-run, and be on cloud environment
+        if not auto_push_dry_run and not is_kaggle() and not is_colab():
+            print(
+                "[auto-push] Warning: Not on Kaggle/Colab. Use --auto-push-dry-run to test."
+            )
+
+        data_dir_str = str(data_dir) if data_dir else cfg.data.data_dir
+        auto_push_callback = _create_tune_auto_push_callback(
+            optuna_dir=cfg.logging.run_dir,
+            data_dir=data_dir_str,
+            push_interval=0,  # Push only at end
+            pat=auto_push_pat,
+            dry_run=auto_push_dry_run,
         )
 
         data_dir_str = str(data_dir) if data_dir else cfg.data.data_dir
