@@ -145,8 +145,12 @@ Find optimal learning rate, loss weights, batch size, and model capacity:
 uv run phase-unwrap tune \
     --data-dir data/full \
     --n-trials 50 \
-    --tune-epochs 15
+    --tune-epochs 15 \
+    --n-workers 2 \
+    --gpu-ids 0,1
 ```
+
+**Parallel HPO:** Use `--n-workers 2 --gpu-ids 0,1` to run trials in parallel on multiple GPUs (~2x speedup on Kaggle).
 
 This creates `runs/optuna/best_config.yaml` with the optimal configuration.
 
@@ -351,8 +355,11 @@ phase-unwrap tune \
     --n-trials 50                    # Number of Optuna trials
     --tune-epochs 15                 # Epochs per trial
     --study-name phase_unwrap_hpo    # Optuna study name
-    --device cuda                    # Device for trials
+    --n-workers 2                    # Parallel workers (#GPUs)
+    --gpu-ids 0,1                    # GPU IDs for parallel trials
 ```
+
+**Note:** For multi-GPU HPO, use `--n-workers N --gpu-ids 0,1,...,N-1` instead of `--device cuda`. Each worker runs on its own GPU.
 
 ### Multi-Seed Evaluation
 
@@ -580,8 +587,11 @@ uv run phase-unwrap tune \
     --n-trials 30 \
     --tune-epochs 10 \
     --study-name kaggle_hpo \
-    --device cuda
+    --n-workers 2 \
+    --gpu-ids 0,1
 ```
+
+**Parallel HPO:** Runs 2 trials simultaneously on 2 GPUs (~2x faster than single-GPU).
 
 ### Step 4: Full Training with All Flags
 
