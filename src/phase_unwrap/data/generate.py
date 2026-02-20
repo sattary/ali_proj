@@ -17,11 +17,13 @@ Physics:
 from __future__ import annotations
 
 import math
+from datetime import datetime
 from pathlib import Path
 from typing import Tuple
 
 import h5py
 import numpy as np
+import yaml
 from scipy.ndimage import zoom
 from tqdm import tqdm
 
@@ -146,6 +148,20 @@ def generate_to_h5(
             )
 
     print(f"Generated {sample_idx} samples across {n_shards} shards in {out_path}")
+
+    data_config = {
+        "num_samples": num_samples,
+        "shard_size": shard_size,
+        "seed": seed,
+        "nx": NX,
+        "ny": NY,
+        "data_dir": str(out_path),
+        "timestamp": datetime.now().isoformat(),
+    }
+    config_path = out_path / "data_config.yaml"
+    with open(config_path, "w") as f:
+        yaml.dump(data_config, f, default_flow_style=False)
+    print(f"Saved data config: {config_path}")
 
 
 # ---------------------------------------------------------------------------

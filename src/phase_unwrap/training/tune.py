@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 from copy import deepcopy
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 import multiprocessing as mp
 import time
 
@@ -143,7 +143,8 @@ def _create_objective(base_cfg: TrainConfig, tune_epochs: int):
 
                 print(
                     f"  Trial {trial.number} | epoch {epoch}/{tune_epochs} | "
-                    f"val MAE={val_mae:.4f} (best={best_mae:.4f})"
+                    f"val MAE={val_mae:.4f} (best={best_mae:.4f})",
+                    flush=True,
                 )
 
         return best_mae
@@ -174,7 +175,7 @@ def _run_trial_worker(
         storage=storage,
     )
 
-    print(f"[Worker {worker_id} on GPU {gpu_id}] Starting...")
+    print(f"[Worker {worker_id} on GPU {gpu_id}] Starting...", flush=True)
 
     # Run trials until we've reached n_trials total
     trial_count = 0
@@ -191,12 +192,18 @@ def _run_trial_worker(
 
             study.optimize(objective, n_trials=1, show_progress_bar=False)
             trial_count += 1
-            print(f"[Worker {worker_id} on GPU {gpu_id}] Completed trial {trial_count}")
+            print(
+                f"[Worker {worker_id} on GPU {gpu_id}] Completed trial {trial_count}",
+                flush=True,
+            )
         except Exception as e:
-            print(f"[Worker {worker_id} on GPU {gpu_id}] Error: {e}")
+            print(f"[Worker {worker_id} on GPU {gpu_id}] Error: {e}", flush=True)
             time.sleep(1)  # Brief pause before retry
 
-    print(f"[Worker {worker_id} on GPU {gpu_id}] Finished {trial_count} trials")
+    print(
+        f"[Worker {worker_id} on GPU {gpu_id}] Finished {trial_count} trials",
+        flush=True,
+    )
 
 
 def run_tuning(
@@ -207,12 +214,14 @@ def run_tuning(
     storage: Optional[str] = None,
     n_workers: int = 1,
     gpu_ids: Optional[list[int]] = None,
+    auto_push_callback: Optional[Callable[[], None]] = None,
 ) -> optuna.Study:
     """Run Optuna hyperparameter search (TPE + MedianPruner, SQLite resume).
 
     Args:
         n_workers: Number of parallel workers (default 1). Set to number of GPUs for parallel trials.
         gpu_ids: List of GPU IDs to use. If None, uses [0, 1, ..., n_workers-1].
+        auto_push_callback: Optional callback to run after HPO completes (e.g., push to GitHub).
     """
     optuna_dir = os.path.join(cfg.logging.runs_root, "optuna")
     ensure_dir(optuna_dir)
@@ -293,5 +302,12 @@ def run_tuning(
     best_config_path = os.path.join(optuna_dir, "best_config.yaml")
     Path(best_config_path).write_text(config_to_yaml(best_cfg))
     print(f"\nBest config saved: {best_config_path}")
+
+    # Run auto-push callback if provided (e.g., push optuna results to GitHub)
+    if auto_push_callback is not None:
+        try:
+            auto_push_callback()
+        except Exception as e:
+            print(f"\nWarning: Auto-push callback failed: {e}")
 
     return study

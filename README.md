@@ -270,7 +270,8 @@ uv run phase-unwrap train \
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--auto-push-interval N` | Push every N epochs (required to enable) | `None` (disabled) |
+| `--auto-push-interval N` | Push every N epochs (train command) | `None` (disabled) |
+| `--auto-push` | Push optuna results after HPO completes (tune command) | `False` |
 | `--auto-push-dry-run` | Test mode: no actual pushes | `False` |
 | `--force-auto-push` | Enable outside Kaggle/Colab (for testing) | `False` |
 | `--auto-push-pat TOKEN` | GitHub Personal Access Token | Uses `GITHUB_PAT` env var |
@@ -358,6 +359,25 @@ phase-unwrap tune \
     --n-workers 2                    # Parallel workers (#GPUs)
     --gpu-ids 0,1                    # GPU IDs for parallel trials
 ```
+
+**Auto-push after HPO:** Use `--auto-push` to push optuna results (including `best_config.yaml` and data config) to GitHub after tuning completes:
+
+```bash
+phase-unwrap tune \
+    --data-dir data/kaggle_full \
+    --n-trials 30 \
+    --tune-epochs 10 \
+    --study-name kaggle_hpo \
+    --n-workers 2 \
+    --gpu-ids 0,1 \
+    --auto-push \
+    --auto-push-pat "$GITHUB_PAT"
+```
+
+This creates a zip named `optuna_{data_name}_n{num_samples}_s{seed}_{timestamp}.zip` containing:
+- Optuna study database (`{study_name}.db`)
+- `best_config.yaml` with optimal hyperparameters
+- `data_config.yaml` with data generation parameters
 
 **Note:** For multi-GPU HPO, use `--n-workers N --gpu-ids 0,1,...,N-1` instead of `--device cuda`. Each worker runs on its own GPU.
 

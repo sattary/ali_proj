@@ -66,10 +66,31 @@ phase-unwrap train \
 
 | Option | Description |
 |--------|-------------|
-| `--auto-push-interval N` | Enable auto-push every N epochs |
+| `--auto-push-interval N` | Enable auto-push every N epochs (train command) |
+| `--auto-push` | Push optuna results after HPO completes (tune command) |
 | `--auto-push-dry-run` | Test mode (no actual pushes) |
 | `--force-auto-push` | Enable outside Kaggle/Colab (testing) |
 | `--auto-push-pat TOKEN` | GitHub PAT (or use env var) |
+
+### Tune Auto-Push
+
+After Optuna HPO completes, push results to GitHub:
+
+```bash
+phase-unwrap tune \
+    --data-dir data/kaggle_full \
+    --n-trials 30 \
+    --tune-epochs 10 \
+    --n-workers 2 \
+    --gpu-ids 0,1 \
+    --auto-push \
+    --auto-push-pat "$GITHUB_PAT"
+```
+
+This creates `optuna_{data_name}_n{num_samples}_s{seed}_{timestamp}.zip` containing:
+- Optuna study database (`{study_name}.db`)
+- `best_config.yaml` with optimal hyperparameters
+- `data_config.yaml` with data generation parameters
 
 ## How It Works
 

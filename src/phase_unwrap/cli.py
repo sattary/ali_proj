@@ -206,6 +206,113 @@ def multiseed(
     run_multiseed(cfg, base_run_name=run_name, seeds=seed_list)
 
 
+def _create_tune_auto_push_callback(
+    optuna_dir: str,
+    data_dir: str,
+    push_interval: int,
+    pat: Optional[str],
+    dry_run: bool,
+):
+    """Create callback for pushing optuna results to GitHub after HPO completes."""
+    from datetime import datetime
+    from pathlib import Path
+    import zipfile
+
+    from .git_automation import GitPusher, ZipPacker
+
+    def callback():
+        """Push optuna results after HPO finishes."""
+        from .git_automation.environment import is_kaggle, is_colab
+
+        if not is_kaggle() and not is_colab() and not dry_run:
+            print("[auto-push] Not on Kaggle/Colab, skipping push")
+            return
+
+        print("\n" + "=" * 60)
+        print("Pushing Optuna results to GitHub...")
+        print("=" * 60)
+
+        # Load data config if exists
+        data_config_path = Path(data_dir) / "data_config.yaml"
+        if data_config_path.exists():
+            import yaml
+
+            with open(data_config_path) as f:
+                data_config = yaml.safe_load(f)
+            data_name = Path(data_config["data_dir"]).name
+            num_samples = data_config.get("num_samples", 0)
+            seed = data_config.get("seed", 0)
+        else:
+            data_name = Path(data_dir).name
+            num_samples = 0
+            seed = 0
+
+        # Create zip packer for optuna directory
+        optuna_path = Path(optuna_dir) / "optuna"
+        if not optuna_path.exists():
+            print(f"Optuna directory not found: {optuna_path}")
+            return
+
+        packer = ZipPacker(
+            run_dir=str(optuna_path),
+            include_checkpoints=False,
+        )
+
+        # Create zip filename following training convention
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if num_samples > 0:
+            zip_name = f"optuna_{data_name}_n{num_samples}_s{seed}_{timestamp}.zip"
+        else:
+            zip_name = f"optuna_{data_name}_{timestamp}.zip"
+
+        zip_path = optuna_path / zip_name
+
+        # Copy data config to optuna dir for inclusion in zip
+        if data_config_path.exists():
+            import shutil
+
+            dest_data_config = optuna_path / "data_config.yaml"
+            shutil.copy2(data_config_path, dest_data_config)
+
+        # Create zip
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for file_path in optuna_path.rglob("*"):
+                if file_path.is_file() and file_path.suffix != ".zip":
+                    arcname = file_path.relative_to(optuna_path)
+                    zf.write(file_path, arcname)
+
+        print(f"Created zip: {zip_path.name}")
+
+        # Push to GitHub
+        branch_name = "artifacts"
+        pusher = GitPusher(
+            repo_dir=str(Path.cwd()),
+            branch_name=branch_name,
+            pat=pat,
+            dry_run=dry_run,
+        )
+
+        try:
+            pusher.setup_branch()
+            success = pusher.push_artifact(
+                zip_path=str(zip_path),
+                epoch=0,
+                total_epochs=0,
+                metrics={"n_trials": 0},
+                is_final=True,
+            )
+            if success:
+                print("=" * 60)
+                print("✓ Optuna results pushed successfully!")
+                print("=" * 60)
+            else:
+                print("✗ Push failed")
+        except Exception as e:
+            print(f"✗ Push error: {e}")
+
+    return callback
+
+
 @app.command()
 def tune(
     config: Optional[Path] = typer.Option(
@@ -229,6 +336,20 @@ def tune(
         None,
         "--gpu-ids",
         help="Comma-separated GPU IDs for parallel trials (e.g., '0,1').",
+    ),
+    # Auto-push options
+    auto_push: bool = typer.Option(
+        False,
+        "--auto-push",
+        help="Push optuna results to GitHub after HPO completes.",
+    ),
+    auto_push_pat: Optional[str] = typer.Option(
+        None, "--auto-push-pat", help="GitHub PAT (or set GITHUB_PAT env var)."
+    ),
+    auto_push_dry_run: bool = typer.Option(
+        False,
+        "--auto-push-dry-run",
+        help="Test auto-push setup without actually pushing.",
     ),
 ) -> None:
     """Run Optuna hyperparameter search (TPE + MedianPruner).
@@ -254,6 +375,27 @@ def tune(
             gpu_id_list = list(range(min(n_workers, n_gpus)))
             print(f"Auto-detected {n_gpus} GPUs, using: {gpu_id_list}")
 
+    # Auto-push callback for after HPO completes
+    auto_push_callback = None
+    if auto_push:
+        from .git_automation import ZipPacker, GitPusher
+        from .git_automation.cli_integration import validate_auto_push_config
+
+        validate_auto_push_config(
+            auto_push_interval=0,  # Not used for tune
+            auto_push_dry_run=auto_push_dry_run,
+            force_auto_push=False,
+        )
+
+        data_dir_str = str(data_dir) if data_dir else cfg.data.data_dir
+        auto_push_callback = _create_tune_auto_push_callback(
+            optuna_dir=cfg.logging.run_dir,
+            data_dir=data_dir_str,
+            push_interval=0,  # Push only at end
+            pat=auto_push_pat,
+            dry_run=auto_push_dry_run,
+        )
+
     run_tuning(
         cfg,
         n_trials=n_trials,
@@ -261,6 +403,7 @@ def tune(
         study_name=study_name,
         n_workers=n_workers,
         gpu_ids=gpu_id_list,
+        auto_push_callback=auto_push_callback,
     )
 
 
