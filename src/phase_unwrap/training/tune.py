@@ -1,5 +1,5 @@
 """
-Optuna-based hyperparameter tuning.
+Optuna-based hyperparameter tuning with multi-GPU parallel trial support.
 """
 
 from __future__ import annotations
@@ -8,6 +8,8 @@ import os
 from copy import deepcopy
 from pathlib import Path
 from typing import Optional
+import multiprocessing as mp
+import time
 
 import optuna
 import torch
@@ -149,14 +151,69 @@ def _create_objective(base_cfg: TrainConfig, tune_epochs: int):
     return objective
 
 
+def _run_trial_worker(
+    gpu_id: int,
+    cfg: TrainConfig,
+    tune_epochs: int,
+    study_name: str,
+    storage: str,
+    n_trials: int,
+    worker_id: int,
+):
+    """Worker function to run trials on a specific GPU."""
+    # Set device for this worker
+    device = torch.device(f"cuda:{gpu_id}")
+    cfg.model.device = str(device)
+
+    # Create objective with this device
+    objective = _create_objective(cfg, tune_epochs)
+
+    # Load study
+    study = optuna.load_study(
+        study_name=study_name,
+        storage=storage,
+    )
+
+    print(f"[Worker {worker_id} on GPU {gpu_id}] Starting...")
+
+    # Run trials until we've reached n_trials total
+    trial_count = 0
+    while trial_count < n_trials:
+        try:
+            # Check if study is complete
+            study_summary = optuna.get_all_study_summaries(storage)
+            current_trial_count = sum(
+                s.n_trials for s in study_summary if s.study_name == study_name
+            )
+
+            if current_trial_count >= n_trials:
+                break
+
+            study.optimize(objective, n_trials=1, show_progress_bar=False)
+            trial_count += 1
+            print(f"[Worker {worker_id} on GPU {gpu_id}] Completed trial {trial_count}")
+        except Exception as e:
+            print(f"[Worker {worker_id} on GPU {gpu_id}] Error: {e}")
+            time.sleep(1)  # Brief pause before retry
+
+    print(f"[Worker {worker_id} on GPU {gpu_id}] Finished {trial_count} trials")
+
+
 def run_tuning(
     cfg: TrainConfig,
     n_trials: int = 50,
     tune_epochs: int = 15,
     study_name: str = "phase_unwrap_hpo",
     storage: Optional[str] = None,
+    n_workers: int = 1,
+    gpu_ids: Optional[list[int]] = None,
 ) -> optuna.Study:
-    """Run Optuna hyperparameter search (TPE + MedianPruner, SQLite resume)."""
+    """Run Optuna hyperparameter search (TPE + MedianPruner, SQLite resume).
+
+    Args:
+        n_workers: Number of parallel workers (default 1). Set to number of GPUs for parallel trials.
+        gpu_ids: List of GPU IDs to use. If None, uses [0, 1, ..., n_workers-1].
+    """
     optuna_dir = os.path.join(cfg.logging.runs_root, "optuna")
     ensure_dir(optuna_dir)
 
@@ -164,6 +221,7 @@ def run_tuning(
         db_path = os.path.join(optuna_dir, f"{study_name}.db")
         storage = f"sqlite:///{db_path}"
 
+    # Create study first (in main process)
     study = optuna.create_study(
         study_name=study_name,
         storage=storage,
@@ -173,16 +231,49 @@ def run_tuning(
         pruner=MedianPruner(n_startup_trials=5, n_warmup_steps=3, interval_steps=1),
     )
 
-    objective = _create_objective(cfg, tune_epochs)
-
     remaining = n_trials - len(study.trials)
     if remaining <= 0:
         print(f"Study already has {len(study.trials)} trials (requested {n_trials}).")
+        return study
+
+    print(
+        f"Running {remaining} trials ({len(study.trials)} existing, {n_trials} target)"
+    )
+
+    if n_workers > 1 and torch.cuda.device_count() > 1:
+        # Parallel execution on multiple GPUs
+        if gpu_ids is None:
+            gpu_ids = list(range(min(n_workers, torch.cuda.device_count())))
+
+        n_workers = min(n_workers, len(gpu_ids), remaining)
+        trials_per_worker = remaining // n_workers
+        extra_trials = remaining % n_workers
+
+        print(f"Parallel HPO: {n_workers} workers on GPUs {gpu_ids}")
+        print(f"Trials per worker: ~{trials_per_worker}")
+
+        # Use spawn method for CUDA compatibility
+        mp.set_start_method("spawn", force=True)
+
+        processes = []
+        for i, gpu_id in enumerate(gpu_ids[:n_workers]):
+            worker_trials = trials_per_worker + (1 if i < extra_trials else 0)
+            p = mp.Process(
+                target=_run_trial_worker,
+                args=(gpu_id, cfg, tune_epochs, study_name, storage, worker_trials, i),
+            )
+            p.start()
+            processes.append(p)
+
+        # Wait for all workers
+        for p in processes:
+            p.join()
+
+        # Reload study to get results
+        study = optuna.load_study(study_name=study_name, storage=storage)
     else:
-        print(
-            f"Running {remaining} trials "
-            f"({len(study.trials)} existing, {n_trials} target)"
-        )
+        # Sequential execution
+        objective = _create_objective(cfg, tune_epochs)
         study.optimize(objective, n_trials=remaining, show_progress_bar=True)
 
     print(f"\nBest trial: #{study.best_trial.number}")

@@ -222,8 +222,20 @@ def tune(
     study_name: str = typer.Option(
         "phase_unwrap_hpo", "--study-name", help="Optuna study name."
     ),
+    n_workers: int = typer.Option(
+        1, "--n-workers", "-j", help="Parallel workers (use #GPUs for best speed)."
+    ),
+    gpu_ids: Optional[str] = typer.Option(
+        None,
+        "--gpu-ids",
+        help="Comma-separated GPU IDs for parallel trials (e.g., '0,1').",
+    ),
 ) -> None:
-    """Run Optuna hyperparameter search (TPE + MedianPruner)."""
+    """Run Optuna hyperparameter search (TPE + MedianPruner).
+
+    Use --n-workers 2 --gpu-ids 0,1 on Kaggle to run 2 trials in parallel on 2 GPUs.
+    """
+    import torch
     from .training.tune import run_tuning
 
     cfg: TrainConfig = load_train_config(config)
@@ -232,7 +244,24 @@ def tune(
     if device is not None:
         cfg.model.device = device
 
-    run_tuning(cfg, n_trials=n_trials, tune_epochs=tune_epochs, study_name=study_name)
+    # Auto-detect GPUs if not specified
+    gpu_id_list: Optional[list[int]] = None
+    if gpu_ids is not None:
+        gpu_id_list = [int(x.strip()) for x in gpu_ids.split(",")]
+    elif n_workers > 1 and torch.cuda.is_available():
+        n_gpus = torch.cuda.device_count()
+        if n_gpus > 1:
+            gpu_id_list = list(range(min(n_workers, n_gpus)))
+            print(f"Auto-detected {n_gpus} GPUs, using: {gpu_id_list}")
+
+    run_tuning(
+        cfg,
+        n_trials=n_trials,
+        tune_epochs=tune_epochs,
+        study_name=study_name,
+        n_workers=n_workers,
+        gpu_ids=gpu_id_list,
+    )
 
 
 # ---------------------------------------------------------------------------
