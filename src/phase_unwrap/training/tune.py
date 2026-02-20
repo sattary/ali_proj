@@ -5,6 +5,7 @@ Optuna-based hyperparameter tuning with multi-GPU parallel trial support.
 from __future__ import annotations
 
 import os
+import sys
 from copy import deepcopy
 from pathlib import Path
 from typing import Callable, Optional
@@ -23,6 +24,12 @@ from ..core.ops import affine_align, curvature_loss
 from ..core.utils import ensure_dir, pick_device, set_seed
 from ..data import build_dataloaders
 from ..model import EMA, build_model
+
+
+def _log(msg: str) -> None:
+    """Unbuffered output for Jupyter/multi-process compatibility."""
+    sys.stderr.write(msg + "\n")
+    sys.stderr.flush()
 
 
 def _create_objective(base_cfg: TrainConfig, tune_epochs: int):
@@ -56,7 +63,7 @@ def _create_objective(base_cfg: TrainConfig, tune_epochs: int):
                 cfg.data, cfg.optim, device, seed=cfg.logging.seed
             )
         except Exception as e:
-            print(f"  Trial {trial.number}: data loading failed: {e}")
+            _log(f"  Trial {trial.number}: data loading failed: {e}")
             raise optuna.TrialPruned()
 
         model = build_model(cfg.model).to(device)
@@ -104,7 +111,7 @@ def _create_objective(base_cfg: TrainConfig, tune_epochs: int):
                     loss = cfg.loss.w_data * L_phase + L_curv
 
                 if not torch.isfinite(loss):
-                    print(f"  Trial {trial.number}: NaN/Inf at epoch {epoch}")
+                    _log(f"  Trial {trial.number}: NaN/Inf at epoch {epoch}")
                     raise optuna.TrialPruned()
 
                 scaler.scale(loss).backward()
@@ -141,10 +148,9 @@ def _create_objective(base_cfg: TrainConfig, tune_epochs: int):
                 if trial.should_prune():
                     raise optuna.TrialPruned()
 
-                print(
+                _log(
                     f"  Trial {trial.number} | epoch {epoch}/{tune_epochs} | "
-                    f"val MAE={val_mae:.4f} (best={best_mae:.4f})",
-                    flush=True,
+                    f"val MAE={val_mae:.4f} (best={best_mae:.4f})"
                 )
 
         return best_mae
@@ -175,7 +181,7 @@ def _run_trial_worker(
         storage=storage,
     )
 
-    print(f"[Worker {worker_id} on GPU {gpu_id}] Starting...", flush=True)
+    _log(f"[Worker {worker_id} on GPU {gpu_id}] Starting...")
 
     # Run trials until we've reached n_trials total
     trial_count = 0
@@ -192,18 +198,12 @@ def _run_trial_worker(
 
             study.optimize(objective, n_trials=1, show_progress_bar=False)
             trial_count += 1
-            print(
-                f"[Worker {worker_id} on GPU {gpu_id}] Completed trial {trial_count}",
-                flush=True,
-            )
+            _log(f"[Worker {worker_id} on GPU {gpu_id}] Completed trial {trial_count}")
         except Exception as e:
-            print(f"[Worker {worker_id} on GPU {gpu_id}] Error: {e}", flush=True)
+            _log(f"[Worker {worker_id} on GPU {gpu_id}] Error: {e}")
             time.sleep(1)  # Brief pause before retry
 
-    print(
-        f"[Worker {worker_id} on GPU {gpu_id}] Finished {trial_count} trials",
-        flush=True,
-    )
+    _log(f"[Worker {worker_id} on GPU {gpu_id}] Finished {trial_count} trials")
 
 
 def run_tuning(
