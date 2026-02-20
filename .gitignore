@@ -19,3 +19,6 @@ runs/
 
 # OS
 .DS_Store
+
+# Master prompts (development docs)
+prompts/
