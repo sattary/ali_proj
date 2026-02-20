@@ -166,6 +166,7 @@ def _run_trial_worker(
     storage: str,
     n_trials: int,
     worker_id: int,
+    total_target: int,
 ):
     """Worker function to run trials on a specific GPU."""
     # Set device for this worker
@@ -183,17 +184,20 @@ def _run_trial_worker(
 
     _log(f"[Worker {worker_id} on GPU {gpu_id}] Starting...")
 
-    # Run trials until we've reached n_trials total
+    # Run trials until we've reached n_trials for this worker
     trial_count = 0
     while trial_count < n_trials:
         try:
-            # Check if study is complete
+            # Check if study has reached total target
             study_summary = optuna.get_all_study_summaries(storage)
             current_trial_count = sum(
                 s.n_trials for s in study_summary if s.study_name == study_name
             )
 
-            if current_trial_count >= n_trials:
+            if current_trial_count >= total_target:
+                _log(
+                    f"[Worker {worker_id} on GPU {gpu_id}] Study reached target ({current_trial_count}/{total_target})"
+                )
                 break
 
             study.optimize(objective, n_trials=1, show_progress_bar=False)
@@ -269,7 +273,16 @@ def run_tuning(
             worker_trials = trials_per_worker + (1 if i < extra_trials else 0)
             p = mp.Process(
                 target=_run_trial_worker,
-                args=(gpu_id, cfg, tune_epochs, study_name, storage, worker_trials, i),
+                args=(
+                    gpu_id,
+                    cfg,
+                    tune_epochs,
+                    study_name,
+                    storage,
+                    worker_trials,
+                    i,
+                    n_trials,
+                ),
             )
             p.start()
             processes.append(p)
