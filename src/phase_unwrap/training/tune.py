@@ -285,6 +285,31 @@ def run_tuning(
         objective = _create_objective(cfg, tune_epochs)
         study.optimize(objective, n_trials=remaining, show_progress_bar=True)
 
+    # Check if any trials completed successfully
+    completed_trials = [
+        t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE
+    ]
+
+    if not completed_trials:
+        print("\n" + "=" * 60)
+        print("WARNING: No trials completed successfully!")
+        print("=" * 60)
+        print("Possible causes:")
+        print("  - Data directory not found or empty")
+        print("  - Data loading errors")
+        print("  - GPU out of memory")
+        print("\nCheck logs above for trial errors.")
+        print("=" * 60)
+
+        # Run auto-push callback even if no trials (may include partial results)
+        if auto_push_callback is not None:
+            try:
+                auto_push_callback()
+            except Exception as e:
+                print(f"\nWarning: Auto-push callback failed: {e}")
+
+        return study
+
     print(f"\nBest trial: #{study.best_trial.number}")
     print(f"  Best val MAE: {study.best_value:.6f}")
     print("  Best params:")
