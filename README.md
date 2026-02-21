@@ -66,6 +66,8 @@ src/phase_unwrap/
 │   ├── error_histogram.py
 │   ├── loss_landscape.py
 │   ├── convergence.py
+│   ├── baseline_comparison_grid.py # Classical vs UNet comparison
+│   ├── noise_degradation_grid.py   # SNR sweep failure evaluation
 │   └── style.py          #   Shared rcParams, colour palette, save helpers
 │
 ├── git_automation/   # Cloud training with Git auto-push
@@ -268,13 +270,13 @@ uv run phase-unwrap train \
 
 ### Auto-Push Options
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--auto-push-interval N` | Push every N epochs (train command) | `None` (disabled) |
-| `--auto-push` | Push optuna results after HPO completes (tune command) | `False` |
-| `--auto-push-dry-run` | Test mode: no actual pushes | `False` |
-| `--force-auto-push` | Enable outside Kaggle/Colab (for testing) | `False` |
-| `--auto-push-pat TOKEN` | GitHub Personal Access Token | Uses `GITHUB_PAT` env var |
+| Flag                     | Description                                            | Default                   |
+| ------------------------ | ------------------------------------------------------ | ------------------------- |
+| `--auto-push-interval N` | Push every N epochs (train command)                    | `None` (disabled)         |
+| `--auto-push`            | Push optuna results after HPO completes (tune command) | `False`                   |
+| `--auto-push-dry-run`    | Test mode: no actual pushes                            | `False`                   |
+| `--force-auto-push`      | Enable outside Kaggle/Colab (for testing)              | `False`                   |
+| `--auto-push-pat TOKEN`  | GitHub Personal Access Token                           | Uses `GITHUB_PAT` env var |
 
 **Note:** Auto-push only works in Kaggle or Colab environments unless `--force-auto-push` is used.
 
@@ -299,11 +301,13 @@ uv run phase-unwrap train \
 ```
 
 **Batch Size Semantics:**
+
 - `--batch-size 40` with `--multi-gpu` on 2 GPUs = 20 per GPU × 2 = 40 total
 - The batch size you specify is the **total effective batch size**
 - Each GPU processes `batch_size / num_gpus` samples
 
 **Checkpoint Compatibility:**
+
 - Single GPU → Multi-GPU: ✓ Works (state dict loads correctly)
 - Multi-GPU → Single GPU: ✓ Works (unwraps automatically)
 - Resume on different GPU count: ✓ Fully supported
@@ -319,20 +323,20 @@ phase-unwrap train \
     # Configuration
     --config PATH                    # YAML/JSON config file
     --data-dir PATH                  # Override data directory
-    
+
     # Training parameters
     --epochs N                       # Number of training epochs
     --batch-size N                   # Batch size
     --device {auto,cuda,cpu}         # Device selection
     --run-name NAME                  # Run identifier
     --resume PATH                    # Resume from checkpoint
-    
+
     # Auto-push (cloud training)
     --auto-push-interval N           # Push every N epochs
     --auto-push-dry-run              # Test auto-push setup
     --force-auto-push                # Force enable (testing)
     --auto-push-pat TOKEN            # GitHub PAT
-    
+
     # Multi-GPU training
     --multi-gpu                      # Use all GPUs with DataParallel
     --gpu-ids "0,1"                  # Specific GPU IDs (default: all)
@@ -375,6 +379,7 @@ phase-unwrap tune \
 ```
 
 This creates a zip named `optuna_{data_name}_n{num_samples}_s{seed}_{timestamp}.zip` containing:
+
 - Optuna study database (`{study_name}.db`)
 - `best_config.yaml` with optimal hyperparameters
 - `data_config.yaml` with data generation parameters
@@ -444,6 +449,28 @@ phase-unwrap plot gradcam \
     --out results/figs/gradcam.png \
     --n-samples 4 \
     --layer enc5                     # Target encoder layer
+
+# Baseline Comparison Grid
+phase-unwrap plot baseline-comparison \
+    --checkpoint runs/exp1/best.pth \
+    --data-dir data/full \
+    --out results/figs/baseline_comparison.png
+
+# Noise Degradation
+phase-unwrap plot noise-degradation \
+    --checkpoint runs/exp1/best.pth \
+    --data-dir data/full \
+    --out results/figs/noise_degradation.png \
+    --sample-idx 0
+
+# ---------------------------------------------------------------------------
+# Master Cloud Payload Rendering Sequence
+# ---------------------------------------------------------------------------
+# For locally processing an extracted Kaggle/Colab payload directory on CPU
+phase-unwrap plot-all-local \
+    --run-dir runs/exp1 \
+    --data-dir data/full \
+    --n-samples 4
 ```
 
 ### Analysis Commands
@@ -700,6 +727,7 @@ uv run phase-unwrap train \
 ```
 
 This will show you:
+
 - Branch name that would be created
 - When pushes would occur
 - What would be committed
@@ -760,12 +788,12 @@ class CustomInterferogramDataset(Dataset):
         # Load your interferogram I and ground truth phi
         I = ...  # [1, H, W] normalized interferogram
         phi = ...  # [1, H, W] unwrapped phase
-        
+
         # Create hint from center value
         H, W = phi.shape[-2:]
         cy, cx = H // 2, W // 2
         phi_hint = torch.full_like(phi, phi[0, cy, cx].item())
-        
+
         I_input = torch.cat([I, phi_hint], dim=0)  # [2, H, W]
         return I_input, phi, I
 ```

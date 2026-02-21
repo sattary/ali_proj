@@ -557,6 +557,44 @@ def plot_gradcam_cmd(
     )
 
 
+# -- Baseline Comparison Grid
+@plot_app.command("baseline-comparison")
+def plot_baseline_comparison_cmd(
+    checkpoint: str = typer.Option(
+        ..., "--checkpoint", help="Path to model checkpoint."
+    ),
+    data_dir: str = typer.Option(..., "--data-dir", help="Dataset directory."),
+    out: str = typer.Option("results/figs/baseline_comparison.png", "--out"),
+    n_samples: int = typer.Option(4, "--n-samples"),
+    config: Optional[str] = typer.Option(None, "--config"),
+) -> None:
+    """Visual Baseline Superiority Matrix."""
+    from .visualize.baseline_comparison_grid import plot_baseline_comparison
+
+    plot_baseline_comparison(
+        checkpoint, data_dir, out_path=out, n_samples=n_samples, config_path=config
+    )
+
+
+# -- Noise Degradation Grid
+@plot_app.command("noise-degradation")
+def plot_noise_degradation_cmd(
+    checkpoint: str = typer.Option(
+        ..., "--checkpoint", help="Path to model checkpoint."
+    ),
+    data_dir: str = typer.Option(..., "--data-dir", help="Dataset directory."),
+    out: str = typer.Option("results/figs/noise_degradation.png", "--out"),
+    sample_idx: int = typer.Option(0, "--sample-idx", help="Target dataset index."),
+    config: Optional[str] = typer.Option(None, "--config"),
+) -> None:
+    """Iterative noise degradation evaluation."""
+    from .visualize.noise_degradation_grid import plot_noise_degradation
+
+    plot_noise_degradation(
+        checkpoint, data_dir, out_path=out, sample_idx=sample_idx, config_path=config
+    )
+
+
 # ---------------------------------------------------------------------------
 # Export commands
 # ---------------------------------------------------------------------------
@@ -692,6 +730,132 @@ def latex_table_cmd(
 
     table = metrics_to_latex(run_dir, out_path=out, epoch=epoch)
     print(table)
+
+
+# ---------------------------------------------------------------------------
+# Master Cloud Payload Rendering Sequence
+# ---------------------------------------------------------------------------
+@app.command("plot-all-local")
+def plot_all_local_cmd(
+    run_dir: Path = typer.Option(..., "--run-dir", help="Extracted payload directory."),
+    data_dir: Optional[Path] = typer.Option(
+        None, "--data-dir", help="Data dir override."
+    ),
+    n_samples: int = typer.Option(4, "--n-samples", help="Samples for grids."),
+):
+    """Central CLI sequence to render downloaded Kaggle/Colab payload locally on CPU."""
+    from .core.config import load_train_config
+    import os
+
+    print("=" * 60)
+    print(f"Starting plot-all-local on payload: {run_dir}")
+    print("=" * 60)
+
+    ckpt_path = run_dir / "best.pth"
+    if not ckpt_path.exists():
+        print(f"Error: checkpoint not found at {ckpt_path}")
+        raise typer.Exit(1)
+
+    cfg_path = run_dir / "config.yaml"
+    cfg = load_train_config(str(cfg_path) if cfg_path.exists() else None)
+
+    dataset_dir = str(data_dir) if data_dir else cfg.data.data_dir
+    final_figs_dir = run_dir / "final_figures"
+    final_figs_dir.mkdir(parents=True, exist_ok=True)
+
+    print("Forcing strictly CPU extraction logic...")
+
+    from .visualize.training_curve import plot_training_curve
+    from .visualize.qualitative_grid import plot_qualitative_grid
+    from .visualize.phase_profile import plot_phase_profile
+    from .visualize.error_histogram import plot_error_histogram
+    from .visualize.loss_landscape import plot_loss_landscape
+    from .visualize.convergence import plot_convergence
+    from .analysis.gradcam import plot_gradcam
+    from .visualize.baseline_comparison_grid import plot_baseline_comparison
+    from .visualize.noise_degradation_grid import plot_noise_degradation
+
+    cfg_arg = str(cfg_path) if cfg_path.exists() else None
+    ckpt_arg = str(ckpt_path)
+    dir_arg = str(run_dir)
+
+    try:
+        print("\n[1/8] Generating Training Curves...")
+        plot_training_curve(
+            dir_arg, out_path=str(final_figs_dir / "training_curve.png")
+        )
+        plot_convergence(dir_arg, out_path=str(final_figs_dir / "convergence.png"))
+    except Exception as e:
+        print(f"Skipped metrics plots: {e}")
+
+    print(f"\n[2/8] Generating Qualitative Grid (n={n_samples})...")
+    plot_qualitative_grid(
+        ckpt_arg,
+        data_dir=dataset_dir,
+        out_path=str(final_figs_dir / "qualitative_grid.png"),
+        n_samples=n_samples,
+        config_path=cfg_arg,
+    )
+
+    print("\n[3/8] Generating Phase Profile...")
+    plot_phase_profile(
+        ckpt_arg,
+        data_dir=dataset_dir,
+        out_path=str(final_figs_dir / "phase_profile.png"),
+        sample_idx=0,
+        config_path=cfg_arg,
+    )
+
+    print("\n[4/8] Generating Error Histogram...")
+    plot_error_histogram(
+        ckpt_arg,
+        data_dir=dataset_dir,
+        out_path=str(final_figs_dir / "error_histogram.png"),
+        config_path=cfg_arg,
+    )
+
+    print("\n[5/8] Generating Loss Landscape...")
+    plot_loss_landscape(
+        ckpt_arg,
+        data_dir=dataset_dir,
+        out_path=str(final_figs_dir / "loss_landscape.png"),
+        num_eval_samples=50,
+        grid_size=11,
+        config_path=cfg_arg,
+    )
+
+    print("\n[6/8] Generating GradCAM (enc5)...")
+    plot_gradcam(
+        ckpt_arg,
+        data_dir=dataset_dir,
+        out_path=str(final_figs_dir / "gradcam.png"),
+        n_samples=n_samples,
+        target_layer_name="enc5",
+        config_path=cfg_arg,
+    )
+
+    print("\n[7/8] Generating Baseline Superiority Matrix...")
+    plot_baseline_comparison(
+        ckpt_arg,
+        data_dir=dataset_dir,
+        out_path=str(final_figs_dir / "baseline_comparison.png"),
+        n_samples=n_samples,
+        config_path=cfg_arg,
+    )
+
+    print("\n[8/8] Generating Noise Degradation Grid...")
+    plot_noise_degradation(
+        ckpt_arg,
+        data_dir=dataset_dir,
+        out_path=str(final_figs_dir / "noise_degradation.png"),
+        sample_idx=0,
+        config_path=cfg_arg,
+    )
+
+    print("\n" + "=" * 60)
+    print(
+        f"Done. All Nature-tier figures dynamically compiled and saved safely to CPU directory: {final_figs_dir}"
+    )
 
 
 def main() -> None:

@@ -8,6 +8,7 @@ import csv
 import os
 import random
 import time
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -253,6 +254,12 @@ def train(
     )
 
     model = build_model(cfg.model).to(device)
+    if hasattr(torch, "compile") and sys.platform != "win32":
+        try:
+            model = torch.compile(model)
+            print("[startup] torch.compile enabled")
+        except Exception as e:
+            print(f"[startup] torch.compile failed: {e}")
 
     # Setup multi-GPU if requested
     if multi_gpu and use_cuda:
@@ -339,9 +346,9 @@ def train(
 
             except RuntimeError as e:
                 if "out of memory" in str(e).lower():
-                    print("CUDA OOM. Try smaller batch size.")
+                    print("CUDA OOM. Emptying cache and aborting epoch.")
                     torch.cuda.empty_cache()
-                    return
+                    raise RuntimeError("Fatal CUDA Out of Memory.") from e
                 raise
 
             bs = I_input.size(0)
