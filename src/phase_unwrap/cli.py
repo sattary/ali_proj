@@ -206,113 +206,6 @@ def multiseed(
     run_multiseed(cfg, base_run_name=run_name, seeds=seed_list)
 
 
-def _create_tune_auto_push_callback(
-    optuna_dir: str,
-    data_dir: str,
-    push_interval: int,
-    pat: Optional[str],
-    dry_run: bool,
-):
-    """Create callback for pushing optuna results to GitHub after HPO completes."""
-    from datetime import datetime
-    from pathlib import Path
-    import zipfile
-
-    from .git_automation import GitPusher, ZipPacker
-
-    def callback():
-        """Push optuna results after HPO finishes."""
-        from .git_automation.environment import is_kaggle, is_colab
-
-        if not is_kaggle() and not is_colab() and not dry_run:
-            print("[auto-push] Not on Kaggle/Colab, skipping push")
-            return
-
-        print("\n" + "=" * 60)
-        print("Pushing Optuna results to GitHub...")
-        print("=" * 60)
-
-        # Load data config if exists
-        data_config_path = Path(data_dir) / "data_config.yaml"
-        if data_config_path.exists():
-            import yaml
-
-            with open(data_config_path) as f:
-                data_config = yaml.safe_load(f)
-            data_name = Path(data_config["data_dir"]).name
-            num_samples = data_config.get("num_samples", 0)
-            seed = data_config.get("seed", 0)
-        else:
-            data_name = Path(data_dir).name
-            num_samples = 0
-            seed = 0
-
-        # Create zip packer for optuna directory
-        optuna_path = Path(optuna_dir) / "optuna"
-        if not optuna_path.exists():
-            print(f"Optuna directory not found: {optuna_path}")
-            return
-
-        packer = ZipPacker(
-            run_dir=str(optuna_path),
-            include_checkpoints=False,
-        )
-
-        # Create zip filename following training convention
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        if num_samples > 0:
-            zip_name = f"optuna_{data_name}_n{num_samples}_s{seed}_{timestamp}.zip"
-        else:
-            zip_name = f"optuna_{data_name}_{timestamp}.zip"
-
-        zip_path = optuna_path / zip_name
-
-        # Copy data config to optuna dir for inclusion in zip
-        if data_config_path.exists():
-            import shutil
-
-            dest_data_config = optuna_path / "data_config.yaml"
-            shutil.copy2(data_config_path, dest_data_config)
-
-        # Create zip
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for file_path in optuna_path.rglob("*"):
-                if file_path.is_file() and file_path.suffix != ".zip":
-                    arcname = file_path.relative_to(optuna_path)
-                    zf.write(file_path, arcname)
-
-        print(f"Created zip: {zip_path.name}")
-
-        # Push to GitHub
-        branch_name = "artifacts"
-        pusher = GitPusher(
-            repo_dir=str(Path.cwd()),
-            branch_name=branch_name,
-            pat=pat,
-            dry_run=dry_run,
-        )
-
-        try:
-            pusher.setup_branch()
-            success = pusher.push_artifact(
-                zip_path=str(zip_path),
-                epoch=0,
-                total_epochs=0,
-                metrics={"n_trials": 0},
-                is_final=True,
-            )
-            if success:
-                print("=" * 60)
-                print("✓ Optuna results pushed successfully!")
-                print("=" * 60)
-            else:
-                print("✗ Push failed")
-        except Exception as e:
-            print(f"✗ Push error: {e}")
-
-    return callback
-
-
 @app.command()
 def tune(
     config: Optional[Path] = typer.Option(
@@ -386,17 +279,10 @@ def tune(
                 "[auto-push] Warning: Not on Kaggle/Colab. Use --auto-push-dry-run to test."
             )
 
-        data_dir_str = str(data_dir) if data_dir else cfg.data.data_dir
-        auto_push_callback = _create_tune_auto_push_callback(
-            optuna_dir=cfg.logging.run_dir,
-            data_dir=data_dir_str,
-            push_interval=0,  # Push only at end
-            pat=auto_push_pat,
-            dry_run=auto_push_dry_run,
-        )
+        from .git_automation.tune_push import create_tune_auto_push_callback
 
         data_dir_str = str(data_dir) if data_dir else cfg.data.data_dir
-        auto_push_callback = _create_tune_auto_push_callback(
+        auto_push_callback = create_tune_auto_push_callback(
             optuna_dir=cfg.logging.run_dir,
             data_dir=data_dir_str,
             push_interval=0,  # Push only at end
@@ -744,118 +630,9 @@ def plot_all_local_cmd(
     n_samples: int = typer.Option(4, "--n-samples", help="Samples for grids."),
 ):
     """Central CLI sequence to render downloaded Kaggle/Colab payload locally on CPU."""
-    from .core.config import load_train_config
-    import os
+    from .visualize.runner import run_plot_all_local
 
-    print("=" * 60)
-    print(f"Starting plot-all-local on payload: {run_dir}")
-    print("=" * 60)
-
-    ckpt_path = run_dir / "best.pth"
-    if not ckpt_path.exists():
-        print(f"Error: checkpoint not found at {ckpt_path}")
-        raise typer.Exit(1)
-
-    cfg_path = run_dir / "config.yaml"
-    cfg = load_train_config(str(cfg_path) if cfg_path.exists() else None)
-
-    dataset_dir = str(data_dir) if data_dir else cfg.data.data_dir
-    final_figs_dir = run_dir / "final_figures"
-    final_figs_dir.mkdir(parents=True, exist_ok=True)
-
-    print("Forcing strictly CPU extraction logic...")
-
-    from .visualize.training_curve import plot_training_curve
-    from .visualize.qualitative_grid import plot_qualitative_grid
-    from .visualize.phase_profile import plot_phase_profile
-    from .visualize.error_histogram import plot_error_histogram
-    from .visualize.loss_landscape import plot_loss_landscape
-    from .visualize.convergence import plot_convergence
-    from .analysis.gradcam import plot_gradcam
-    from .visualize.baseline_comparison_grid import plot_baseline_comparison
-    from .visualize.noise_degradation_grid import plot_noise_degradation
-
-    cfg_arg = str(cfg_path) if cfg_path.exists() else None
-    ckpt_arg = str(ckpt_path)
-    dir_arg = str(run_dir)
-
-    try:
-        print("\n[1/8] Generating Training Curves...")
-        plot_training_curve(
-            dir_arg, out_path=str(final_figs_dir / "training_curve.png")
-        )
-        plot_convergence(dir_arg, out_path=str(final_figs_dir / "convergence.png"))
-    except Exception as e:
-        print(f"Skipped metrics plots: {e}")
-
-    print(f"\n[2/8] Generating Qualitative Grid (n={n_samples})...")
-    plot_qualitative_grid(
-        ckpt_arg,
-        data_dir=dataset_dir,
-        out_path=str(final_figs_dir / "qualitative_grid.png"),
-        n_samples=n_samples,
-        config_path=cfg_arg,
-    )
-
-    print("\n[3/8] Generating Phase Profile...")
-    plot_phase_profile(
-        ckpt_arg,
-        data_dir=dataset_dir,
-        out_path=str(final_figs_dir / "phase_profile.png"),
-        sample_idx=0,
-        config_path=cfg_arg,
-    )
-
-    print("\n[4/8] Generating Error Histogram...")
-    plot_error_histogram(
-        ckpt_arg,
-        data_dir=dataset_dir,
-        out_path=str(final_figs_dir / "error_histogram.png"),
-        config_path=cfg_arg,
-    )
-
-    print("\n[5/8] Generating Loss Landscape...")
-    plot_loss_landscape(
-        ckpt_arg,
-        data_dir=dataset_dir,
-        out_path=str(final_figs_dir / "loss_landscape.png"),
-        num_eval_samples=50,
-        grid_size=11,
-        config_path=cfg_arg,
-    )
-
-    print("\n[6/8] Generating GradCAM (enc5)...")
-    plot_gradcam(
-        ckpt_arg,
-        data_dir=dataset_dir,
-        out_path=str(final_figs_dir / "gradcam.png"),
-        n_samples=n_samples,
-        target_layer_name="enc5",
-        config_path=cfg_arg,
-    )
-
-    print("\n[7/8] Generating Baseline Superiority Matrix...")
-    plot_baseline_comparison(
-        ckpt_arg,
-        data_dir=dataset_dir,
-        out_path=str(final_figs_dir / "baseline_comparison.png"),
-        n_samples=n_samples,
-        config_path=cfg_arg,
-    )
-
-    print("\n[8/8] Generating Noise Degradation Grid...")
-    plot_noise_degradation(
-        ckpt_arg,
-        data_dir=dataset_dir,
-        out_path=str(final_figs_dir / "noise_degradation.png"),
-        sample_idx=0,
-        config_path=cfg_arg,
-    )
-
-    print("\n" + "=" * 60)
-    print(
-        f"Done. All Nature-tier figures dynamically compiled and saved safely to CPU directory: {final_figs_dir}"
-    )
+    run_plot_all_local(run_dir=run_dir, data_dir=data_dir, n_samples=n_samples)
 
 
 def main() -> None:
