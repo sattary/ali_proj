@@ -25,13 +25,23 @@ def meshgrid_ij(x: torch.Tensor, y: torch.Tensor, **kw):
 class AddCoords(nn.Module):
     """Concatenate normalized (x, y) coordinate channels to the input."""
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._cached_coords = None
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, c, h, w = x.shape
-        yy, xx = meshgrid_ij(
-            torch.linspace(-1, 1, h, device=x.device, dtype=x.dtype),
-            torch.linspace(-1, 1, w, device=x.device, dtype=x.dtype),
-        )
-        coords = torch.stack([xx, yy], 0).expand(b, -1, -1, -1)
+        if (
+            self._cached_coords is None
+            or self._cached_coords.shape[-2:] != (h, w)
+            or self._cached_coords.device != x.device
+        ):
+            yy, xx = meshgrid_ij(
+                torch.linspace(-1, 1, h, device=x.device, dtype=x.dtype),
+                torch.linspace(-1, 1, w, device=x.device, dtype=x.dtype),
+            )
+            self._cached_coords = torch.stack([xx, yy], 0)
+        coords = self._cached_coords.expand(b, -1, -1, -1)
         return torch.cat([x, coords], 1)
 
 

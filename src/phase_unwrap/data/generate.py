@@ -100,6 +100,27 @@ def generate_sample(
     return interferogram.astype(np.float32), dphi.astype(np.float32)
 
 
+def _generate_shard_worker(args: Tuple[int, int, int, Path]) -> int:
+    shard_idx, n_in_shard, seed, out_path = args
+    rng = np.random.default_rng(seed)
+    x, y, r2 = _build_grid()
+
+    I_buf = np.empty((n_in_shard, 1, NY, NX), dtype=np.float32)
+    phi_buf = np.empty((n_in_shard, 1, NY, NX), dtype=np.float32)
+
+    for local in range(n_in_shard):
+        I_sample, dphi_sample = generate_sample(x, y, r2, rng)
+        I_buf[local, 0] = I_sample
+        phi_buf[local, 0] = dphi_sample
+
+    shard_name = out_path / f"train_shard_{shard_idx:03d}.h5"
+    with h5py.File(shard_name, "w") as f:
+        f.create_dataset("I", data=I_buf, compression="gzip", compression_opts=4)
+        f.create_dataset("phi", data=phi_buf, compression="gzip", compression_opts=4)
+
+    return n_in_shard
+
+
 def generate_to_h5(
     out_dir: str | Path,
     num_samples: int = 180_000,
@@ -119,35 +140,33 @@ def generate_to_h5(
         shard_size:  Number of samples per HDF5 shard file.
         seed:        RNG seed for reproducibility.
     """
+    import multiprocessing as mp
+
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
 
-    rng = np.random.default_rng(seed)
-    x, y, r2 = _build_grid()
-
     n_shards = math.ceil(num_samples / shard_size)
-
+    args_list = []
     sample_idx = 0
-    for shard_idx in tqdm(range(n_shards), desc="Shards"):
+
+    base_rng = np.random.default_rng(seed)
+    shard_seeds = base_rng.integers(0, 2**31 - 1, size=n_shards)
+
+    for shard_idx in range(n_shards):
         n_in_shard = min(shard_size, num_samples - sample_idx)
+        args_list.append((shard_idx, n_in_shard, int(shard_seeds[shard_idx]), out_path))
+        sample_idx += n_in_shard
 
-        I_buf = np.empty((n_in_shard, 1, NY, NX), dtype=np.float32)
-        phi_buf = np.empty((n_in_shard, 1, NY, NX), dtype=np.float32)
+    total_generated = 0
+    with mp.Pool(processes=max(1, mp.cpu_count() - 1)) as pool:
+        for n_in_shard_done in tqdm(
+            pool.imap_unordered(_generate_shard_worker, args_list),
+            total=n_shards,
+            desc="Shards",
+        ):
+            total_generated += n_in_shard_done
 
-        for local in range(n_in_shard):
-            I_sample, dphi_sample = generate_sample(x, y, r2, rng)
-            I_buf[local, 0] = I_sample
-            phi_buf[local, 0] = dphi_sample
-            sample_idx += 1
-
-        shard_name = out_path / f"train_shard_{shard_idx:03d}.h5"
-        with h5py.File(shard_name, "w") as f:
-            f.create_dataset("I", data=I_buf, compression="gzip", compression_opts=4)
-            f.create_dataset(
-                "phi", data=phi_buf, compression="gzip", compression_opts=4
-            )
-
-    print(f"Generated {sample_idx} samples across {n_shards} shards in {out_path}")
+    print(f"Generated {total_generated} samples across {n_shards} shards in {out_path}")
 
     data_config = {
         "num_samples": num_samples,
