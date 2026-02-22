@@ -27,11 +27,12 @@ def pick_device(device_str: str) -> torch.device:
     Resolve a device string into a torch.device.
 
     Accepts:
-        - \"auto\": choose CUDA if available, else CPU.
-        - \"cuda\" / \"cpu\" / explicit device strings understood by torch.device.
+        - "auto": choose CUDA if available, else CPU.
+        - "cuda" / "cpu" / explicit device strings understood by torch.device.
     """
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = True
+
     if device_str == "auto":
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
     return torch.device(device_str)
-
-

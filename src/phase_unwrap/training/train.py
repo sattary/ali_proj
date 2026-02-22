@@ -148,8 +148,10 @@ def run_eval(
     n = 0
 
     for I_input, phi_gt, I_raw in loader:
-        I_input = I_input.to(device)
-        phi_gt = phi_gt.to(device)
+        I_input = I_input.to(
+            device, non_blocking=True, memory_format=torch.channels_last
+        )
+        phi_gt = phi_gt.to(device, non_blocking=True, memory_format=torch.channels_last)
         bs = I_input.size(0)
 
         with autocast(device_type=device.type, enabled=use_amp):
@@ -251,7 +253,7 @@ def train(
         f"val={len(val_loader.dataset) if val_loader is not None else 0}"
     )
 
-    model = build_model(cfg.model).to(device)
+    model = build_model(cfg.model).to(device=device, memory_format=torch.channels_last)
     if hasattr(torch, "compile") and sys.platform != "win32":
         try:
             model = torch.compile(model)
@@ -320,9 +322,15 @@ def train(
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{cfg.optim.epochs}", leave=False)
         for I_input, phi_gt, I_raw in pbar:
-            I_input = I_input.to(device)
-            phi_gt = phi_gt.to(device)
-            I_raw = I_raw.to(device)
+            I_input = I_input.to(
+                device, non_blocking=True, memory_format=torch.channels_last
+            )
+            phi_gt = phi_gt.to(
+                device, non_blocking=True, memory_format=torch.channels_last
+            )
+            I_raw = I_raw.to(
+                device, non_blocking=True, memory_format=torch.channels_last
+            )
 
             opt.zero_grad(set_to_none=True)
 
@@ -416,8 +424,12 @@ def train(
 
             try:
                 I_input_v, phi_gt_v, I_raw_v = next(iter(val_loader))
-                I_input_v = I_input_v.to(device)
-                phi_gt_v = phi_gt_v.to(device)
+                I_input_v = I_input_v.to(
+                    device, non_blocking=True, memory_format=torch.channels_last
+                )
+                phi_gt_v = phi_gt_v.to(
+                    device, non_blocking=True, memory_format=torch.channels_last
+                )
                 with autocast(device_type=device.type, enabled=use_amp):
                     phi_raw_v, k_off_v = ema.m(I_input_v)
                     phi_abs_v = phi_raw_v + k_off_v
