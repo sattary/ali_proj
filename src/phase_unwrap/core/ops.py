@@ -70,8 +70,8 @@ def affine_align(
         pred_aligned [B,1,H,W], a [B,1], c [B,1].
     """
     B = pred.shape[0]
-    pred_flat = pred.view(B, -1)
-    gt_flat = gt.view(B, -1)
+    pred_flat = pred.reshape(B, -1)
+    gt_flat = gt.reshape(B, -1)
 
     pred_mean = pred_flat.mean(dim=1, keepdim=True)
     gt_mean = gt_flat.mean(dim=1, keepdim=True)

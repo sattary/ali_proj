@@ -29,7 +29,8 @@ def export_onnx(
     model = build_model(cfg.model)
     # weights_only=False: loading trusted checkpoint from own training runs
     ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    model.load_state_dict(ckpt.get("model_ema", ckpt["model"]))
+    sd = ckpt.get("model_ema", ckpt["model"])
+    model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
     dummy = torch.randn(1, 2, 128, 128)
@@ -77,7 +78,8 @@ def export_torchscript(
     model = build_model(cfg.model)
     # weights_only=False: loading trusted checkpoint from own training runs
     ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    model.load_state_dict(ckpt.get("model_ema", ckpt["model"]))
+    sd = ckpt.get("model_ema", ckpt["model"])
+    model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
     dummy = torch.randn(1, 2, 128, 128)
@@ -113,7 +115,8 @@ def benchmark_inference(
     model = build_model(cfg.model).to(dev)
     # weights_only=False: loading trusted checkpoint from own training runs
     ckpt = torch.load(checkpoint_path, map_location=dev, weights_only=False)
-    model.load_state_dict(ckpt.get("model_ema", ckpt["model"]))
+    sd = ckpt.get("model_ema", ckpt["model"])
+    model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
     dummy = torch.randn(batch_size, 2, 128, 128, device=dev)

@@ -98,7 +98,7 @@ def run_plot_all_local(
         data_dir=dataset_dir,
         out_path=str(final_figs_dir / "loss_landscape.png"),
         num_eval_samples=50,
-        grid_size=11,
+        grid_size=3,
         config_path=cfg_arg,
     )
 

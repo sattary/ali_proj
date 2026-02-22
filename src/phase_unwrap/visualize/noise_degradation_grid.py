@@ -71,18 +71,15 @@ def plot_noise_degradation(
     device = pick_device("cpu")  # Strict CPU visualization architecture
     model = build_model(cfg.model).to(device)
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    model.load_state_dict(ckpt.get("model_ema", ckpt["model"]))
+    sd = ckpt.get("model_ema", ckpt["model"])
+    model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
-    _, val_loader = build_dataloaders(
-        cfg.data, cfg.optim, device, seed=cfg.logging.seed
-    )
+    _, val_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed)
     dataset = (
         val_loader.dataset
         if val_loader is not None
-        else build_dataloaders(cfg.data, cfg.optim, device, seed=cfg.logging.seed)[
-            0
-        ].dataset
+        else build_dataloaders(cfg, device, seed=cfg.logging.seed)[0].dataset
     )
 
     # Get single target sample
@@ -146,7 +143,7 @@ def plot_noise_degradation(
             im0 = axes[idx, 0].imshow(I_img, cmap=CMAP_INTENSITY, aspect="equal")
             add_colorbar(axes[idx, 0], im0)
 
-            label_snr = f"SNR: {snr}dB" if not math.isinf(snr) else "SNR: $\infty$"
+            label_snr = f"SNR: {snr}dB" if not math.isinf(snr) else r"SNR: $\infty$"
             axes[idx, 0].text(
                 0.02,
                 0.98,

@@ -89,7 +89,8 @@ def plot_gradcam(
     device = pick_device(cfg.model.device)
     model = build_model(cfg.model).to(device)
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    model.load_state_dict(ckpt.get("model_ema", ckpt["model"]))
+    sd = ckpt.get("model_ema", ckpt["model"])
+    model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.final_dropout.eval()
 
     target_layer = getattr(model, target_layer_name, None)
@@ -101,12 +102,11 @@ def plot_gradcam(
 
     cam_extractor = _GradCAM(model, target_layer)
 
-    _, val_loader = build_dataloaders(
-        cfg.data, cfg.optim, device, seed=cfg.logging.seed
+    _, val_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed
     )
     loader = (
         val_loader
-        or build_dataloaders(cfg.data, cfg.optim, device, seed=cfg.logging.seed)[0]
+        or build_dataloaders(cfg, device, seed=cfg.logging.seed)[0]
     )
 
     I_input, phi_gt, I_raw = next(iter(loader))

@@ -127,13 +127,13 @@ def plot_loss_landscape(
     device = pick_device(cfg.model.device)
     model = build_model(cfg.model).to(device)
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    model.load_state_dict(ckpt.get("model_ema", ckpt["model"]))
+    sd = ckpt.get("model_ema", ckpt["model"])
+    model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
     loss_fn = MAEGradLoss(w_mae=cfg.loss.w_mae, w_grad=cfg.loss.w_grad)
 
-    train_loader, _ = build_dataloaders(
-        cfg.data, cfg.optim, device, seed=cfg.logging.seed
+    train_loader, _ = build_dataloaders(cfg, device, seed=cfg.logging.seed
     )
 
     base_params = _get_parameters(model)

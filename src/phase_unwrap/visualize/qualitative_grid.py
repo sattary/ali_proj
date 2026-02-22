@@ -52,7 +52,8 @@ def plot_qualitative_grid(
     model = build_model(cfg.model).to(device)
     # weights_only=False: loading trusted checkpoint from own training runs
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    model.load_state_dict(ckpt.get("model_ema", ckpt["model"]))
+    sd = ckpt.get("model_ema", ckpt["model"])
+    model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
     # Apply curriculum noise at max intensity if enabled in config

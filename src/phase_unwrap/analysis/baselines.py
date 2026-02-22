@@ -121,7 +121,8 @@ def evaluate_dl_baseline(
     device = pick_device(device_str)
     model = build_model(cfg.model).to(device)
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    model.load_state_dict(ckpt.get("model_ema", ckpt["model"]))
+    sd = ckpt.get("model_ema", ckpt["model"])
+    model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
     x, y, r2 = _build_grid()

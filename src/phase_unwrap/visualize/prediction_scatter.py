@@ -60,15 +60,15 @@ def plot_prediction_scatter(
     model = build_model(cfg.model).to(device)
     # weights_only=False: loading trusted checkpoint from own training runs
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    model.load_state_dict(ckpt.get("model_ema", ckpt["model"]))
+    sd = ckpt.get("model_ema", ckpt["model"])
+    model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
-    _, val_loader = build_dataloaders(
-        cfg.data, cfg.optim, device, seed=cfg.logging.seed
+    _, val_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed
     )
     loader = (
         val_loader
-        or build_dataloaders(cfg.data, cfg.optim, device, seed=cfg.logging.seed)[0]
+        or build_dataloaders(cfg, device, seed=cfg.logging.seed)[0]
     )
 
     # Collect predictions and GT
