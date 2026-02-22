@@ -17,6 +17,8 @@ dependencies = [
     "torchmetrics>=1.7.0",
     "tqdm>=4.67.3",
     "typer>=0.15.0",
+    "onnx>=1.17.0",
+    "onnxscript>=0.2.0",
 ]
 
 [project.scripts]

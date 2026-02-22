@@ -41,13 +41,6 @@ def export_onnx(
         dummy,
         out_path,
         opset_version=opset,
-        input_names=["interferogram"],
-        output_names=["phi_raw", "k_offset"],
-        dynamic_axes={
-            "interferogram": {0: "batch", 2: "height", 3: "width"},
-            "phi_raw": {0: "batch", 2: "height", 3: "width"},
-            "k_offset": {0: "batch"},
-        },
     )
 
     size_mb = Path(out_path).stat().st_size / (1024 * 1024)
