@@ -481,6 +481,22 @@ def plot_noise_degradation_cmd(
     )
 
 
+# -- Curriculum Noise Grid
+@plot_app.command("curriculum-noise")
+def plot_curriculum_noise_cmd(
+    data_dir: str = typer.Option(..., "--data-dir", help="Dataset directory."),
+    out: str = typer.Option("results/figs/curriculum_noise_grid.png", "--out"),
+    sample_idx: int = typer.Option(0, "--sample-idx", help="Target dataset index."),
+    config: Optional[str] = typer.Option(None, "--config"),
+) -> None:
+    """Visualize dynamic curriculum noise progression over epochs."""
+    from .visualize.curriculum_noise_grid import plot_curriculum_noise
+
+    plot_curriculum_noise(
+        data_dir, out_path=out, sample_idx=sample_idx, config_path=config
+    )
+
+
 # ---------------------------------------------------------------------------
 # Export commands
 # ---------------------------------------------------------------------------

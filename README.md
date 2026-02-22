@@ -443,6 +443,12 @@ phase-unwrap plot convergence \
     --run-dir runs/exp1 \
     --out results/figs/convergence.png
 
+# Curriculum Noise Progression Grid
+phase-unwrap plot curriculum-noise \
+    --data-dir data/full \
+    --out results/figs/curriculum_noise_grid.png \
+    --sample-idx 0
+
 # GradCAM
 phase-unwrap plot gradcam \
     --checkpoint runs/exp1/best.pth \
