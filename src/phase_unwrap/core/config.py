@@ -88,6 +88,31 @@ class LoggingConfig:
 
 
 @dataclass
+class AugmentationConfig:
+    """Optical curriculum noise hyperparameters."""
+
+    enable: bool = True
+    warmup_epochs: int = 5
+    full_epoch: int = 35
+    profile: str = "cosine"
+    gauss_std: float = 0.02
+    speckle_std: float = 0.05
+    poisson_scale: float = 0.0
+    lowfreq_amp: float = 0.05
+    lowfreq_sigma: int = 21
+    blur_prob: float = 0.2
+    blur_min: float = 0.5
+    blur_max: float = 1.0
+    dropout_prob: float = 0.02
+    sap_prob: float = 0.0
+    gain_min: float = 0.9
+    gain_max: float = 1.1
+    off_min: float = -0.05
+    off_max: float = 0.05
+    hint_std: float = 0.2
+
+
+@dataclass
 class TrainConfig:
     """Top-level configuration aggregating all sub-configs."""
 
@@ -96,6 +121,7 @@ class TrainConfig:
     optim: OptimizationConfig = field(default_factory=OptimizationConfig)
     loss: LossConfig = field(default_factory=LossConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    aug: AugmentationConfig = field(default_factory=AugmentationConfig)
 
 
 ConfigPath = Union[str, Path]

@@ -15,6 +15,7 @@ The framework includes:
 
 - A physics-based synthetic data generator
 - A complete training loop with AMP, EMA, cosine+warmup scheduling, and checkpoint resumption
+- **Dynamic Curriculum Noise Pipeline**: On-the-fly random GPU-offloaded optical degradations (speckle, blur, gaussian) scaled progressively over epochs to prevent overfitting.
 - **Git auto-push for cloud training** (Kaggle/Colab) with configurable intervals
 - Optuna-based hyperparameter optimisation
 - Multi-seed aggregated evaluation

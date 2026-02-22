@@ -14,7 +14,8 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from ..core.config import DataConfig, OptimizationConfig
+from ..core.config import DataConfig, TrainConfig
+from .augmentation import NoiseAug
 
 
 class H5ShardDataset(Dataset):
@@ -34,12 +35,12 @@ class H5ShardDataset(Dataset):
         shard_paths: Sequence[str],
         I_key: str = "I",
         phi_key: str = "phi",
-        augment: bool = False,
+        noise_aug: NoiseAug | None = None,
     ) -> None:
         self.shard_paths = list(shard_paths)
         self.I_key = I_key
         self.phi_key = phi_key
-        self.augment = augment
+        self.noise_aug = noise_aug
 
         self._shard_sizes: list[int] = []
         self._cumulative: list[int] = [0]
@@ -80,17 +81,17 @@ class H5ShardDataset(Dataset):
         I_raw_t = torch.from_numpy(np.ascontiguousarray(I_np)).float()
         phi_gt_t = torch.from_numpy(np.ascontiguousarray(phi_np)).float()
 
-        if self.augment:
-            if random.random() > 0.5:
-                I_raw_t = I_raw_t.flip(-1)
-                phi_gt_t = phi_gt_t.flip(-1)
-            if random.random() > 0.5:
-                I_raw_t = I_raw_t.flip(-2)
-                phi_gt_t = phi_gt_t.flip(-2)
-            k = random.randint(0, 3)
-            if k > 0:
-                I_raw_t = torch.rot90(I_raw_t, k, dims=(-2, -1))
-                phi_gt_t = torch.rot90(phi_gt_t, k, dims=(-2, -1))
+        # Phase topology geometric augmentation
+        if random.random() > 0.5:
+            I_raw_t = I_raw_t.flip(-1)
+            phi_gt_t = phi_gt_t.flip(-1)
+        if random.random() > 0.5:
+            I_raw_t = I_raw_t.flip(-2)
+            phi_gt_t = phi_gt_t.flip(-2)
+        k = random.randint(0, 3)
+        if k > 0:
+            I_raw_t = torch.rot90(I_raw_t, k, dims=(-2, -1))
+            phi_gt_t = torch.rot90(phi_gt_t, k, dims=(-2, -1))
 
         mean = I_raw_t.mean(dim=(1, 2), keepdim=True)
         std = I_raw_t.std(dim=(1, 2), keepdim=True).clamp_min(1e-6)
@@ -100,6 +101,13 @@ class H5ShardDataset(Dataset):
         cy, cx = H // 2, W // 2
         ref_val = float(phi_gt_t[0, cy, cx].item())
         phi_hint = torch.full_like(phi_gt_t, ref_val)
+
+        # Dynamic Optical/Curriculum Noise Injection
+        if hasattr(self, "noise_aug") and self.noise_aug is not None:
+            I_raw_t, I_norm_t, phi_hint = self.noise_aug(I_raw_t, I_norm_t, phi_hint)
+
+        if phi_hint is None:
+            phi_hint = torch.full_like(phi_gt_t, ref_val)
 
         I_input = torch.cat([I_norm_t, phi_hint], dim=0)
         return I_input, phi_gt_t, I_raw_t
@@ -142,27 +150,46 @@ def discover_h5_shards(cfg: DataConfig) -> List[str]:
 
 
 def build_dataloaders(
-    data_cfg: DataConfig,
-    optim_cfg: OptimizationConfig,
+    cfg: "TrainConfig",
     device: torch.device,
     seed: int,
 ) -> Tuple[DataLoader, DataLoader | None]:
     """Construct training and (optional) validation DataLoaders."""
-    paths = discover_h5_shards(data_cfg)
+    paths = discover_h5_shards(cfg.data)
     if not paths:
-        raise RuntimeError(f"No files match {data_cfg.data_dir}/{data_cfg.pattern}")
+        raise RuntimeError(f"No files match {cfg.data.data_dir}/{cfg.data.pattern}")
 
-    train_paths, val_paths = smart_split(paths, seed=seed, val_frac=data_cfg.val_frac)
+    train_paths, val_paths = smart_split(paths, seed=seed, val_frac=cfg.data.val_frac)
+
+    # Initialize dynamic curriculum augmentation
+    train_aug = None
+    if getattr(cfg, "aug", None) and cfg.aug.enable:
+        train_aug = NoiseAug(
+            gauss_std=cfg.aug.gauss_std,
+            speckle_std=cfg.aug.speckle_std,
+            poisson_scale=cfg.aug.poisson_scale,
+            lowfreq_amp=cfg.aug.lowfreq_amp,
+            lowfreq_sigma=cfg.aug.lowfreq_sigma,
+            blur_prob=cfg.aug.blur_prob,
+            blur_sigma=(cfg.aug.blur_min, cfg.aug.blur_max),
+            dropout_prob=cfg.aug.dropout_prob,
+            s_and_p_prob=cfg.aug.sap_prob,
+            gain_jitter=(cfg.aug.gain_min, cfg.aug.gain_max),
+            offset_jitter=(cfg.aug.off_min, cfg.aug.off_max),
+            hint_offset_std=cfg.aug.hint_std,
+            enable=True,
+        )
+        train_aug.set_level(0.0)
 
     train_ds = H5ShardDataset(
         train_paths,
-        I_key=data_cfg.I_key,
-        phi_key=data_cfg.phi_key,
-        augment=data_cfg.augment,
+        I_key=cfg.data.I_key,
+        phi_key=cfg.data.phi_key,
+        noise_aug=train_aug,
     )
     val_ds = (
         H5ShardDataset(
-            val_paths, I_key=data_cfg.I_key, phi_key=data_cfg.phi_key, augment=False
+            val_paths, I_key=cfg.data.I_key, phi_key=cfg.data.phi_key, noise_aug=None
         )
         if val_paths
         else None
@@ -170,22 +197,22 @@ def build_dataloaders(
 
     use_cuda = device.type == "cuda"
     dl_kwargs = dict(
-        batch_size=optim_cfg.batch_size,
+        batch_size=cfg.optim.batch_size,
         shuffle=True,
-        num_workers=data_cfg.workers,
+        num_workers=cfg.data.workers,
         pin_memory=use_cuda,
         drop_last=True,
     )
-    if data_cfg.workers > 0:
+    if cfg.data.workers > 0:
         dl_kwargs["persistent_workers"] = True
 
     train_loader = DataLoader(train_ds, **dl_kwargs)
     val_loader = (
         DataLoader(
             val_ds,
-            batch_size=optim_cfg.batch_size,
+            batch_size=cfg.optim.batch_size,
             shuffle=False,
-            num_workers=data_cfg.workers,
+            num_workers=cfg.data.workers,
             pin_memory=use_cuda,
         )
         if val_ds is not None

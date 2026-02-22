@@ -244,9 +244,7 @@ def train(
     if not os.path.exists(config_snap_path):
         Path(config_snap_path).write_text(config_to_yaml(cfg))
 
-    train_loader, val_loader = build_dataloaders(
-        cfg.data, cfg.optim, device, seed=cfg.logging.seed
-    )
+    train_loader, val_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed)
     print(
         f"[data] dir={cfg.data.data_dir} pattern={cfg.data.pattern} | "
         f"train={len(train_loader.dataset)} "
@@ -292,18 +290,27 @@ def train(
     best_mae = float("inf")
     start_epoch = 1
 
-    if resume_path is not None:
-        print(f"[resume] Loading checkpoint: {resume_path}")
-        last_epoch, best_mae = load_checkpoint(
-            resume_path, model, ema, opt, sched, scaler, device
-        )
-        start_epoch = last_epoch + 1
-        print(f"[resume] Continuing from epoch {start_epoch}, best MAE={best_mae:.6f}")
-
     if start_epoch == 1:
         _init_csv(metrics_path)
 
+    # Initialize noise scheduler
+    noise_sched = None
+    if getattr(cfg, "aug", None) and cfg.aug.enable:
+        from ..data.augmentation import NoiseScheduler
+
+        noise_sched = NoiseScheduler(
+            warmup_epochs=cfg.aug.warmup_epochs,
+            full_epoch=cfg.aug.full_epoch,
+            profile=cfg.aug.profile,
+        )
+
     for epoch in range(start_epoch, cfg.optim.epochs + 1):
+        if noise_sched is not None and hasattr(train_loader.dataset, "noise_aug"):
+            if train_loader.dataset.noise_aug is not None:
+                lvl = noise_sched.level(epoch)
+                train_loader.dataset.noise_aug.set_level(lvl)
+                print(f"[noise] epoch={epoch} level={lvl:.3f}")
+
         t0 = time.time()
         model.train()
         run_loss = 0.0
