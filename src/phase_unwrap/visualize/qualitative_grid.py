@@ -47,7 +47,6 @@ def plot_qualitative_grid(
     cfg_path = config_path or str(Path(run_dir) / "config.yaml")
     cfg = load_train_config(cfg_path if Path(cfg_path).exists() else None)
     cfg.data.data_dir = data_dir
-    cfg.data.augment = False
 
     device = pick_device(cfg.model.device)
     model = build_model(cfg.model).to(device)
@@ -56,14 +55,24 @@ def plot_qualitative_grid(
     model.load_state_dict(ckpt.get("model_ema", ckpt["model"]))
     model.eval()
 
-    _, val_loader = build_dataloaders(
-        cfg.data, cfg.optim, device, seed=cfg.logging.seed
-    )
+    # Apply curriculum noise at max intensity if enabled in config
+    if cfg.aug.enable:
+        cfg.data.augment = True
+
+    _, val_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed)
     loader = (
         val_loader
         if val_loader is not None
-        else build_dataloaders(cfg.data, cfg.optim, device, seed=cfg.logging.seed)[0]
+        else build_dataloaders(cfg, device, seed=cfg.logging.seed)[0]
     )
+
+    # If noise is enabled, force it to maximum distortion for the evaluation viz
+    if (
+        cfg.aug.enable
+        and hasattr(loader.dataset, "noise_aug")
+        and loader.dataset.noise_aug is not None
+    ):
+        loader.dataset.noise_aug.set_level(1.0)
 
     I_input, phi_gt, I_raw = next(iter(loader))
     I_input = I_input[:n_samples].to(device)
