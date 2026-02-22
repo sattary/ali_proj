@@ -25,24 +25,30 @@ def meshgrid_ij(x: torch.Tensor, y: torch.Tensor, **kw):
 class AddCoords(nn.Module):
     """Concatenate normalized (x, y) coordinate channels to the input."""
 
-    def __init__(self) -> None:
+    def __init__(self, h: int = 128, w: int = 128) -> None:
         super().__init__()
-        self._cached_coords = None
+        # Precompute the normalized grid and register it to the module's device state
+        yy, xx = meshgrid_ij(
+            torch.linspace(-1, 1, h, dtype=torch.float32),
+            torch.linspace(-1, 1, w, dtype=torch.float32),
+        )
+        self.register_buffer("coords", torch.stack([xx, yy], dim=0).unsqueeze(0))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, c, h, w = x.shape
-        if (
-            self._cached_coords is None
-            or self._cached_coords.shape[-2:] != (h, w)
-            or self._cached_coords.device != x.device
-        ):
+
+        # Dynamic fallback (should never trigger in ali_proj, but covers edge cases)
+        if h != self.coords.shape[2] or w != self.coords.shape[3]:  # type: ignore
             yy, xx = meshgrid_ij(
                 torch.linspace(-1, 1, h, device=x.device, dtype=x.dtype),
                 torch.linspace(-1, 1, w, device=x.device, dtype=x.dtype),
             )
-            self._cached_coords = torch.stack([xx, yy], 0)
-        coords = self._cached_coords.expand(b, -1, -1, -1)
-        return torch.cat([x, coords], 1)
+            dyn_coords = torch.stack([xx, yy], 0).unsqueeze(0).expand(b, -1, -1, -1)
+            return torch.cat([x, dyn_coords], dim=1)
+
+        # Standard fast-path loop (zero allocations)
+        batched_coords = self.coords.expand(b, -1, -1, -1)  # type: ignore
+        return torch.cat([x, batched_coords], dim=1)
 
 
 class Res2_DS_Block(nn.Module):
@@ -97,14 +103,38 @@ class Res2_DS_Block(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         y = self.act(self.bn1(self.conv1(x)))
-        outs = []
-        for i in range(self.s):
-            c0, c1 = self.offsets[i], self.offsets[i] + self.sizes[i]
-            xi = y[:, c0:c1]
-            zi = self.act(self.dw[i](xi if i == 0 else (xi + outs[i - 1])))
-            outs.append(zi)
-        y2 = torch.cat(outs, 1)
+
+        # Split conceptually via list slice, replacing the sequential list append
+        # with pre-allocated tensors or unrolled variables based on self.s scale (which is usually 4)
+        c0 = self.offsets[0]
+        c1 = c0 + self.sizes[0]
+        out_0 = self.act(self.dw[0](y[:, c0:c1]))
+
+        c0 = self.offsets[1]
+        c1 = c0 + self.sizes[1]
+        out_1 = self.act(self.dw[1](y[:, c0:c1] + out_0))
+
+        c0 = self.offsets[2]
+        c1 = c0 + self.sizes[2]
+        out_2 = self.act(self.dw[2](y[:, c0:c1] + out_1))
+
+        c0 = self.offsets[3]
+        c1 = c0 + self.sizes[3]
+        out_3 = self.act(self.dw[3](y[:, c0:c1] + out_2))
+
+        # If scaling is strictly s=4 (ali_proj default), avoid looping entirely
+        if self.s == 4:
+            y2 = torch.cat([out_0, out_1, out_2, out_3], dim=1)
+        else:
+            # Fallback for non-standard configurations
+            outs = [out_0, out_1, out_2, out_3]
+            for i in range(4, self.s):
+                cc0, cc1 = self.offsets[i], self.offsets[i] + self.sizes[i]
+                outs.append(self.act(self.dw[i](y[:, cc0:cc1] + outs[-1])))
+            y2 = torch.cat(outs, dim=1)
+
         y2 = self.bn2(self.pw(y2))
+
         if self.shortcut:
             x = self.proj(x)
         return self.act(x + y2)
