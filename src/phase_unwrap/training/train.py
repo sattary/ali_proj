@@ -353,9 +353,42 @@ def train(
 
             except RuntimeError as e:
                 if "out of memory" in str(e).lower():
-                    print("CUDA OOM. Emptying cache and aborting epoch.")
+                    print(
+                        "| WARNING | CUDA OOM Exception caught! Attempting dynamic recovery..."
+                    )
                     torch.cuda.empty_cache()
-                    raise RuntimeError("Fatal CUDA Out of Memory.") from e
+                    opt.zero_grad(set_to_none=True)
+
+                    if cfg.optim.batch_size <= 1:
+                        raise RuntimeError(
+                            "Fatal CUDA OOM: Batch size is already 1."
+                        ) from e
+
+                    cfg.optim.batch_size = max(1, cfg.optim.batch_size // 2)
+                    print(
+                        f"| RECOVER | Reduced dynamic batch size to {cfg.optim.batch_size}. Re-building DataLoaders..."
+                    )
+
+                    # Rebuild the dataloaders immediately to apply the new batch size
+                    train_loader, val_loader = build_dataloaders(
+                        cfg, device, seed=cfg.logging.seed
+                    )
+
+                    # If noise is enabled, immediately re-sync the level since we created a new loader
+                    if noise_sched is not None and hasattr(
+                        train_loader.dataset, "noise_aug"
+                    ):
+                        if train_loader.dataset.noise_aug is not None:
+                            lvl = noise_sched.level(epoch)
+                            train_loader.dataset.noise_aug.set_level(lvl)
+
+                    # Break the current inner epoch loop. The outer 'for epoch' loop will advance
+                    # naturally and restart the progress bar on the next sequence with the smaller batch size,
+                    # abandoning the current poisoned epoch cleanly rather than dying.
+                    print(
+                        "| RECOVER | Epoch aborted gracefully. Resuming at next epoch boundary."
+                    )
+                    break
                 raise
 
             bs = I_input.size(0)

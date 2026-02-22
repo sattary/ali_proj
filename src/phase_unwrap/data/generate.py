@@ -158,7 +158,8 @@ def generate_to_h5(
         sample_idx += n_in_shard
 
     total_generated = 0
-    with mp.Pool(processes=max(1, mp.cpu_count() - 1)) as pool:
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(processes=max(1, mp.cpu_count() - 1)) as pool:
         for n_in_shard_done in tqdm(
             pool.imap_unordered(_generate_shard_worker, args_list),
             total=n_shards,
