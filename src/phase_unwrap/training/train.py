@@ -434,6 +434,12 @@ def train(
                     phi_raw_v, k_off_v = ema.m(I_input_v)
                     phi_abs_v = phi_raw_v + k_off_v
                 phi_aligned_v, _, _ = affine_align(phi_abs_v, phi_gt_v)
+
+                # Get current noise level for visualization
+                current_noise_level = 0.0
+                if noise_sched is not None:
+                    current_noise_level = noise_sched.level(epoch)
+
                 save_epoch_visuals(
                     I_input_v.cpu(),
                     phi_aligned_v.detach().cpu(),
@@ -441,6 +447,9 @@ def train(
                     vis_dir,
                     epoch,
                     cfg.logging.vis_max,
+                    I_raw=I_raw_v.cpu(),
+                    noise_level=current_noise_level,
+                    samples_per_file=4,
                 )
             except Exception as e:
                 print(f"Warning: saving visuals failed: {e}")
