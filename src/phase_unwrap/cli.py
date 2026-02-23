@@ -3,9 +3,9 @@ Phase Unwrapping CLI - Hierarchical Command Structure.
 
 Usage:
     phase-unwrap data generate
-    phase-wrap train
-    phase-unwrap tune
-    phase-unwrap ablation
+    phase-unwrap train train
+    phase-unwrap train tune
+    phase-unwrap train ablation
     phase-unwrap eval baselines
     phase-unwrap export onnx
     phase-unwrap plot training-curve

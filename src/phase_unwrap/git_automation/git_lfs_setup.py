@@ -78,7 +78,7 @@ def setup_git_lfs():
     print("\n" + "=" * 50)
     print("Git LFS setup complete!")
     print("\nYou can now use auto-push with:")
-    print("  phase-unwrap train --auto-push-interval 1000 ...")
+    print("  phase-unwrap train train --auto-push-interval 1000 ...")
     print("\nTo verify LFS is working:")
     print("  git lfs status")
 

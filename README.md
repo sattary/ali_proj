@@ -134,7 +134,7 @@ This workflow optimizes hyperparameters first, then trains the final model with 
 ### Step 0: Generate Training Data
 
 ```bash
-uv run phase-unwrap generate \
+uv run phase-unwrap data generate \
     --num-samples 180000 \
     --shard-size 1000 \
     --out-dir data/full
@@ -145,7 +145,7 @@ uv run phase-unwrap generate \
 Find optimal learning rate, loss weights, batch size, and model capacity:
 
 ```bash
-uv run phase-unwrap tune \
+uv run phase-unwrap train tune \
     --data-dir data/full \
     --n-trials 50 \
     --tune-epochs 15 \
@@ -162,7 +162,7 @@ This creates `runs/optuna/best_config.yaml` with the optimal configuration.
 Train with tuned hyperparameters for the full duration:
 
 ```bash
-uv run phase-unwrap train \
+uv run phase-unwrap train train \
     --data-dir data/full \
     --config runs/optuna/best_config.yaml \
     --run-name exp1
@@ -171,7 +171,7 @@ uv run phase-unwrap train \
 Resume from checkpoint if interrupted:
 
 ```bash
-uv run phase-unwrap train \
+uv run phase-unwrap train train \
     --data-dir data/full \
     --config runs/optuna/best_config.yaml \
     --resume runs/exp1/final.pth
@@ -191,17 +191,17 @@ uv run phase-unwrap plot qualitative \
     --data-dir data/full
 
 # Compare with classical baselines
-uv run phase-unwrap baselines \
+uv run phase-unwrap eval baselines \
     --checkpoint runs/exp1/best.pth \
     --n-samples 500
 
 # Test-time augmentation evaluation
-uv run phase-unwrap tta \
+uv run phase-unwrap eval tta \
     --checkpoint runs/exp1/best.pth \
     --data-dir data/full
 
 # Noise robustness analysis
-uv run phase-unwrap noise-sweep \
+uv run phase-unwrap eval noise \
     --checkpoint runs/exp1/best.pth \
     --snr-min 5.0 --snr-max 40.0 --n-steps 8
 
@@ -216,17 +216,17 @@ uv run phase-unwrap plot gradcam \
 
 ```bash
 # ONNX format
-uv run phase-unwrap export-onnx \
+uv run phase-unwrap export onnx \
     --checkpoint runs/exp1/best.pth \
     --out results/model.onnx
 
 # TorchScript format
-uv run phase-unwrap export-torchscript \
+uv run phase-unwrap export torchscript \
     --checkpoint runs/exp1/best.pth \
     --out results/model.pt
 
 # Benchmark inference speed
-uv run phase-unwrap benchmark \
+uv run phase-unwrap eval benchmark \
     --checkpoint runs/exp1/best.pth \
     --device cpu --n-runs 200
 ```
@@ -250,7 +250,7 @@ git config user.name "Your Name"
 
 # 3. Train with auto-push (pushes every 1000 epochs)
 #    Uses multi-GPU automatically on Kaggle (2x T4)
-uv run phase-unwrap train \
+uv run phase-unwrap train train \
     --epochs 10000 \
     --run-name exp_10k \
     --batch-size 40 \
@@ -259,7 +259,7 @@ uv run phase-unwrap train \
     --device cuda
 
 # 4. Resume if interrupted
-uv run phase-unwrap train \
+uv run phase-unwrap train train \
     --resume runs/exp_10k/final.pth \
     --epochs 10000 \
     --run-name exp_10k \
@@ -287,14 +287,14 @@ Train using both T4 GPUs on Kaggle for ~1.8x speedup:
 
 ```bash
 # Use all available GPUs (auto-detected on Kaggle)
-uv run phase-unwrap train \
+uv run phase-unwrap train train \
     --epochs 10000 \
     --run-name exp_10k \
     --batch-size 40 \
     --multi-gpu
 
 # Use specific GPUs
-uv run phase-unwrap train \
+uv run phase-unwrap train train \
     --epochs 10000 \
     --batch-size 40 \
     --multi-gpu \
@@ -320,7 +320,7 @@ uv run phase-unwrap train \
 ### Global Training Flags
 
 ```bash
-phase-unwrap train \
+phase-unwrap train train \
     # Configuration
     --config PATH                    # YAML/JSON config file
     --data-dir PATH                  # Override data directory
@@ -346,7 +346,7 @@ phase-unwrap train \
 ### Data Generation
 
 ```bash
-phase-unwrap generate \
+phase-unwrap data generate \
     --num-samples 180000             # Total samples to generate
     --shard-size 1000                # Samples per HDF5 file
     --out-dir data/full              # Output directory
@@ -356,7 +356,7 @@ phase-unwrap generate \
 ### Hyperparameter Tuning
 
 ```bash
-phase-unwrap tune \
+phase-unwrap train tune \
     --data-dir data/full             # Training data location
     --n-trials 50                    # Number of Optuna trials
     --tune-epochs 15                 # Epochs per trial
@@ -368,7 +368,7 @@ phase-unwrap tune \
 **Auto-push after HPO:** Use `--auto-push` to push optuna results (including `best_config.yaml` and data config) to GitHub after tuning completes:
 
 ```bash
-phase-unwrap tune \
+phase-unwrap train tune \
     --data-dir data/kaggle_full \
     --n-trials 30 \
     --tune-epochs 10 \
@@ -390,7 +390,7 @@ This creates a zip named `optuna_{data_name}_n{num_samples}_s{seed}_{timestamp}.
 ### Multi-Seed Evaluation
 
 ```bash
-phase-unwrap multiseed \
+phase-unwrap train multiseed \
     --config runs/optuna/best_config.yaml \
     --data-dir data/full \
     --run-name final_model \
@@ -474,7 +474,7 @@ phase-unwrap plot noise-degradation \
 # Master Cloud Payload Rendering Sequence
 # ---------------------------------------------------------------------------
 # For locally processing an extracted Kaggle/Colab payload directory on CPU
-phase-unwrap plot-all-local \
+phase-unwrap run local \
     --run-dir runs/exp1 \
     --data-dir data/full \
     --n-samples 4
@@ -484,19 +484,19 @@ phase-unwrap plot-all-local \
 
 ```bash
 # Classical baselines comparison
-phase-unwrap baselines \
+phase-unwrap eval baselines \
     --checkpoint runs/exp1/best.pth \
     --n-samples 200 \
     --device cpu
 
 # Test-time augmentation
-phase-unwrap tta \
+phase-unwrap eval tta \
     --checkpoint runs/exp1/best.pth \
     --data-dir data/full \
     --n-augments 8                   # Number of augmentation views
 
 # Noise robustness sweep
-phase-unwrap noise-sweep \
+phase-unwrap eval noise \
     --checkpoint runs/exp1/best.pth \
     --out results/figs/noise.png \
     --snr-min 5.0 \
@@ -510,25 +510,25 @@ phase-unwrap noise-sweep \
 
 ```bash
 # ONNX export
-phase-unwrap export-onnx \
+phase-unwrap export onnx \
     --checkpoint runs/exp1/best.pth \
     --out results/model.onnx \
     --opset 17
 
 # TorchScript export
-phase-unwrap export-torchscript \
+phase-unwrap export torchscript \
     --checkpoint runs/exp1/best.pth \
     --out results/model.pt
 
 # Benchmark inference
-phase-unwrap benchmark \
+phase-unwrap eval benchmark \
     --checkpoint runs/exp1/best.pth \
     --device cpu \
     --batch-size 1 \
     --n-runs 200
 
 # LaTeX table
-phase-unwrap latex-table \
+phase-unwrap export table \
     --run-dir runs/final_model \
     --out results/tables/metrics.tex \
     --epoch -1                       # -1 = last epoch
@@ -543,7 +543,7 @@ phase-unwrap latex-table \
 Use default hyperparameters for rapid prototyping:
 
 ```bash
-uv run phase-unwrap train --data-dir data/full --epochs 50 --run-name quicktest
+uv run phase-unwrap train train --data-dir data/full --epochs 50 --run-name quicktest
 ```
 
 ### Publication-Ready Evaluation
@@ -551,14 +551,14 @@ uv run phase-unwrap train --data-dir data/full --epochs 50 --run-name quicktest
 Run multiple seeds and aggregate results:
 
 ```bash
-uv run phase-unwrap multiseed \
+uv run phase-unwrap train multiseed \
     --data-dir data/full \
     --config runs/optuna/best_config.yaml \
     --run-name final_model \
     --seeds "42,1337,7,100,2024"
 
 # Generate comparison table
-uv run phase-unwrap latex-table \
+uv run phase-unwrap export table \
     --run-dir runs/final_model \
     --out results/tables/metrics.tex
 ```
@@ -571,7 +571,7 @@ All hyperparameters are controlled via a single nested config object (`TrainConf
 
 ```bash
 # Export current defaults
-uv run phase-unwrap train --config path/to/config.yaml
+uv run phase-unwrap train train --config path/to/config.yaml
 ```
 
 Key fields:
@@ -626,7 +626,7 @@ os.environ['GITHUB_PAT'] = getpass("Enter GitHub PAT: ")
 ### Step 2: Generate Data with Custom Settings
 
 ```bash
-uv run phase-unwrap generate \
+uv run phase-unwrap data generate \
     --num-samples 180000 \
     --shard-size 1000 \
     --out-dir data/kaggle_full \
@@ -636,7 +636,7 @@ uv run phase-unwrap generate \
 ### Step 3: Hyperparameter Search (Quick)
 
 ```bash
-uv run phase-unwrap tune \
+uv run phase-unwrap train tune \
     --data-dir data/kaggle_full \
     --n-trials 30 \
     --tune-epochs 10 \
@@ -650,7 +650,7 @@ uv run phase-unwrap tune \
 ### Step 4: Full Training with All Flags
 
 ```bash
-uv run phase-unwrap train \
+uv run phase-unwrap train train \
     # Configuration
     --config runs/optuna/best_config.yaml \
     --data-dir data/kaggle_full \
@@ -670,7 +670,7 @@ uv run phase-unwrap train \
 
 ```bash
 # If training is interrupted, resume from last checkpoint
-uv run phase-unwrap train \
+uv run phase-unwrap train train \
     --config runs/optuna/best_config.yaml \
     --data-dir data/kaggle_full \
     --epochs 10000 \
@@ -693,28 +693,28 @@ uv run phase-unwrap plot error-hist --checkpoint runs/exp_10k_full/best.pth --da
 uv run phase-unwrap plot gradcam --checkpoint runs/exp_10k_full/best.pth --data-dir data/kaggle_full --out results/exp_10k/gradcam.png --layer enc5
 
 # Compare with classical baselines
-uv run phase-unwrap baselines --checkpoint runs/exp_10k_full/best.pth --n-samples 500 --device cuda
+uv run phase-unwrap eval baselines --checkpoint runs/exp_10k_full/best.pth --n-samples 500 --device cuda
 
 # Test-time augmentation
-uv run phase-unwrap tta --checkpoint runs/exp_10k_full/best.pth --data-dir data/kaggle_full --n-augments 8
+uv run phase-unwrap eval tta --checkpoint runs/exp_10k_full/best.pth --data-dir data/kaggle_full --n-augments 8
 
 # Noise robustness
-uv run phase-unwrap noise-sweep --checkpoint runs/exp_10k_full/best.pth --snr-min 5.0 --snr-max 40.0 --n-steps 10 --n-samples 200 --device cuda
+uv run phase-unwrap eval noise --checkpoint runs/exp_10k_full/best.pth --snr-min 5.0 --snr-max 40.0 --n-steps 10 --n-samples 200 --device cuda
 ```
 
 ### Step 7: Export for Production
 
 ```bash
 # Export to multiple formats
-uv run phase-unwrap export-onnx --checkpoint runs/exp_10k_full/best.pth --out results/exp_10k/model.onnx --opset 17
-uv run phase-unwrap export-torchscript --checkpoint runs/exp_10k_full/best.pth --out results/exp_10k/model.pt
+uv run phase-unwrap export onnx --checkpoint runs/exp_10k_full/best.pth --out results/exp_10k/model.onnx --opset 17
+uv run phase-unwrap export torchscript --checkpoint runs/exp_10k_full/best.pth --out results/exp_10k/model.pt
 
 # Benchmark inference speed
-uv run phase-unwrap benchmark --checkpoint runs/exp_10k_full/best.pth --device cpu --batch-size 1 --n-runs 1000
-uv run phase-unwrap benchmark --checkpoint runs/exp_10k_full/best.pth --device cuda --batch-size 1 --n-runs 1000
+uv run phase-unwrap eval benchmark --checkpoint runs/exp_10k_full/best.pth --device cpu --batch-size 1 --n-runs 1000
+uv run phase-unwrap eval benchmark --checkpoint runs/exp_10k_full/best.pth --device cuda --batch-size 1 --n-runs 1000
 
 # Generate LaTeX table for paper
-uv run phase-unwrap latex-table --run-dir runs/exp_10k_full --out results/exp_10k/metrics.tex --epoch -1
+uv run phase-unwrap export table --run-dir runs/exp_10k_full --out results/exp_10k/metrics.tex --epoch -1
 ```
 
 ### Testing Dry-Run Mode (Local Testing)
@@ -723,7 +723,7 @@ Before running on Kaggle, test the auto-push setup locally:
 
 ```bash
 # Test with dry-run (no actual pushes)
-uv run phase-unwrap train \
+uv run phase-unwrap train train \
     --epochs 100 \
     --run-name dry_run_test \
     --batch-size 10 \
@@ -764,23 +764,14 @@ uv run pytest tests/ --cov=src/phase_unwrap --cov-report=html
 
 ### Ablation Studies
 
-Systematically evaluate the impact of architectural choices:
-
-```python
-from phase_unwrap.training.ablation import run_ablation
-from phase_unwrap.core.config import TrainConfig
-
-cfg = TrainConfig()
-cfg.data.data_dir = "data/full"
-
-ablations = {
-    "no_curvature": {"loss.w_curv": 0.0},
-    "no_gradient": {"loss.w_grad": 0.0},
-    "double_base": {"model.base": 64},
-    "silu_activation": {"model.activation": "silu"},
-}
-
-run_ablation(cfg, ablations, base_name="ablation_study")
+```bash
+phase-unwrap train ablation \
+    --config runs/optuna/best_config.yaml \
+    --data-dir data/full \
+    --run-name ablation \
+    --num-seeds 3 \
+    --epochs 100 \
+    --device cuda
 ```
 
 ### Custom Dataset

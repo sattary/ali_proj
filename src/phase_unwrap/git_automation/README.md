@@ -37,13 +37,13 @@ os.environ['GITHUB_PAT'] = getpass("Enter GitHub PAT: ")
 
 ```bash
 # Push every 1000 epochs
-phase-unwrap train \
+phase-unwrap train train \
     --epochs 10000 \
     --run-name exp_10k \
     --auto-push-interval 1000
 
 # Test setup first (dry-run)
-phase-unwrap train \
+phase-unwrap train train \
     --epochs 100 \
     --run-name test \
     --auto-push-interval 10 \
@@ -55,7 +55,7 @@ phase-unwrap train \
 
 ```bash
 # Resume from checkpoint
-phase-unwrap train \
+phase-unwrap train train \
     --resume runs/exp_10k/final.pth \
     --epochs 10000 \
     --run-name exp_10k \
@@ -77,7 +77,7 @@ phase-unwrap train \
 After Optuna HPO completes, push results to GitHub:
 
 ```bash
-phase-unwrap tune \
+phase-unwrap train tune \
     --data-dir data/kaggle_full \
     --n-trials 30 \
     --tune-epochs 10 \
