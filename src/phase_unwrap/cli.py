@@ -565,13 +565,25 @@ def plot_qualitative_cmd(
         "results/figs/qualitative_grid.png", "--out", help="Output file path."
     ),
     n_samples: int = typer.Option(4, "--n-samples", help="Number of rows in the grid."),
+    show_noise: bool = typer.Option(
+        True, "--show-noise/--no-show-noise", help="Show noisy input column."
+    ),
+    noise_level: float = typer.Option(
+        1.0, "--noise-level", help="Noise level (0.0=clean, 1.0=max)."
+    ),
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
-    """Plot interferogram | GT | Prediction | Error grid."""
+    """Plot Clean | Noisy | GT | Wrapped | Pred | Error grid."""
     from .visualize import plot_qualitative_grid
 
     plot_qualitative_grid(
-        checkpoint, data_dir, out_path=out, n_samples=n_samples, config_path=config
+        checkpoint,
+        data_dir,
+        out_path=out,
+        n_samples=n_samples,
+        config_path=config,
+        show_noise=show_noise,
+        noise_level=noise_level,
     )
 
 
