@@ -137,7 +137,7 @@ def save_epoch_visuals(
             sample_label = f"Sample {i}"
             ax.set_title(
                 f"{sample_label}\nClean Input"
-                if I_clean
+                if I_clean is not None
                 else f"{sample_label}\n(No Clean)",
                 fontsize=8,
             )
