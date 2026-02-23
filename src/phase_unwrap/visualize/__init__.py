@@ -17,6 +17,7 @@ from .error_histogram import plot_error_histogram
 from .loss_landscape import plot_loss_landscape
 from .method_comparison import plot_method_comparison, plot_method_comparison_bar
 from .multiseed_comparison import plot_ablation_radar, plot_multiseed_comparison
+from .noise_comparison_grid import plot_noise_comparison_grid
 from .phase_profile import plot_phase_profile
 from .prediction_scatter import plot_prediction_scatter
 from .qualitative_grid import plot_qualitative_grid
@@ -43,6 +44,8 @@ __all__ = [
     "plot_prediction_scatter",
     "plot_residual_analysis",
     "plot_tta_benefit",
+    # Noise comparison (new)
+    "plot_noise_comparison_grid",
     # Internal
     "save_epoch_visuals",
 ]

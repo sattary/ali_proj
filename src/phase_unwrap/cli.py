@@ -692,6 +692,36 @@ def plot_baseline_comparison_cmd(
     )
 
 
+@PlotApp.command("noise-comparison")
+def plot_noise_comparison_cmd(
+    checkpoint: str = typer.Option(
+        ..., "--checkpoint", help="Path to model checkpoint."
+    ),
+    data_dir: str = typer.Option(..., "--data-dir", help="Dataset directory."),
+    out: str = typer.Option(
+        "results/figs/noise_comparison.png", "--out", help="Output file path."
+    ),
+    n_samples: int = typer.Option(
+        4, "--n-samples", help="Number of samples to visualize."
+    ),
+    noise_level: float = typer.Option(
+        1.0, "--noise-level", help="Noise level (0.0=clean, 1.0=max)."
+    ),
+    config: Optional[str] = typer.Option(None, "--config", help="Config file."),
+) -> None:
+    """Plot clean vs noisy inference comparison grid."""
+    from .visualize import plot_noise_comparison_grid
+
+    plot_noise_comparison_grid(
+        checkpoint,
+        data_dir,
+        out_path=out,
+        n_samples=n_samples,
+        noise_level=noise_level,
+        config_path=config,
+    )
+
+
 @PlotApp.command("noise-degradation")
 def plot_noise_degradation_cmd(
     checkpoint: str = typer.Option(
