@@ -28,13 +28,13 @@ from .style import (
 )
 
 
-@torch.no_grad()
 def plot_baseline_comparison(
     checkpoint_path: str,
     data_dir: str,
     out_path: str = "results/figs/baseline_comparison",
     n_samples: int = 4,
     config_path: str | None = None,
+    subset: str = "val",
 ) -> None:
     """
     Nature-style multiclass visual comparison.
@@ -58,10 +58,21 @@ def plot_baseline_comparison(
         model.load_state_dict(ckpt.state_dict())
     model.eval()
 
-    train_loader, val_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed)
-    loader = (
-        val_loader if (val_loader is not None and len(val_loader) > 0) else train_loader
+    train_loader, val_loader, test_loader = build_dataloaders(
+        cfg, device, seed=cfg.logging.seed
     )
+    if subset == "test":
+        if test_loader is None:
+            raise ValueError("Test set requested but test_frac=0 in config.")
+        loader = test_loader
+    elif subset == "val":
+        loader = (
+            val_loader
+            if (val_loader is not None and len(val_loader) > 0)
+            else train_loader
+        )
+    else:
+        loader = train_loader
 
     I_input, phi_gt, I_raw_n, I_raw_c = next(iter(loader))
     I_input = I_input[:n_samples].to(device)

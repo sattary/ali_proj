@@ -59,7 +59,8 @@ def _create_objective(base_cfg: TrainConfig, tune_epochs: int):
         Path(os.path.join(run_dir, "config.yaml")).write_text(config_to_yaml(cfg))
 
         try:
-            train_loader, val_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed
+            train_loader, val_loader, _ = build_dataloaders(
+                cfg, device, seed=cfg.logging.seed
             )
         except Exception as e:
             _log(f"  Trial {trial.number}: data loading failed: {e}")

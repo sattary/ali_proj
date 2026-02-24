@@ -64,12 +64,8 @@ def plot_tta_benefit(
     model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
-    _, val_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed
-    )
-    loader = (
-        val_loader
-        or build_dataloaders(cfg, device, seed=cfg.logging.seed)[0]
-    )
+    _, val_loader, _ = build_dataloaders(cfg, device, seed=cfg.logging.seed)
+    loader = val_loader or build_dataloaders(cfg, device, seed=cfg.logging.seed)[0]
 
     # Collect errors with and without TTA
     errors_no_tta = []
@@ -167,7 +163,6 @@ def plot_tta_benefit(
 
         # Panel 2: Improvement distribution
         ax2 = fig.add_subplot(gs[1])
-
 
         sns.histplot(improvements, kde=True, ax=ax2, color=palette[0], alpha=0.6)
         ax2.axvline(0, color="red", linestyle="--", linewidth=1.5)

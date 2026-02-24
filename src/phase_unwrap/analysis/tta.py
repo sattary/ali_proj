@@ -100,12 +100,8 @@ def evaluate_tta(
     model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
-    _, val_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed
-    )
-    loader = (
-        val_loader
-        or build_dataloaders(cfg, device, seed=cfg.logging.seed)[0]
-    )
+    _, val_loader, _ = build_dataloaders(cfg, device, seed=cfg.logging.seed)
+    loader = val_loader or build_dataloaders(cfg, device, seed=cfg.logging.seed)[0]
 
     ALL_AUGS = (
         "rot0",

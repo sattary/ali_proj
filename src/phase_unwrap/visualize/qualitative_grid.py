@@ -44,6 +44,7 @@ def plot_qualitative_grid(
     config_path: str | None = None,
     show_noise: bool = True,
     noise_level: float = 1.0,
+    subset: str = "val",
 ) -> None:
     """
     Enhanced N-row qualitative results grid with seaborn aesthetics.
@@ -80,15 +81,33 @@ def plot_qualitative_grid(
         cfg.data.augment = True
 
     # Build dataloaders
-    train_loader, _ = build_dataloaders(cfg, device, seed=cfg.logging.seed)
-    loader = train_loader
+    train_loader, val_loader, test_loader = build_dataloaders(
+        cfg, device, seed=cfg.logging.seed
+    )
+    if subset == "test":
+        if test_loader is None:
+            raise ValueError("Test set requested but test_frac=0 in config.")
+        loader = test_loader
+    elif subset == "val":
+        loader = val_loader or train_loader
+    else:
+        loader = train_loader
 
     # Get clean data (no noise)
     cfg_no_noise = cfg.__class__()
     for k, v in cfg.__dict__.items():
         setattr(cfg_no_noise, k, v)
     cfg_no_noise.aug.enable = False
-    clean_loader, _ = build_dataloaders(cfg_no_noise, device, seed=cfg.logging.seed)
+
+    clean_train_loader, clean_val_loader, clean_test_loader = build_dataloaders(
+        cfg_no_noise, device, seed=cfg.logging.seed
+    )
+    if subset == "test":
+        clean_loader = clean_test_loader
+    elif subset == "val":
+        clean_loader = clean_val_loader or clean_train_loader
+    else:
+        clean_loader = clean_train_loader
     clean_data_iter = iter(clean_loader)
     I_clean, phi_gt_clean, I_raw_n_clean, I_raw_c_clean = next(clean_data_iter)
     I_clean = I_clean[:n_samples].to(device)

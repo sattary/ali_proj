@@ -75,12 +75,24 @@ def plot_noise_degradation(
     model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
-    _, val_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed)
-    dataset = (
-        val_loader.dataset
-        if val_loader is not None
-        else build_dataloaders(cfg, device, seed=cfg.logging.seed)[0].dataset
+    train_loader, val_loader, test_loader = build_dataloaders(
+        cfg, device, seed=cfg.logging.seed
     )
+
+    if subset == "test":
+        if test_loader is None:
+            raise ValueError("Test set requested but test_frac=0 in config.")
+        loader = test_loader
+    elif subset == "val":
+        loader = (
+            val_loader
+            if (val_loader is not None and len(val_loader) > 0)
+            else train_loader
+        )
+    else:
+        loader = train_loader
+
+    dataset = loader.dataset
 
     # Get single target sample
     I_input, phi_gt, I_raw = dataset[sample_idx]

@@ -571,6 +571,9 @@ def plot_qualitative_cmd(
     noise_level: float = typer.Option(
         1.0, "--noise-level", help="Noise level (0.0=clean, 1.0=max)."
     ),
+    subset: str = typer.Option(
+        "val", "--subset", help="Dataset subset (train, val, test)."
+    ),
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot Clean | Noisy | GT | Wrapped | Pred | Error grid."""
@@ -584,6 +587,7 @@ def plot_qualitative_cmd(
         config_path=config,
         show_noise=show_noise,
         noise_level=noise_level,
+        subset=subset,
     )
 
 
@@ -597,13 +601,21 @@ def plot_phase_profile_cmd(
         "results/figs/phase_profile.png", "--out", help="Output file path."
     ),
     sample_idx: int = typer.Option(0, "--sample-idx", help="Sample index to plot."),
+    subset: str = typer.Option(
+        "val", "--subset", help="Dataset subset (train, val, test)."
+    ),
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot 1D cross-section through center row/column."""
     from .visualize import plot_phase_profile
 
     plot_phase_profile(
-        checkpoint, data_dir, out_path=out, sample_idx=sample_idx, config_path=config
+        checkpoint,
+        data_dir,
+        out_path=out,
+        sample_idx=sample_idx,
+        config_path=config,
+        subset=subset,
     )
 
 
@@ -616,12 +628,17 @@ def plot_error_hist_cmd(
     out: str = typer.Option(
         "results/figs/error_histogram.png", "--out", help="Output file path."
     ),
+    subset: str = typer.Option(
+        "val", "--subset", help="Dataset subset (train, val, test)."
+    ),
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot per-sample MAE histogram + CDF with percentiles."""
     from .visualize import plot_error_histogram
 
-    plot_error_histogram(checkpoint, data_dir, out_path=out, config_path=config)
+    plot_error_histogram(
+        checkpoint, data_dir, out_path=out, config_path=config, subset=subset
+    )
 
 
 @PlotApp.command("loss-landscape")
@@ -638,6 +655,9 @@ def plot_loss_landscape_cmd(
     num_eval_samples: int = typer.Option(
         500, "--num-eval-samples", help="Samples per loss evaluation."
     ),
+    subset: str = typer.Option(
+        "val", "--subset", help="Dataset subset (train, val, test)."
+    ),
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot 2D loss surface contour (Li et al., 2018 filter-normalized)."""
@@ -651,6 +671,7 @@ def plot_loss_landscape_cmd(
         alpha_range=alpha_range,
         num_eval_samples=num_eval_samples,
         config_path=config,
+        subset=subset,
     )
 
 
@@ -667,6 +688,9 @@ def plot_gradcam_cmd(
         4, "--n-samples", help="Number of samples to visualize."
     ),
     layer: str = typer.Option("enc5", "--layer", help="Target encoder layer."),
+    subset: str = typer.Option(
+        "val", "--subset", help="Dataset subset (train, val, test)."
+    ),
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot GradCAM attention overlay on interferograms."""
@@ -679,6 +703,7 @@ def plot_gradcam_cmd(
         n_samples=n_samples,
         target_layer_name=layer,
         config_path=config,
+        subset=subset,
     )
 
 
@@ -694,13 +719,21 @@ def plot_baseline_comparison_cmd(
     n_samples: int = typer.Option(
         4, "--n-samples", help="Number of samples to visualize."
     ),
+    subset: str = typer.Option(
+        "val", "--subset", help="Dataset subset (train, val, test)."
+    ),
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot baseline superiority matrix."""
     from .visualize.baseline_comparison_grid import plot_baseline_comparison
 
     plot_baseline_comparison(
-        checkpoint, data_dir, out_path=out, n_samples=n_samples, config_path=config
+        checkpoint,
+        data_dir,
+        out_path=out,
+        n_samples=n_samples,
+        config_path=config,
+        subset=subset,
     )
 
 
@@ -719,6 +752,9 @@ def plot_noise_comparison_cmd(
     noise_level: float = typer.Option(
         1.0, "--noise-level", help="Noise level (0.0=clean, 1.0=max)."
     ),
+    subset: str = typer.Option(
+        "val", "--subset", help="Dataset subset (train, val, test)."
+    ),
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot clean vs noisy inference comparison grid."""
@@ -731,6 +767,7 @@ def plot_noise_comparison_cmd(
         n_samples=n_samples,
         noise_level=noise_level,
         config_path=config,
+        subset=subset,
     )
 
 
@@ -744,13 +781,21 @@ def plot_noise_degradation_cmd(
         "results/figs/noise_degradation.png", "--out", help="Output file path."
     ),
     sample_idx: int = typer.Option(0, "--sample-idx", help="Target dataset index."),
+    subset: str = typer.Option(
+        "val", "--subset", help="Dataset subset (train, val, test)."
+    ),
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot iterative noise degradation evaluation."""
     from .visualize.noise_degradation_grid import plot_noise_degradation
 
     plot_noise_degradation(
-        checkpoint, data_dir, out_path=out, sample_idx=sample_idx, config_path=config
+        checkpoint,
+        data_dir,
+        out_path=out,
+        sample_idx=sample_idx,
+        config_path=config,
+        subset=subset,
     )
 
 
@@ -833,13 +878,21 @@ def plot_prediction_scatter_cmd(
     max_samples: int = typer.Option(
         500, "--max-samples", help="Maximum samples to scatter plot."
     ),
+    subset: str = typer.Option(
+        "val", "--subset", help="Dataset subset (train, val, test)."
+    ),
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot GT vs prediction scatter with regression line."""
     from .visualize import plot_prediction_scatter
 
     plot_prediction_scatter(
-        checkpoint, data_dir, out_path=out, max_samples=max_samples, config_path=config
+        checkpoint,
+        data_dir,
+        out_path=out,
+        max_samples=max_samples,
+        config_path=config,
+        subset=subset,
     )
 
 
@@ -855,13 +908,21 @@ def plot_residual_analysis_cmd(
     max_samples: int = typer.Option(
         500, "--max-samples", help="Maximum samples to analyze."
     ),
+    subset: str = typer.Option(
+        "val", "--subset", help="Dataset subset (train, val, test)."
+    ),
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot residual analysis with spatial heatmaps."""
     from .visualize import plot_residual_analysis
 
     plot_residual_analysis(
-        checkpoint, data_dir, out_path=out, max_samples=max_samples, config_path=config
+        checkpoint,
+        data_dir,
+        out_path=out,
+        max_samples=max_samples,
+        config_path=config,
+        subset=subset,
     )
 
 
@@ -877,13 +938,21 @@ def plot_tta_benefit_cmd(
     max_samples: int = typer.Option(
         100, "--max-samples", help="Maximum samples to evaluate."
     ),
+    subset: str = typer.Option(
+        "val", "--subset", help="Dataset subset (train, val, test)."
+    ),
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot TTA benefit analysis."""
     from .visualize import plot_tta_benefit
 
     plot_tta_benefit(
-        checkpoint, data_dir, out_path=out, max_samples=max_samples, config_path=config
+        checkpoint,
+        data_dir,
+        out_path=out,
+        max_samples=max_samples,
+        config_path=config,
+        subset=subset,
     )
 
 

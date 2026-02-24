@@ -39,6 +39,7 @@ def plot_residual_analysis(
     out_path: str = "results/figs/residual_analysis",
     config_path: str | None = None,
     max_samples: int = 500,
+    subset: str = "val",
 ) -> None:
     """
     Comprehensive residual diagnostic plots.
@@ -61,9 +62,22 @@ def plot_residual_analysis(
     model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
-    # Use train_loader for consistency with other plots
-    train_loader, _ = build_dataloaders(cfg, device, seed=cfg.logging.seed)
-    loader = train_loader
+    # Datalaoder
+    train_loader, val_loader, test_loader = build_dataloaders(
+        cfg, device, seed=cfg.logging.seed
+    )
+    if subset == "test":
+        if test_loader is None:
+            raise ValueError("Test set requested but test_frac=0 in config.")
+        loader = test_loader
+    elif subset == "val":
+        loader = (
+            val_loader
+            if (val_loader is not None and len(val_loader) > 0)
+            else train_loader
+        )
+    else:
+        loader = train_loader
 
     # Collect predictions
     all_pred = []

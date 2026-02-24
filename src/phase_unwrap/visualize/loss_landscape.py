@@ -133,8 +133,7 @@ def plot_loss_landscape(
 
     loss_fn = MAEGradLoss(w_mae=cfg.loss.w_mae, w_grad=cfg.loss.w_grad)
 
-    train_loader, _ = build_dataloaders(cfg, device, seed=cfg.logging.seed
-    )
+    train_loader, _, _ = build_dataloaders(cfg, device, seed=cfg.logging.seed)
 
     base_params = _get_parameters(model)
     d1 = _random_direction(base_params)
@@ -153,7 +152,7 @@ def plot_loss_landscape(
                 perturbed = _perturb(base_params, d1, d2, a, b)
                 _set_parameters(model, perturbed)
                 losses[j, i] = _evaluate_loss(
-                    model, loss_fn, train_loader, device, num_eval_samples
+                    model, loss_fn, loader, device, num_eval_samples
                 )
                 pbar.update(1)
 

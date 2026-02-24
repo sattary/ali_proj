@@ -28,6 +28,7 @@ class DataConfig:
     I_key: str = "I"
     phi_key: str = "phi"
     val_frac: float = 0.1
+    test_frac: float = 0.1
     workers: int = 4
     augment: bool = True
 

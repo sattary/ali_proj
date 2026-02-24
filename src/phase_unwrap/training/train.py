@@ -246,11 +246,14 @@ def train(
     if not os.path.exists(config_snap_path):
         Path(config_snap_path).write_text(config_to_yaml(cfg))
 
-    train_loader, val_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed)
+    train_loader, val_loader, test_loader = build_dataloaders(
+        cfg, device, seed=cfg.logging.seed
+    )
     print(
         f"[data] dir={cfg.data.data_dir} pattern={cfg.data.pattern} | "
         f"train={len(train_loader.dataset)} "
-        f"val={len(val_loader.dataset) if val_loader is not None else 0}"
+        f"val={len(val_loader.dataset) if val_loader is not None else 0} "
+        f"test={len(test_loader.dataset) if test_loader is not None else 0}"
     )
 
     model = build_model(cfg.model).to(device=device, memory_format=torch.channels_last)
@@ -378,7 +381,7 @@ def train(
                     )
 
                     # Rebuild the dataloaders immediately to apply the new batch size
-                    train_loader, val_loader = build_dataloaders(
+                    train_loader, val_loader, test_loader = build_dataloaders(
                         cfg, device, seed=cfg.logging.seed
                     )
 
@@ -528,4 +531,16 @@ def train(
     if auto_push_callback is not None:
         auto_push_callback.on_train_end(final_metrics={"best_mae": best_mae})
 
-    print(f"Done. Best MAE: {best_mae}")
+    if test_loader is not None:
+        print("\n--- Final Evaluation on Held-Out Test Set ---")
+        test_stats = run_eval(
+            ema.m if ema else model, test_loader, device, use_amp, eval_sobel
+        )
+        print(
+            f"[TEST] MAE={test_stats.get('MAE', 0):.4f} "
+            f"RMSE={test_stats.get('RMSE', 0):.4f} "
+            f"SSIM={test_stats.get('SSIM', 0):.4f} "
+            f"PSNR={test_stats.get('PSNR', 0):.2f} "
+        )
+
+    print(f"\nDone. Best Val MAE: {best_mae:.4f}")

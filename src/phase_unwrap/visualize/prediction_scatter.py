@@ -40,6 +40,7 @@ def plot_prediction_scatter(
     out_path: str = "results/figs/prediction_scatter",
     config_path: str | None = None,
     max_samples: int = 1000,
+    subset: str = "val",
 ) -> None:
     """
     Create prediction vs GT scatter with hexbin and Bland-Altman.
@@ -62,9 +63,22 @@ def plot_prediction_scatter(
     model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
-    # Use train_loader for consistency
-    train_loader, _ = build_dataloaders(cfg, device, seed=cfg.logging.seed)
-    loader = train_loader
+    # Datalaoder
+    train_loader, val_loader, test_loader = build_dataloaders(
+        cfg, device, seed=cfg.logging.seed
+    )
+    if subset == "test":
+        if test_loader is None:
+            raise ValueError("Test set requested but test_frac=0 in config.")
+        loader = test_loader
+    elif subset == "val":
+        loader = (
+            val_loader
+            if (val_loader is not None and len(val_loader) > 0)
+            else train_loader
+        )
+    else:
+        loader = train_loader
 
     # Collect predictions and GT
     all_pred = []

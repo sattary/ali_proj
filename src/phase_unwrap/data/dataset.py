@@ -139,16 +139,32 @@ def smart_split(
     shard_paths: Sequence[str],
     seed: int = 1337,
     val_frac: float = 0.1,
-) -> Tuple[List[str], List[str]]:
-    """Shuffle shard paths and split into train/val at shard level."""
+    test_frac: float = 0.1,
+) -> Tuple[List[str], List[str], List[str]]:
+    """Shuffle shard paths and split into train/val/test at shard level."""
     n = len(shard_paths)
     if n <= 1:
-        return list(shard_paths), []
+        return list(shard_paths), [], []
     rng = random.Random(seed)
     paths = list(shard_paths)
     rng.shuffle(paths)
+
     val_count = max(1, int(round(val_frac * n)))
-    return paths[:-val_count], paths[-val_count:]
+    test_count = max(1, int(round(test_frac * n)))
+
+    # Fallback for very small datasets
+    if val_count + test_count >= n:
+        if n >= 3:
+            val_count = max(1, n // 3)
+            test_count = max(1, n // 3)
+        else:
+            return list(shard_paths), [], []
+
+    train_paths = paths[: -(val_count + test_count)]
+    val_paths = paths[-(val_count + test_count) : -test_count]
+    test_paths = paths[-test_count:]
+
+    return train_paths, val_paths, test_paths
 
 
 def discover_h5_shards(cfg: DataConfig) -> List[str]:
@@ -161,8 +177,8 @@ def build_dataloaders(
     cfg: "TrainConfig",
     device: torch.device,
     seed: int,
-) -> Tuple[DataLoader, DataLoader | None]:
-    """Construct training and (optional) validation DataLoaders."""
+) -> Tuple[DataLoader, DataLoader | None, DataLoader | None]:
+    """Construct training, validation, and test DataLoaders."""
 
     # Python 3.12+ explicitly deprecates fork() in multithreaded (PyTorch) environments.
     # Force 'spawn' to prevent hard deadlocks on process boundary.
@@ -177,7 +193,10 @@ def build_dataloaders(
     if not paths:
         raise RuntimeError(f"No files match {cfg.data.data_dir}/{cfg.data.pattern}")
 
-    train_paths, val_paths = smart_split(paths, seed=seed, val_frac=cfg.data.val_frac)
+    # Use the 3-way split
+    train_paths, val_paths, test_paths = smart_split(
+        paths, seed=seed, val_frac=cfg.data.val_frac, test_frac=cfg.data.test_frac
+    )
 
     # Initialize dynamic curriculum augmentation
     train_aug = None
@@ -212,6 +231,13 @@ def build_dataloaders(
         if val_paths
         else None
     )
+    test_ds = (
+        H5ShardDataset(
+            test_paths, I_key=cfg.data.I_key, phi_key=cfg.data.phi_key, noise_aug=None
+        )
+        if test_paths
+        else None
+    )
 
     use_cuda = device.type == "cuda"
     dl_kwargs = dict(
@@ -225,6 +251,7 @@ def build_dataloaders(
         dl_kwargs["persistent_workers"] = True
 
     train_loader = DataLoader(train_ds, **dl_kwargs)
+
     val_loader = (
         DataLoader(
             val_ds,
@@ -236,4 +263,16 @@ def build_dataloaders(
         if val_ds is not None
         else None
     )
-    return train_loader, val_loader
+
+    test_loader = (
+        DataLoader(
+            test_ds,
+            batch_size=cfg.optim.batch_size,
+            shuffle=False,
+            num_workers=cfg.data.workers,
+            pin_memory=use_cuda,
+        )
+        if test_ds is not None
+        else None
+    )
+    return train_loader, val_loader, test_loader

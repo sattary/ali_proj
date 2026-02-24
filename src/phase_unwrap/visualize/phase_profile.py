@@ -34,6 +34,7 @@ def plot_phase_profile(
     out_path: str = "results/figs/phase_profile",
     sample_idx: int = 0,
     config_path: str | None = None,
+    subset: str = "val",
 ) -> None:
     """
     Enhanced 1D cross-section with seaborn regression and confidence intervals.
@@ -59,12 +60,17 @@ def plot_phase_profile(
     model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
-    _, val_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed
+    train_loader, val_loader, test_loader = build_dataloaders(
+        cfg, device, seed=cfg.logging.seed
     )
-    loader = (
-        val_loader
-        or build_dataloaders(cfg, device, seed=cfg.logging.seed)[0]
-    )
+    if subset == "test":
+        if test_loader is None:
+            raise ValueError("Test set requested but test_frac=0 in config.")
+        loader = test_loader
+    elif subset == "val":
+        loader = val_loader or train_loader
+    else:
+        loader = train_loader
 
     I_input, phi_gt, _ = next(iter(loader))
     I_in = I_input[sample_idx : sample_idx + 1].to(device)

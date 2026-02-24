@@ -102,12 +102,8 @@ def plot_gradcam(
 
     cam_extractor = _GradCAM(model, target_layer)
 
-    _, val_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed
-    )
-    loader = (
-        val_loader
-        or build_dataloaders(cfg, device, seed=cfg.logging.seed)[0]
-    )
+    _, val_loader, _ = build_dataloaders(cfg, device, seed=cfg.logging.seed)
+    loader = val_loader or build_dataloaders(cfg, device, seed=cfg.logging.seed)[0]
 
     I_input, phi_gt, I_raw = next(iter(loader))
     I_input = I_input[:n_samples].to(device).requires_grad_(True)

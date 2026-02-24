@@ -69,7 +69,22 @@ def plot_noise_comparison_grid(
         setattr(cfg_clean, k, v)
     cfg_clean.aug.enable = False
 
-    clean_loader, _ = build_dataloaders(cfg_clean, device, seed=cfg.logging.seed)
+    train_loader_c, val_loader_c, test_loader_c = build_dataloaders(
+        cfg_clean, device, seed=cfg.logging.seed
+    )
+    if subset == "test":
+        if test_loader_c is None:
+            raise ValueError("Test set requested but test_frac=0 in config.")
+        clean_loader = test_loader_c
+    elif subset == "val":
+        clean_loader = (
+            val_loader_c
+            if (val_loader_c is not None and len(val_loader_c) > 0)
+            else train_loader_c
+        )
+    else:
+        clean_loader = train_loader_c
+
     clean_iter = iter(clean_loader)
     I_clean, phi_gt, I_raw_n, I_raw_c = next(clean_iter)
     I_clean = I_clean[:n_samples].to(device)
@@ -87,7 +102,19 @@ def plot_noise_comparison_grid(
         setattr(cfg_noisy, k, v)
     cfg_noisy.aug.enable = True
 
-    noisy_loader, _ = build_dataloaders(cfg_noisy, device, seed=cfg.logging.seed)
+    train_loader_n, val_loader_n, test_loader_n = build_dataloaders(
+        cfg_noisy, device, seed=cfg.logging.seed
+    )
+    if subset == "test":
+        noisy_loader = test_loader_n
+    elif subset == "val":
+        noisy_loader = (
+            val_loader_n
+            if (val_loader_n is not None and len(val_loader_n) > 0)
+            else train_loader_n
+        )
+    else:
+        noisy_loader = train_loader_n
 
     # Apply noise level
     if (
