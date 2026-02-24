@@ -289,6 +289,13 @@ def train(
     sched = _build_warmup_scheduler(
         opt, warmup_steps, total_steps - warmup_steps, cfg.optim.eta_min
     )
+
+    # PyTorch 1.1+ requires optimizer.step() before scheduler.step().
+    # We step them once here (with fake zero-gradients) to initialize the LR correctly
+    # and silence the warning on the first epoch.
+    opt.step()
+    sched.step()
+
     scaler = GradScaler(device=device.type, enabled=use_amp)
     ema = EMA(model, decay=cfg.model.ema_decay)
 

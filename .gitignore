@@ -22,3 +22,8 @@ runs/
 
 # Master prompts (development docs)
 prompts/
+
+
+.antigravity/
+status_handoff.md
+results/
