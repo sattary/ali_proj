@@ -1,38 +1,32 @@
 """
-Noise Comparison Grid - Dedicated figure for clean vs noisy analysis.
-
-Shows:
-- Clean path: Clean Input → Clean Prediction
-- Noisy path: Noisy Input → Noisy Prediction
-- Analysis: Error comparison, difference map, statistics
-
-Publication-ready figure for papers.
+Noise comparison grid showing clean vs noisy inference.
+Ensures consistency and robustness metrics are visible.
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
 import torch
 from torch.amp import autocast
 
 from ..core.config import load_train_config
-from ..core.ops import affine_align
 from ..core.utils import pick_device
 from ..data import build_dataloaders
 from ..model import build_model
+from ..core.ops import affine_align
 from .style import (
-    CMAP_ERROR_ABS,
-    CMAP_INTENSITY,
-    DOUBLE_COL,
     SINGLE_COL,
-    add_colorbar,
-    create_nature_palette,
     nature_style,
     save_figure,
+)
+from .utils import (
+    to_numpy,
+    draw_error_panel,
+    draw_phase_panel,
 )
 
 
@@ -48,23 +42,17 @@ def plot_noise_comparison_grid(
     """
     Noise comparison grid showing clean vs noisy inference.
 
-    Figure layout:
-        Row 1 (Clean Path):  Clean Input | Prediction | Error
-        Row 2 (Noisy Path): Noisy Input | Prediction | Error
-        Row 3 (Analysis):   Error Diff | Statistics
-
-    Args:
-        checkpoint_path: Path to model checkpoint
-        data_dir: Path to data directory
-        out_path: Output file path
-        n_samples: Number of samples to visualize
-        noise_level: Noise level to apply (0.0 = clean, 1.0 = max)
-        config_path: Optional config file path
+    Rows:
+        1. Clean Path Errors
+        2. Noisy Path Errors
+        3. Difference (Noisy - Clean)
     """
     run_dir = str(Path(checkpoint_path).parent)
     cfg_path = config_path or str(Path(run_dir) / "config.yaml")
     cfg = load_train_config(cfg_path if Path(cfg_path).exists() else None)
     cfg.data.data_dir = data_dir
+    cfg.data.workers = 0
+    cfg.optim.batch_size = n_samples
 
     device = pick_device(cfg.model.device)
     model = build_model(cfg.model).to(device)
@@ -75,17 +63,15 @@ def plot_noise_comparison_grid(
 
     # Build clean dataloader (no noise)
     cfg_clean = cfg.__class__()
-    cfg_clean.data = cfg.data
-    cfg_clean.model = cfg.model
-    cfg_clean.aug = cfg.aug
+    for k, v in cfg.__dict__.items():
+        setattr(cfg_clean, k, v)
     cfg_clean.aug.enable = False
 
-    _, clean_loader = build_dataloaders(cfg_clean, device, seed=cfg.logging.seed)
+    clean_loader, _ = build_dataloaders(cfg_clean, device, seed=cfg.logging.seed)
     clean_iter = iter(clean_loader)
-    I_clean, phi_gt, I_raw_clean = next(clean_iter)
+    I_clean, phi_gt, _ = next(clean_iter)
     I_clean = I_clean[:n_samples].to(device)
     phi_gt = phi_gt[:n_samples].to(device)
-    I_raw_clean = I_raw_clean[:n_samples]
 
     with autocast(device_type=device.type, enabled=False):
         phi_raw_clean, k_off_clean = model(I_clean)
@@ -95,23 +81,22 @@ def plot_noise_comparison_grid(
 
     # Build noisy dataloader
     cfg_noisy = cfg.__class__()
-    cfg_noisy.data = cfg.data
-    cfg_noisy.model = cfg.model
-    cfg_noisy.aug = cfg.aug
-    cfg_noisy.data.augment = True
+    for k, v in cfg.__dict__.items():
+        setattr(cfg_noisy, k, v)
+    cfg_noisy.aug.enable = True
 
-    _, noisy_loader = build_dataloaders(cfg_noisy, device, seed=cfg.logging.seed)
-    noisy_iter = iter(noisy_loader)
-    I_noisy, _, I_raw_noisy = next(noisy_iter)
-    I_noisy = I_noisy[:n_samples].to(device)
-    I_raw_noisy = I_raw_noisy[:n_samples]
+    noisy_loader, _ = build_dataloaders(cfg_noisy, device, seed=cfg.logging.seed)
 
-    # Apply noise at specified level
+    # Apply noise level
     if (
         hasattr(noisy_loader.dataset, "noise_aug")
         and noisy_loader.dataset.noise_aug is not None
     ):
         noisy_loader.dataset.noise_aug.set_level(noise_level)
+
+    noisy_iter = iter(noisy_loader)
+    I_noisy, _, _ = next(noisy_iter)
+    I_noisy = I_noisy[:n_samples].to(device)
 
     with autocast(device_type=device.type, enabled=False):
         phi_raw_noisy, k_off_noisy = model(I_noisy)
@@ -120,11 +105,9 @@ def plot_noise_comparison_grid(
     phi_aligned_noisy, _, _ = affine_align(phi_abs_noisy, phi_gt)
 
     # Convert to numpy
-    pred_clean_np = phi_aligned_clean.cpu().numpy()
-    pred_noisy_np = phi_aligned_noisy.cpu().numpy()
-    gt_np = phi_gt.cpu().numpy()
-    raw_clean_np = I_raw_clean.numpy()
-    raw_noisy_np = I_raw_noisy.numpy()
+    pred_clean_np = to_numpy(phi_aligned_clean)
+    pred_noisy_np = to_numpy(phi_aligned_noisy)
+    gt_np = to_numpy(phi_gt)
 
     err_clean = np.abs(pred_clean_np - gt_np)
     err_noisy = np.abs(pred_noisy_np - gt_np)
@@ -134,135 +117,56 @@ def plot_noise_comparison_grid(
     mae_clean = err_clean.mean()
     mae_noisy = err_noisy.mean()
     mae_increase = mae_noisy - mae_clean
-    mae_increase_pct = (mae_increase / mae_clean) * 100
-
-    rmse_clean = np.sqrt((err_clean**2).mean())
-    rmse_noisy = np.sqrt((err_noisy**2).mean())
-
-    # Per-sample stats
-    sample_maes_clean = [err_clean[i].mean() for i in range(n_samples)]
-    sample_maes_noisy = [err_noisy[i].mean() for i in range(n_samples)]
+    mae_increase_pct = (mae_increase / mae_clean) * 100 if mae_clean > 0 else 0
 
     # Create figure with 3 rows
     with nature_style():
-        palette = create_nature_palette(6)
-
         fig, axes = plt.subplots(
-            3,
-            n_samples,
-            figsize=(SINGLE_COL * 1.5, SINGLE_COL * 1.2),
+            3, n_samples, figsize=(SINGLE_COL * 1.5, SINGLE_COL * 1.2), squeeze=False
         )
 
-        phase_cmap = sns.color_palette("viridis", as_cmap=True)
-        error_cmap = sns.color_palette("rocket", as_cmap=True)
-
-        # ========== ROW 1: Clean Path ==========
         for i in range(n_samples):
-            ax = axes[0, i]
-            im = ax.imshow(raw_clean_np[i, 0], cmap=CMAP_INTENSITY, aspect="equal")
-            ax.set_xticks([])
-            ax.set_yticks([])
-            ax.spines[:].set_visible(False)
-            if i == 0:
-                ax.set_ylabel("Clean", fontsize=8, rotation=0, ha="right", va="center")
-
-            if i == n_samples // 2:
-                ax.set_title("Clean Input → Prediction → Error", fontsize=9, pad=10)
-
-        # Clean predictions
-        for i in range(n_samples):
-            ax = axes[0, i]
-            im = ax.imshow(pred_clean_np[i, 0], cmap=phase_cmap, aspect="equal")
-            ax.set_xticks([])
-            ax.set_yticks([])
-            ax.spines[:].set_visible(False)
-
-        # Clean errors
-        for i in range(n_samples):
-            ax = axes[0, i]
-            im = ax.imshow(err_clean[i, 0], cmap=error_cmap, aspect="equal")
-            ax.text(
-                0.98,
-                0.98,
-                f"MAE: {sample_maes_clean[i]:.4f}",
-                transform=ax.transAxes,
-                fontsize=6,
-                ha="right",
-                va="top",
-                color="white",
-                bbox=dict(boxstyle="round", facecolor=palette[0], alpha=0.8),
+            # Row 1: Clean Path Error
+            draw_error_panel(
+                axes[0, i],
+                err_clean[i, 0],
+                f"Sample {i}" if i == 0 else "",
+                stats={"mae": err_clean[i].mean()},
             )
-            ax.set_xticks([])
-            ax.set_yticks([])
-            ax.spines[:].set_visible(False)
 
-        # ========== ROW 2: Noisy Path ==========
-        for i in range(n_samples):
-            ax = axes[1, i]
-            im = ax.imshow(raw_noisy_np[i, 0], cmap=CMAP_INTENSITY, aspect="equal")
-            ax.set_xticks([])
-            ax.set_yticks([])
-            ax.spines[:].set_visible(False)
-            if i == 0:
-                ax.set_ylabel("Noisy", fontsize=8, rotation=0, ha="right", va="center")
-
-        # Noisy predictions
-        for i in range(n_samples):
-            ax = axes[1, i]
-            im = ax.imshow(pred_noisy_np[i, 0], cmap=phase_cmap, aspect="equal")
-            ax.set_xticks([])
-            ax.set_yticks([])
-            ax.spines[:].set_visible(False)
-
-        # Noisy errors
-        for i in range(n_samples):
-            ax = axes[1, i]
-            im = ax.imshow(err_noisy[i, 0], cmap=error_cmap, aspect="equal")
-            ax.text(
-                0.98,
-                0.98,
-                f"MAE: {sample_maes_noisy[i]:.4f}",
-                transform=ax.transAxes,
-                fontsize=6,
-                ha="right",
-                va="top",
-                color="white",
-                bbox=dict(boxstyle="round", facecolor=palette[0], alpha=0.8),
+            # Row 2: Noisy Path Error
+            draw_error_panel(
+                axes[1, i], err_noisy[i, 0], "", stats={"mae": err_noisy[i].mean()}
             )
-            ax.set_xticks([])
-            ax.set_yticks([])
-            ax.spines[:].set_visible(False)
 
-        # ========== ROW 3: Analysis ==========
-        # Error difference
-        for i in range(n_samples):
-            ax = axes[2, i]
+            # Row 3: Difference
             vmax_diff = max(abs(err_diff[i].min()), abs(err_diff[i].max()))
-            im = ax.imshow(
+            draw_phase_panel(
+                axes[2, i],
                 err_diff[i, 0],
+                "",
                 cmap="PuOr",
-                aspect="equal",
                 vmin=-vmax_diff,
                 vmax=vmax_diff,
             )
-            ax.set_xticks([])
-            ax.set_yticks([])
-            ax.spines[:].set_visible(False)
-            if i == 0:
-                ax.set_ylabel(
-                    "Δ Error", fontsize=8, rotation=0, ha="right", va="center"
-                )
 
-        # Add statistics text box
+        # Labels
+        axes[0, 0].set_ylabel(
+            "Clean\nError", fontsize=8, rotation=0, ha="right", va="center"
+        )
+        axes[1, 0].set_ylabel(
+            "Noisy\nError", fontsize=8, rotation=0, ha="right", va="center"
+        )
+        axes[2, 0].set_ylabel(
+            "Error\nShift", fontsize=8, rotation=0, ha="right", va="center"
+        )
+
         stats_text = (
             f"Clean MAE: {mae_clean:.4f}\n"
             f"Noisy MAE: {mae_noisy:.4f}\n"
-            f"Increase: +{mae_increase:.4f} ({mae_increase_pct:+.1f}%)\n"
-            f"Clean RMSE: {rmse_clean:.4f}\n"
-            f"Noisy RMSE: {rmse_noisy:.4f}"
+            f"MAE Increase: +{mae_increase:.4f} ({mae_increase_pct:+.1f}%)"
         )
 
-        # Create a centered statistics annotation
         fig.text(
             0.5,
             0.02,
@@ -275,18 +179,32 @@ def plot_noise_comparison_grid(
         )
 
         plt.suptitle(
-            f"Noise Robustness Analysis (Noise Level: {noise_level:.1f})",
-            fontsize=10,
-            y=0.98,
+            f"Noise Robustness Analysis (Noise: {noise_level:.1f})", fontsize=10, y=0.98
         )
+        fig.tight_layout(rect=[0, 0.1, 1, 0.95])
 
-        fig.tight_layout(rect=[0, 0.08, 1, 0.95])
-        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-        save_figure(fig, out_path)
+        save_path = Path(out_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        save_figure(fig, str(save_path))
+        print(f"Saved noise comparison: {out_path}")
+        plt.close(fig)
 
-        print(f"Saved noise comparison grid: {out_path}")
-        print(
-            f"  Clean MAE: {mae_clean:.4f} | Noisy MAE: {mae_noisy:.4f} | Increase: {mae_increase_pct:+.1f}%"
-        )
-        print(f"  Per-sample clean MAEs: {[f'{m:.4f}' for m in sample_maes_clean]}")
-        print(f"  Per-sample noisy MAEs: {[f'{m:.4f}' for m in sample_maes_noisy]}")
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Generate noise comparison grid.")
+    parser.add_argument("--checkpoint", type=str, required=True)
+    parser.add_argument("--data", type=str, required=True)
+    parser.add_argument("--out", type=str, default="results/figs/noise_comp")
+    parser.add_argument("--n_samples", type=int, default=4)
+    parser.add_argument("--noise_level", type=float, default=1.0)
+    args = parser.parse_args()
+
+    plot_noise_comparison_grid(
+        checkpoint_path=args.checkpoint,
+        data_dir=args.data,
+        out_path=args.out,
+        n_samples=args.n_samples,
+        noise_level=args.noise_level,
+    )

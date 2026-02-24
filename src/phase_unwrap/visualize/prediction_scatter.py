@@ -30,6 +30,7 @@ from .style import (
     nature_style,
     save_figure,
 )
+from .utils import to_numpy
 
 
 @torch.no_grad()
@@ -42,13 +43,6 @@ def plot_prediction_scatter(
 ) -> None:
     """
     Create prediction vs GT scatter with hexbin and Bland-Altman.
-
-    Args:
-        checkpoint_path: Path to model checkpoint
-        data_dir: Dataset directory
-        out_path: Output path (without extension)
-        config_path: Optional config override
-        max_samples: Maximum samples to plot (for performance)
     """
     run_dir = str(Path(checkpoint_path).parent)
     cfg_path = config_path or str(Path(run_dir) / "config.yaml")
@@ -56,20 +50,21 @@ def plot_prediction_scatter(
     cfg.data.data_dir = data_dir
     cfg.data.augment = False
 
+    # Standard overrides for CLI/Standalone
+    if __name__ == "__main__":
+        cfg.data.workers = 0
+        cfg.optim.batch_size = 10
+
     device = pick_device(cfg.model.device)
     model = build_model(cfg.model).to(device)
-    # weights_only=False: loading trusted checkpoint from own training runs
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
     sd = ckpt.get("model_ema", ckpt["model"])
     model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
-    _, val_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed
-    )
-    loader = (
-        val_loader
-        or build_dataloaders(cfg, device, seed=cfg.logging.seed)[0]
-    )
+    # Use train_loader for consistency
+    train_loader, _ = build_dataloaders(cfg, device, seed=cfg.logging.seed)
+    loader = train_loader
 
     # Collect predictions and GT
     all_pred = []
@@ -85,8 +80,8 @@ def plot_prediction_scatter(
 
         aligned, _, _ = affine_align(phi_abs, phi_gt)
 
-        all_pred.extend(aligned.cpu().numpy().flatten())
-        all_gt.extend(phi_gt.cpu().numpy().flatten())
+        all_pred.extend(to_numpy(aligned).flatten())
+        all_gt.extend(to_numpy(phi_gt).flatten())
 
         if len(all_pred) >= max_samples * 100:  # Approximate pixels per sample
             break
@@ -233,7 +228,27 @@ def plot_prediction_scatter(
             y=1.02,
         )
 
-        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-        save_figure(fig, out_path)
+        save_path = Path(out_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        save_figure(fig, str(save_path))
         print(f"Saved prediction scatter: {out_path}")
         print(f"  MAE: {mae:.4f}, RMSE: {rmse:.4f}, R²: {r2:.4f}")
+        plt.close(fig)
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Generate prediction scatter plot.")
+    parser.add_argument("--checkpoint", type=str, required=True)
+    parser.add_argument("--data", type=str, required=True)
+    parser.add_argument("--out", type=str, default="results/figs/prediction_scatter")
+    parser.add_argument("--max_samples", type=int, default=1000)
+    args = parser.parse_args()
+
+    plot_prediction_scatter(
+        checkpoint_path=args.checkpoint,
+        data_dir=args.data,
+        out_path=args.out,
+        max_samples=args.max_samples,
+    )
