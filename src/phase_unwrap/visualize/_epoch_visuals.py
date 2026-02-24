@@ -116,19 +116,19 @@ def save_epoch_visuals(
         # But easier: 2 rows x 4 cols with each cell containing current_batch_size panels side by side
 
         fig, axes = plt.subplots(
-            2,
-            4 * current_batch_size,
-            figsize=(4 * current_batch_size * 2.5, 5),
+            2 * current_batch_size,
+            4,
+            figsize=(10, 5 * current_batch_size),
             squeeze=False,
         )
 
         for local_idx, i in enumerate(range(start_idx, end_idx)):
-            col_offset = local_idx * 4
+            row_offset = local_idx * 2
 
             # ========== ROW 1 ==========
 
             # Panel 1: Clean Input (Task 1)
-            ax = axes[0, col_offset]
+            ax = axes[row_offset, 0]
             if I_clean is not None:
                 ax.imshow(I_clean[i, 0], cmap="gray")
             else:
@@ -144,14 +144,14 @@ def save_epoch_visuals(
             ax.axis("off")
 
             # Panel 2: Noisy Input with noise level (Task 1, 2)
-            ax = axes[0, col_offset + 1]
+            ax = axes[row_offset, 1]
             ax.imshow(I_noisy[i, 0], cmap="gray")
             noise_text = f"Noise: {noise_level:.2f}" if noise_level > 0 else "No Noise"
             ax.set_title(noise_text, fontsize=8)
             ax.axis("off")
 
             # Panel 3: GT Phase
-            ax = axes[0, col_offset + 2]
+            ax = axes[row_offset, 2]
             gt_np = _to_np(gt_rad[i, 0])
             im_gt = ax.imshow(gt_np, cmap="viridis")
             ax.set_title("GT Phase [rad]", fontsize=8)
@@ -159,7 +159,7 @@ def save_epoch_visuals(
             plt.colorbar(im_gt, ax=ax, fraction=0.046, pad=0.04)
 
             # Panel 4: Wrapped Phase (Task 3)
-            ax = axes[0, col_offset + 3]
+            ax = axes[row_offset, 3]
             wrapped = _wrap_phase(gt_np)
             im_wrap = ax.imshow(wrapped, cmap="twilight", vmin=-np.pi, vmax=np.pi)
             ax.set_title("Wrapped (classical)", fontsize=8)
@@ -169,7 +169,7 @@ def save_epoch_visuals(
             # ========== ROW 2 ==========
 
             # Panel 5: Predicted Phase
-            ax = axes[1, col_offset]
+            ax = axes[row_offset + 1, 0]
             pred_np = _to_np(pred_rad[i, 0])
             im_pred = ax.imshow(pred_np, cmap="viridis")
             ax.set_title("Predicted [rad]", fontsize=8)
@@ -177,7 +177,7 @@ def save_epoch_visuals(
             plt.colorbar(im_pred, ax=ax, fraction=0.046, pad=0.04)
 
             # Panel 6: Error Map with Stats + Histogram (Task 4)
-            ax = axes[1, col_offset + 1]
+            ax = axes[row_offset + 1, 1]
             err_raw = pred_rad[i] - gt_rad[i]
             err_np = _to_np(err_raw[0])
             bias = float(err_raw.mean().item())
@@ -201,7 +201,7 @@ def save_epoch_visuals(
             inset_ax.set_title(f"μ={bias:+.3f} σ={std:.3f}", fontsize=5)
 
             # Panel 7: Phase Quality Map (Task 7)
-            ax = axes[1, col_offset + 2]
+            ax = axes[row_offset + 1, 2]
             quality = _compute_quality_map(gt_np)
             im_qual = ax.imshow(quality, cmap="hot")
             ax.set_title("Quality Map", fontsize=8)
@@ -209,7 +209,7 @@ def save_epoch_visuals(
             plt.colorbar(im_qual, ax=ax, fraction=0.046, pad=0.04)
 
             # Panel 8: Phase Profile (Task 6)
-            ax = axes[1, col_offset + 3]
+            ax = axes[row_offset + 1, 3]
             H, W = gt_np.shape
             center_row = H // 2
             ax.plot(gt_np[center_row, :], label="GT", linewidth=1.5, alpha=0.8)

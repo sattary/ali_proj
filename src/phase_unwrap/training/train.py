@@ -423,7 +423,9 @@ def train(
             eval_stats = run_eval(ema.m, val_loader, device, use_amp, eval_sobel)
 
             try:
-                I_input_v, phi_gt_v, I_raw_v = next(iter(val_loader))
+                # Get visualization data from train_loader to show actual noisy data
+                # (val_loader has noise_aug=None, so it always provides clean data)
+                I_input_v, phi_gt_v, I_raw_v = next(iter(train_loader))
                 I_input_v = I_input_v.to(
                     device, non_blocking=True, memory_format=torch.channels_last
                 )
