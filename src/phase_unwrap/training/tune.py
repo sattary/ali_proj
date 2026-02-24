@@ -32,7 +32,9 @@ def _log(msg: str) -> None:
     sys.stderr.flush()
 
 
-def _create_objective(base_cfg: TrainConfig, tune_epochs: int):
+def _create_objective(
+    base_cfg: TrainConfig, tune_epochs: int, batch_size_override: Optional[int] = None
+):
     """Build an Optuna objective closure."""
 
     def objective(trial: optuna.Trial) -> float:
@@ -41,7 +43,14 @@ def _create_objective(base_cfg: TrainConfig, tune_epochs: int):
         cfg.optim.lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
         cfg.loss.w_grad = trial.suggest_float("w_grad", 0.01, 1.0)
         cfg.loss.w_curv = trial.suggest_float("w_curv", 0.0, 0.05)
-        cfg.optim.batch_size = trial.suggest_categorical("batch_size", [8, 16, 32, 64])
+
+        if batch_size_override is not None:
+            cfg.optim.batch_size = batch_size_override
+        else:
+            cfg.optim.batch_size = trial.suggest_categorical(
+                "batch_size", [8, 16, 32, 64]
+            )
+
         cfg.model.base = trial.suggest_categorical("base", [8, 16, 32])
         cfg.optim.warmup_steps = trial.suggest_categorical(
             "warmup_steps", [100, 500, 1000]
@@ -91,9 +100,26 @@ def _create_objective(base_cfg: TrainConfig, tune_epochs: int):
         scaler = GradScaler(device=device.type, enabled=use_amp)
         ema = EMA(model, decay=cfg.model.ema_decay)
 
+        # Initialize noise scheduler for tuning
+        noise_sched = None
+        if getattr(cfg, "aug", None) and cfg.aug.enable:
+            from ..data.augmentation import NoiseScheduler
+
+            # Scale full_epoch to be at most 75% of tune_epochs
+            scaled_full_epoch = min(cfg.aug.full_epoch, max(1, int(tune_epochs * 0.75)))
+            scaled_warmup = min(cfg.aug.warmup_epochs, max(0, int(tune_epochs * 0.25)))
+            noise_sched = NoiseScheduler(
+                full_epoch=scaled_full_epoch,
+                warmup_epochs=scaled_warmup,
+            )
+
         best_mae = float("inf")
 
         for epoch in range(1, tune_epochs + 1):
+            if noise_sched is not None and train_loader.dataset.noise_aug is not None:
+                current_noise = noise_sched.get_level(epoch)
+                train_loader.dataset.noise_aug.set_level(current_noise)
+
             model.train()
             for I_input, phi_gt, I_raw in train_loader:
                 I_input = I_input.to(device)
@@ -174,7 +200,9 @@ def _run_trial_worker(
     cfg.model.device = str(device)
 
     # Create objective with this device
-    objective = _create_objective(cfg, tune_epochs)
+    objective = _create_objective(
+        cfg, tune_epochs, batch_size_override=None
+    )  # Override passed via cfg already outside this func, handled below
 
     # Load study
     study = optuna.load_study(
@@ -219,6 +247,7 @@ def run_tuning(
     n_workers: int = 1,
     gpu_ids: Optional[list[int]] = None,
     auto_push_callback: Optional[Callable[[], None]] = None,
+    batch_size_override: Optional[int] = None,
 ) -> optuna.Study:
     """Run Optuna hyperparameter search (TPE + MedianPruner, SQLite resume).
 
@@ -295,7 +324,9 @@ def run_tuning(
         study = optuna.load_study(study_name=study_name, storage=storage)
     else:
         # Sequential execution
-        objective = _create_objective(cfg, tune_epochs)
+        objective = _create_objective(
+            cfg, tune_epochs, batch_size_override=batch_size_override
+        )
         study.optimize(objective, n_trials=remaining, show_progress_bar=True)
 
     # Check if any trials completed successfully

@@ -213,6 +213,12 @@ def tune_cmd(
     use_amp: bool = typer.Option(
         False, "--use-amp", help="Enable Automatic Mixed Precision (AMP)."
     ),
+    batch_size: Optional[int] = typer.Option(
+        None, "--batch-size", help="Override batch size to prevent OOM."
+    ),
+    workers: Optional[int] = typer.Option(
+        None, "--workers", help="Override dataloader workers (CPU config)."
+    ),
 ) -> None:
     """Run Optuna hyperparameter search (TPE + MedianPruner)."""
     import torch
@@ -228,6 +234,8 @@ def tune_cmd(
         cfg.model.device = device
     if use_amp:
         cfg.model.use_amp = True
+    if workers is not None:
+        cfg.data.workers = workers
 
     gpu_id_list: Optional[list[int]] = None
     if gpu_ids is not None:
@@ -262,6 +270,7 @@ def tune_cmd(
         n_workers=n_workers,
         gpu_ids=gpu_id_list,
         auto_push_callback=auto_push_callback,
+        batch_size_override=batch_size,
     )
 
 
