@@ -133,7 +133,7 @@ def _create_objective(
 
         for epoch in range(1, tune_epochs + 1):
             if noise_sched is not None and train_loader.dataset.noise_aug is not None:
-                current_noise = noise_sched.get_level(epoch)
+                current_noise = noise_sched.level(epoch)
                 train_loader.dataset.noise_aug.set_level(current_noise)
 
             model.train()
