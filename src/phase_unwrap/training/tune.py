@@ -136,6 +136,9 @@ def _create_objective(
         best_mae = float("inf")
 
         for epoch in range(1, tune_epochs + 1):
+            _log(
+                f"  Trial {trial.number} | epoch {epoch}/{tune_epochs} | Training started..."
+            )
             if noise_sched is not None and train_loader.dataset.noise_aug is not None:
                 current_noise = noise_sched.level(epoch)
                 train_loader.dataset.noise_aug.set_level(current_noise)
