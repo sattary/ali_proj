@@ -17,6 +17,7 @@ import torch
 from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
 from torch.amp import GradScaler, autocast
+from tqdm import tqdm
 
 from ..core.config import TrainConfig, config_to_yaml
 from ..core.losses import MAEGradLoss
@@ -136,15 +137,20 @@ def _create_objective(
         best_mae = float("inf")
 
         for epoch in range(1, tune_epochs + 1):
-            _log(
-                f"  Trial {trial.number} | epoch {epoch}/{tune_epochs} | Training started..."
-            )
             if noise_sched is not None and train_loader.dataset.noise_aug is not None:
                 current_noise = noise_sched.level(epoch)
                 train_loader.dataset.noise_aug.set_level(current_noise)
 
             model.train()
-            for I_input, phi_gt, I_raw_n, _ in train_loader:
+            pbar = tqdm(
+                train_loader,
+                desc=f"Trial {trial.number} Ep {epoch}/{tune_epochs}",
+                leave=False,
+                file=sys.stderr,
+            )
+            run_loss = 0.0
+
+            for step, (I_input, phi_gt, I_raw_n, _) in enumerate(pbar):
                 I_input = I_input.to(device)
                 phi_gt = phi_gt.to(device)
                 I_raw_n = I_raw_n.to(device)
@@ -179,6 +185,10 @@ def _create_objective(
                 scaler.update()
                 sched.step()
                 ema.update(model)
+
+                run_loss += float(loss.detach())
+                if step % 10 == 0:
+                    pbar.set_postfix(loss=f"{run_loss / (step + 1):.4f}")
 
             if val_loader is not None:
                 ema.m.eval()
