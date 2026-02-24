@@ -28,11 +28,9 @@ from ..core.utils import ensure_dir
 from .utils import (
     to_numpy,
     wrap_phase,
-    compute_quality_map,
     draw_intensity_panel,
     draw_phase_panel,
     draw_error_panel,
-    draw_profile_panel,
 )
 
 _HEADLESS = not os.environ.get("DISPLAY")
@@ -54,9 +52,8 @@ def save_epoch_visuals(
 ) -> None:
     """Save quick per-sample visualizations during training.
 
-    Enhanced layout with all 7 tasks:
-    - Row 1: Clean Input (Raw) | Noisy Input (Raw) | GT Phase | Wrapped Phase
-    - Row 2: Pred Phase | Error Map (with histogram) | Quality Map | Phase Profile
+    Refactored to a 1-row layout per sample:
+    [Noisy Input] | [GT Phase] | [Wrapped Phase] | [Pred Phase] | [Error Map]
     """
     ensure_dir(out_dir)
 
@@ -65,13 +62,9 @@ def save_epoch_visuals(
 
     # Get model input
     # Channel 0 of I_input is ALWAYS the normalized (Z-scored) input.
-    # Dataset now provides:
-    # I_raw_clean = Original uncorrupted image
-    # I_raw_noisy = Corrupted raw image (before Z-scoring)
     I_noisy = (
         to_numpy(I_raw_noisy) if I_raw_noisy is not None else to_numpy(I_input[:, 0:1])
     )
-    I_clean = to_numpy(I_raw_clean) if I_raw_clean is not None else None
 
     pred_rad = phi_pred_abs_aligned.float()
     gt_rad = phi_gt.float()
@@ -86,57 +79,43 @@ def save_epoch_visuals(
         current_batch_size = end_idx - start_idx
 
         fig, axes = plt.subplots(
-            2,
-            4 * current_batch_size,
-            figsize=(4 * current_batch_size * 2.5, 5),
+            current_batch_size,
+            5,
+            figsize=(15, 3.5 * current_batch_size),
             squeeze=False,
         )
 
         for local_idx, i in enumerate(range(start_idx, end_idx)):
-            col_offset = local_idx * 4
-
-            # Panel 1: Clean Input
-            ax = axes[0, col_offset]
-            if I_clean is not None:
-                draw_intensity_panel(
-                    ax, I_clean[i, 0], f"Sample {i}\nClean Input", colorbar=False
-                )
-            else:
-                ax.imshow(np.zeros((128, 128)), cmap="gray")
-                ax.text(
-                    64, 64, "N/A", ha="center", va="center", fontsize=10, color="white"
-                )
-                ax.set_title(f"Sample {i}\n(No Clean)", fontsize=8)
-                ax.axis("off")
-
-            # Panel 2: Noisy Input
-            ax = axes[0, col_offset + 1]
-            noise_text = f"Noise: {noise_level:.2f}" if noise_level > 0 else "No Noise"
+            # Panel 1: Noisy Input
+            ax = axes[local_idx, 0]
+            noise_text = (
+                f"Noise: {noise_level:.2f}" if noise_level > 0 else "Input (Clean)"
+            )
             draw_intensity_panel(ax, I_noisy[i, 0], noise_text, colorbar=False)
 
-            # Panel 3: GT Phase
-            ax = axes[0, col_offset + 2]
+            # Panel 2: GT Phase
+            ax = axes[local_idx, 1]
             gt_np = to_numpy(gt_rad[i, 0])
-            draw_phase_panel(ax, gt_np, "GT Phase [rad]")
+            draw_phase_panel(ax, gt_np, "GT Phase")
 
-            # Panel 4: Wrapped Phase
-            ax = axes[0, col_offset + 3]
+            # Panel 3: Wrapped Phase
+            ax = axes[local_idx, 2]
             draw_phase_panel(
                 ax,
                 wrap_phase(gt_np),
-                "Wrapped",
+                "Wrapped GT",
                 cmap="twilight",
                 vmin=-np.pi,
                 vmax=np.pi,
             )
 
-            # Panel 5: Predicted Phase
-            ax = axes[1, col_offset]
+            # Panel 4: Predicted Phase
+            ax = axes[local_idx, 3]
             pred_np = to_numpy(pred_rad[i, 0])
-            draw_phase_panel(ax, pred_np, "Predicted [rad]")
+            draw_phase_panel(ax, pred_np, "Prediction")
 
-            # Panel 6: Error Map
-            ax = axes[1, col_offset + 1]
+            # Panel 5: Error Map
+            ax = axes[local_idx, 4]
             err_raw = pred_rad[i] - gt_rad[i]
             mae = float(err_raw.abs().mean().item())
             rmse = float(torch.sqrt((err_raw**2).mean()).item())
@@ -144,33 +123,12 @@ def save_epoch_visuals(
             draw_error_panel(
                 ax,
                 to_numpy(err_raw[0].abs()),
-                f"Error Map\nMAE:{mae:.3f} RMSE:{rmse:.3f}",
+                f"Error\nMAE:{mae:.2f} RMSE:{rmse:.2f}",
                 vmax=emax,
             )
 
-            # Add histogram inset
-            inset_ax = ax.inset_axes([0.55, 0.55, 0.42, 0.42])
-            inset_ax.hist(
-                to_numpy(err_raw[0]).flatten(),
-                bins=30,
-                density=True,
-                alpha=0.7,
-                color="steelblue",
-            )
-            inset_ax.set_xlim(-emax * 2, emax * 2)
-            inset_ax.set_yticks([])
-            inset_ax.axis("off")
-
-            # Panel 7: Quality Map
-            ax = axes[1, col_offset + 2]
-            draw_phase_panel(ax, compute_quality_map(gt_np), "Quality Map", cmap="hot")
-
-            # Panel 8: Profile
-            ax = axes[1, col_offset + 3]
-            draw_profile_panel(ax, gt_np, pred_np)
-
         plt.tight_layout()
-        filename = f"epoch{epoch:03d}_{'sample' if samples_per_file == 1 else 'grid'}{start_idx if samples_per_file == 1 else file_idx}.png"
+        filename = f"epoch{epoch:03d}_batch{file_idx}.png"
         fig.savefig(os.path.join(out_dir, filename), dpi=150, bbox_inches="tight")
         plt.close(fig)
 
