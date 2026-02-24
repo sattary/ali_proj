@@ -104,6 +104,7 @@ def plot_loss_landscape(
     alpha_range: float = 1.0,
     num_eval_samples: int = 500,
     config_path: str | None = None,
+    subset: str = "val",
 ) -> None:
     """
     2D loss landscape contour around converged weights.
@@ -133,7 +134,17 @@ def plot_loss_landscape(
 
     loss_fn = MAEGradLoss(w_mae=cfg.loss.w_mae, w_grad=cfg.loss.w_grad)
 
-    train_loader, _, _ = build_dataloaders(cfg, device, seed=cfg.logging.seed)
+    train_loader, val_loader, test_loader = build_dataloaders(
+        cfg, device, seed=cfg.logging.seed
+    )
+    if subset == "test":
+        if test_loader is None:
+            raise ValueError("Test set requested but test_frac=0 in config.")
+        loader = test_loader
+    elif subset == "val":
+        loader = val_loader or train_loader
+    else:
+        loader = train_loader
 
     base_params = _get_parameters(model)
     d1 = _random_direction(base_params)

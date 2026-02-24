@@ -117,6 +117,9 @@ def train_cmd(
     auto_push_pat: Optional[str] = typer.Option(
         None, "--auto-push-pat", help="GitHub PAT (or set GITHUB_PAT env var)."
     ),
+    use_amp: bool = typer.Option(
+        False, "--use-amp", help="Enable Automatic Mixed Precision (AMP)."
+    ),
 ) -> None:
     """Train the UNetRes2 absolute phase reconstruction model."""
     import torch
@@ -135,6 +138,8 @@ def train_cmd(
         cfg.optim.epochs = epochs
     if batch_size is not None:
         cfg.optim.batch_size = batch_size
+    if use_amp:
+        cfg.model.use_amp = True
 
     gpu_id_list: Optional[list[int]] = None
     if gpu_ids is not None:
@@ -205,6 +210,9 @@ def tune_cmd(
     auto_push_dry_run: bool = typer.Option(
         False, "--auto-push-dry-run", help="Test auto-push without actually pushing."
     ),
+    use_amp: bool = typer.Option(
+        False, "--use-amp", help="Enable Automatic Mixed Precision (AMP)."
+    ),
 ) -> None:
     """Run Optuna hyperparameter search (TPE + MedianPruner)."""
     import torch
@@ -218,6 +226,8 @@ def tune_cmd(
         cfg.data.data_dir = str(data_dir)
     if device is not None:
         cfg.model.device = device
+    if use_amp:
+        cfg.model.use_amp = True
 
     gpu_id_list: Optional[list[int]] = None
     if gpu_ids is not None:

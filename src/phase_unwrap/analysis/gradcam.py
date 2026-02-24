@@ -68,6 +68,7 @@ def plot_gradcam(
     n_samples: int = 4,
     target_layer_name: str = "enc5",
     config_path: str | None = None,
+    subset: str = "val",
 ) -> None:
     """
     Generate GradCAM overlay visualization (3-column: input, heatmap, overlay).
@@ -102,8 +103,17 @@ def plot_gradcam(
 
     cam_extractor = _GradCAM(model, target_layer)
 
-    _, val_loader, _ = build_dataloaders(cfg, device, seed=cfg.logging.seed)
-    loader = val_loader or build_dataloaders(cfg, device, seed=cfg.logging.seed)[0]
+    train_loader, val_loader, test_loader = build_dataloaders(
+        cfg, device, seed=cfg.logging.seed
+    )
+    if subset == "test":
+        if test_loader is None:
+            raise ValueError("Test set requested but test_frac=0 in config.")
+        loader = test_loader
+    elif subset == "val":
+        loader = val_loader or train_loader
+    else:
+        loader = train_loader
 
     I_input, phi_gt, I_raw = next(iter(loader))
     I_input = I_input[:n_samples].to(device).requires_grad_(True)
