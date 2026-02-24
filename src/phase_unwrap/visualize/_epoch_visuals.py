@@ -47,14 +47,15 @@ def save_epoch_visuals(
     out_dir: str,
     epoch: int,
     max_items: int = 8,
-    I_raw: Optional[torch.Tensor] = None,
+    I_raw_clean: Optional[torch.Tensor] = None,
+    I_raw_noisy: Optional[torch.Tensor] = None,
     noise_level: float = 0.0,
     samples_per_file: int = 4,
 ) -> None:
     """Save quick per-sample visualizations during training.
 
     Enhanced layout with all 7 tasks:
-    - Row 1: Clean Input | Noisy Input (with noise level) | GT Phase | Wrapped Phase
+    - Row 1: Clean Input (Raw) | Noisy Input (Raw) | GT Phase | Wrapped Phase
     - Row 2: Pred Phase | Error Map (with histogram) | Quality Map | Phase Profile
     """
     ensure_dir(out_dir)
@@ -63,8 +64,14 @@ def save_epoch_visuals(
     n_files = (B + samples_per_file - 1) // samples_per_file
 
     # Get model input
-    I_noisy = to_numpy(I_input[:, 0:1])
-    I_clean = to_numpy(I_raw) if I_raw is not None else None
+    # Channel 0 of I_input is ALWAYS the normalized (Z-scored) input.
+    # Dataset now provides:
+    # I_raw_clean = Original uncorrupted image
+    # I_raw_noisy = Corrupted raw image (before Z-scoring)
+    I_noisy = (
+        to_numpy(I_raw_noisy) if I_raw_noisy is not None else to_numpy(I_input[:, 0:1])
+    )
+    I_clean = to_numpy(I_raw_clean) if I_raw_clean is not None else None
 
     pred_rad = phi_pred_abs_aligned.float()
     gt_rad = phi_gt.float()

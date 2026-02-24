@@ -70,7 +70,7 @@ def plot_prediction_scatter(
     all_pred = []
     all_gt = []
 
-    for I_input, phi_gt, _ in loader:
+    for I_input, phi_gt, *_ in loader:
         I_input = I_input.to(device)
         phi_gt = phi_gt.to(device)
 

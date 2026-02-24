@@ -13,7 +13,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
 import torch
 from torch.amp import autocast
 
@@ -67,8 +66,13 @@ def plot_qualitative_grid(
     device = pick_device(cfg.model.device)
     model = build_model(cfg.model).to(device)
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    sd = ckpt.get("model_ema", ckpt["model"])
-    model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
+    if isinstance(ckpt, dict):
+        sd = ckpt.get("model_ema", ckpt.get("model", ckpt))
+        model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
+    else:
+        # Probable TorchScript module
+        print(f"[load] Checkpoint is {type(ckpt)}. Attempting state_dict extraction...")
+        model.load_state_dict(ckpt.state_dict())
     model.eval()
 
     # Apply curriculum noise config
@@ -86,10 +90,10 @@ def plot_qualitative_grid(
     cfg_no_noise.aug.enable = False
     clean_loader, _ = build_dataloaders(cfg_no_noise, device, seed=cfg.logging.seed)
     clean_data_iter = iter(clean_loader)
-    I_clean, phi_gt_clean, I_raw_clean = next(clean_data_iter)
+    I_clean, phi_gt_clean, I_raw_n_clean, I_raw_c_clean = next(clean_data_iter)
     I_clean = I_clean[:n_samples].to(device)
     phi_gt_clean = phi_gt_clean[:n_samples].to(device)
-    I_raw_clean = I_raw_clean[:n_samples]
+    I_raw_clean = I_raw_c_clean[:n_samples]
 
     with autocast(device_type=device.type, enabled=False):
         phi_raw_clean, k_off_clean = model(I_clean)
@@ -105,10 +109,7 @@ def plot_qualitative_grid(
         ):
             loader.dataset.noise_aug.set_level(noise_level)
 
-        I_noisy, phi_gt_noisy, I_raw_noisy = next(iter(loader))
-        I_noisy = I_noisy[:n_samples].to(device)
-        phi_gt_noisy = phi_gt_noisy[:n_samples].to(device)
-        I_raw_noisy = I_raw_noisy[:n_samples]
+        I_noisy, phi_gt_noisy, I_raw_n_noisy, I_raw_c_noisy = next(iter(loader))
 
         with autocast(device_type=device.type, enabled=False):
             phi_raw_noisy, k_off_noisy = model(I_noisy)
@@ -232,6 +233,8 @@ if __name__ == "__main__":
     parser.add_argument("--out", type=str, default="results/figs/qual_grid")
     parser.add_argument("--n_samples", type=int, default=4)
     parser.add_argument("--noise_level", type=float, default=1.0)
+    parser.add_argument("--show-noise", action="store_true", default=True)
+    parser.add_argument("--no-show-noise", action="store_false", dest="show_noise")
     args = parser.parse_args()
 
     plot_qualitative_grid(
@@ -240,4 +243,5 @@ if __name__ == "__main__":
         out_path=args.out,
         n_samples=args.n_samples,
         noise_level=args.noise_level,
+        show_noise=args.show_noise,
     )

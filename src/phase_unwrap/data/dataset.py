@@ -27,7 +27,8 @@ class H5ShardDataset(Dataset):
             - channel 0: normalized interferogram (per-sample z-score)
             - channel 1: phi_hint (broadcast scalar reference phase from GT center)
         phi_gt   [1, H, W]: ground-truth absolute/unwrapped phase (radians)
-        I_raw    [1, H, W]: raw interferogram (for optional intensity weighting)
+        I_raw_n  [1, H, W]: noisy raw interferogram (after augmentation)
+        I_raw_c  [1, H, W]: clean raw interferogram (before augmentation)
     """
 
     def __init__(
@@ -71,7 +72,9 @@ class H5ShardDataset(Dataset):
                 lo = mid + 1
         return lo, idx - self._cumulative[lo]
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __getitem__(
+        self, idx: int
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         shard_idx, local_idx = self._locate(idx)
         f = self._get_shard_handle(shard_idx)
 
@@ -102,15 +105,20 @@ class H5ShardDataset(Dataset):
         ref_val = float(phi_gt_t[0, cy, cx].item())
         phi_hint = torch.full_like(phi_gt_t, ref_val)
 
+        I_raw_clean = I_raw_t.clone()
+        I_raw_noisy = I_raw_t
+
         # Dynamic Optical/Curriculum Noise Injection
         if hasattr(self, "noise_aug") and self.noise_aug is not None:
-            I_raw_t, I_norm_t, phi_hint = self.noise_aug(I_raw_t, I_norm_t, phi_hint)
+            I_raw_noisy, I_norm_t, phi_hint = self.noise_aug(
+                I_raw_noisy, I_norm_t, phi_hint
+            )
 
         if phi_hint is None:
             phi_hint = torch.full_like(phi_gt_t, ref_val)
 
         I_input = torch.cat([I_norm_t, phi_hint], dim=0)
-        return I_input, phi_gt_t, I_raw_t
+        return I_input, phi_gt_t, I_raw_noisy, I_raw_clean
 
     def close(self) -> None:
         """Close all open HDF5 file handles."""

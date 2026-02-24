@@ -5,7 +5,6 @@ Ensures consistency and robustness metrics are visible.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -57,8 +56,11 @@ def plot_noise_comparison_grid(
     device = pick_device(cfg.model.device)
     model = build_model(cfg.model).to(device)
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    sd = ckpt.get("model_ema", ckpt["model"])
-    model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
+    if isinstance(ckpt, dict):
+        sd = ckpt.get("model_ema", ckpt.get("model", ckpt))
+        model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
+    else:
+        model.load_state_dict(ckpt.state_dict())
     model.eval()
 
     # Build clean dataloader (no noise)
@@ -69,7 +71,7 @@ def plot_noise_comparison_grid(
 
     clean_loader, _ = build_dataloaders(cfg_clean, device, seed=cfg.logging.seed)
     clean_iter = iter(clean_loader)
-    I_clean, phi_gt, _ = next(clean_iter)
+    I_clean, phi_gt, I_raw_n, I_raw_c = next(clean_iter)
     I_clean = I_clean[:n_samples].to(device)
     phi_gt = phi_gt[:n_samples].to(device)
 
@@ -95,7 +97,7 @@ def plot_noise_comparison_grid(
         noisy_loader.dataset.noise_aug.set_level(noise_level)
 
     noisy_iter = iter(noisy_loader)
-    I_noisy, _, _ = next(noisy_iter)
+    I_noisy, _, _, _ = next(noisy_iter)
     I_noisy = I_noisy[:n_samples].to(device)
 
     with autocast(device_type=device.type, enabled=False):

@@ -45,25 +45,28 @@ def plot_baseline_comparison(
     cfg = load_train_config(cfg_path if Path(cfg_path).exists() else None)
     cfg.data.data_dir = data_dir
     cfg.data.augment = False
+    cfg.data.workers = 0
+    cfg.optim.batch_size = n_samples
 
     device = pick_device("cpu")  # Strict CPU extraction logic
     model = build_model(cfg.model).to(device)
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    sd = ckpt.get("model_ema", ckpt["model"])
-    model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
+    if isinstance(ckpt, dict):
+        sd = ckpt.get("model_ema", ckpt.get("model", ckpt))
+        model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
+    else:
+        model.load_state_dict(ckpt.state_dict())
     model.eval()
 
-    _, val_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed)
+    train_loader, val_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed)
     loader = (
-        val_loader
-        if val_loader is not None
-        else build_dataloaders(cfg, device, seed=cfg.logging.seed)[0]
+        val_loader if (val_loader is not None and len(val_loader) > 0) else train_loader
     )
 
-    I_input, phi_gt, I_raw = next(iter(loader))
+    I_input, phi_gt, I_raw_n, I_raw_c = next(iter(loader))
     I_input = I_input[:n_samples].to(device)
     phi_gt = phi_gt[:n_samples].to(device)
-    I_raw = I_raw[:n_samples].numpy()
+    I_raw = I_raw_c[:n_samples].numpy()
     gt_np = phi_gt.cpu().numpy()
 
     with autocast(device_type=device.type, enabled=False):
@@ -189,3 +192,21 @@ def plot_baseline_comparison(
         Path(out_path).parent.mkdir(parents=True, exist_ok=True)
         save_figure(fig, out_path)
         print(f"Saved baseline comparison grid: {out_path}")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Generate baseline comparison grid.")
+    parser.add_argument("--checkpoint", type=str, required=True)
+    parser.add_argument("--data", type=str, required=True)
+    parser.add_argument("--out", type=str, default="results/figs/baseline_comparison")
+    parser.add_argument("--n_samples", type=int, default=4)
+    args = parser.parse_args()
+
+    plot_baseline_comparison(
+        checkpoint_path=args.checkpoint,
+        data_dir=args.data,
+        out_path=args.out,
+        n_samples=args.n_samples,
+    )

@@ -147,7 +147,7 @@ def run_eval(
     }
     n = 0
 
-    for I_input, phi_gt, I_raw in loader:
+    for I_input, phi_gt, I_raw_n, I_raw_c in loader:
         I_input = I_input.to(
             device, non_blocking=True, memory_format=torch.channels_last
         )
@@ -321,14 +321,14 @@ def train(
         cnt = 0
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{cfg.optim.epochs}", leave=False)
-        for I_input, phi_gt, I_raw in pbar:
+        for I_input, phi_gt, I_raw_n, I_raw_c in pbar:
             I_input = I_input.to(
                 device, non_blocking=True, memory_format=torch.channels_last
             )
             phi_gt = phi_gt.to(
                 device, non_blocking=True, memory_format=torch.channels_last
             )
-            I_raw = I_raw.to(
+            I_raw_n = I_raw_n.to(
                 device, non_blocking=True, memory_format=torch.channels_last
             )
 
@@ -342,7 +342,7 @@ def train(
                     L_phase, parts = loss_fn(
                         phi_abs,
                         phi_gt,
-                        I_raw if cfg.loss.int_wgrad else None,
+                        I_raw_n if cfg.loss.int_wgrad else None,
                     )
                     L_curv = cfg.loss.w_curv * curvature_loss(phi_abs)
                     loss = cfg.loss.w_data * L_phase + L_curv
@@ -425,7 +425,7 @@ def train(
             try:
                 # Get visualization data from train_loader to show actual noisy data
                 # (val_loader has noise_aug=None, so it always provides clean data)
-                I_input_v, phi_gt_v, I_raw_v = next(iter(train_loader))
+                I_input_v, phi_gt_v, I_raw_n_v, I_raw_c_v = next(iter(train_loader))
                 I_input_v = I_input_v.to(
                     device, non_blocking=True, memory_format=torch.channels_last
                 )
@@ -449,7 +449,8 @@ def train(
                     vis_dir,
                     epoch,
                     cfg.logging.vis_max,
-                    I_raw=I_raw_v.cpu(),
+                    I_raw_clean=I_raw_c_v.cpu(),
+                    I_raw_noisy=I_raw_n_v.cpu(),
                     noise_level=current_noise_level,
                     samples_per_file=4,
                 )
