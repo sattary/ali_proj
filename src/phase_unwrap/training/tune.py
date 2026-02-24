@@ -137,19 +137,26 @@ def _create_objective(
                 train_loader.dataset.noise_aug.set_level(current_noise)
 
             model.train()
-            for I_input, phi_gt, I_raw in train_loader:
+            for I_input, phi_gt, I_raw_n, _ in train_loader:
                 I_input = I_input.to(device)
                 phi_gt = phi_gt.to(device)
-                I_raw = I_raw.to(device)
+                I_raw_n = I_raw_n.to(device)
 
                 opt.zero_grad(set_to_none=True)
                 with autocast(device_type=device.type, enabled=use_amp):
                     phi_raw, k_off = model(I_input)
-                    phi_abs = phi_raw + k_off
+
+                    if isinstance(phi_raw, list):
+                        phi_abs = [p + k_off for p in phi_raw]
+                        phi_abs_fine = phi_abs[-1]
+                    else:
+                        phi_abs = phi_raw + k_off
+                        phi_abs_fine = phi_abs
+
                     L_phase, _ = loss_fn(
-                        phi_abs, phi_gt, I_raw if cfg.loss.int_wgrad else None
+                        phi_abs, phi_gt, I_raw_n if cfg.loss.int_wgrad else None
                     )
-                    L_curv = cfg.loss.w_curv * curvature_loss(phi_abs)
+                    L_curv = cfg.loss.w_curv * curvature_loss(phi_abs_fine)
                     loss = cfg.loss.w_data * L_phase + L_curv
 
                 if not torch.isfinite(loss):
@@ -171,7 +178,7 @@ def _create_objective(
                 total_mae = 0.0
                 n = 0
                 with torch.no_grad():
-                    for I_input, phi_gt, _ in val_loader:
+                    for I_input, phi_gt, _, _ in val_loader:
                         I_input = I_input.to(device)
                         phi_gt = phi_gt.to(device)
                         with autocast(device_type=device.type, enabled=use_amp):
