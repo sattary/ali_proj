@@ -14,6 +14,7 @@ Rationale: ARCHITECTURE
 from __future__ import annotations
 
 
+import multiprocessing as mp
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -86,11 +87,12 @@ class NoiseAug:
             hint_offset_std=hint_offset_std,
         )
         self.enable = enable
-        self.level = 0.0  # start silent
+        # Use shared memory so persistent DataLoader workers reflect main process updates
+        self._level = mp.Value("f", 0.0)
 
     def set_level(self, level: float) -> None:
         """Manually push the curriculum strength."""
-        self.level = float(min(1.0, max(0.0, level)))
+        self._level.value = float(min(1.0, max(0.0, level)))
 
     @staticmethod
     def _gaussian_blur(x: torch.Tensor, sigma: float) -> torch.Tensor:
@@ -114,10 +116,10 @@ class NoiseAug:
         phi_hint: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
         """Apply noise mathematically, modifying Raw/Norm tensors gracefully."""
-        if not self.enable or self.level <= 0:
+        L = self._level.value
+        if not self.enable or L <= 0:
             return I_raw, I_norm, phi_hint
 
-        L = self.level
         p = self.base
         device = I_raw.device
         dtype = I_raw.dtype
