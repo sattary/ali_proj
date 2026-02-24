@@ -73,7 +73,12 @@ class Res2_DS_Block(nn.Module):
 
         self.conv1 = nn.Conv2d(in_ch, mid, 1, bias=False)
         self.bn1 = nn.BatchNorm2d(mid)
-        self.act = nn.ReLU(inplace=True) if act == "relu" else nn.SiLU(inplace=True)
+        if act == "relu":
+            self.act = nn.ReLU(inplace=True)
+        elif act == "mish":
+            self.act = nn.Mish(inplace=True)
+        else:
+            self.act = nn.SiLU(inplace=True)
 
         base = mid // self.s
         rem = mid - base * self.s
@@ -164,7 +169,8 @@ class UNetRes2_AbsPhase(nn.Module):
     UNet encoder-decoder with Res2 blocks and a global offset head.
 
     Input:  [B, 2, H, W]  (I_norm, phi_hint)
-    Output: (phi_raw [B,1,H,W], k_off [B,1,1,1])
+    Output: phi_raw is a list [phi_4, phi_2, phi_1] in train mode for deep supervision,
+            or just phi_1 in eval mode. k_off evaluates global offset.
     """
 
     def __init__(
@@ -205,13 +211,25 @@ class UNetRes2_AbsPhase(nn.Module):
         self.up0 = UpBlockRes2(C(2) + C(1), C(1), 4, 1.0, act)
 
         self.final_dropout = nn.Dropout2d(final_dropout)
-        self.head_pix = nn.Conv2d(C(1), 1, 1)
+
+        # Deep supervision heads mapping intermediate features to 1 channel phase
+        self.head_4 = nn.Conv2d(C(4), 1, 1)
+        self.head_2 = nn.Conv2d(C(2), 1, 1)
+        self.head_1 = nn.Conv2d(C(1), 1, 1)
 
         self.off_conv = nn.Conv2d(C(32), C(8), 1)
-        self.off_act = nn.ReLU(inplace=True) if act == "relu" else nn.SiLU(inplace=True)
+        if act == "relu":
+            self.off_act = nn.ReLU(inplace=True)
+        elif act == "mish":
+            self.off_act = nn.Mish(inplace=True)
+        else:
+            self.off_act = nn.SiLU(inplace=True)
+
         self.off_fc = nn.Conv2d(C(8), 1, 1)
 
-    def forward(self, x_in: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(
+        self, x_in: torch.Tensor
+    ) -> Tuple[torch.Tensor | list[torch.Tensor], torch.Tensor]:
         x0 = self.addcoords(x_in)
 
         e1 = self.enc1(x0)
@@ -229,14 +247,21 @@ class UNetRes2_AbsPhase(nn.Module):
         d0 = self.up0(d1, e1)
 
         d0 = self.final_dropout(d0)
-        phi_raw = self.head_pix(d0)
 
+        # Global offset processing
         z = self.off_conv(b)
         z = self.off_act(z)
         k_off = self.off_fc(z)
         k_off = k_off.mean(dim=(2, 3), keepdim=True)
 
-        return phi_raw, k_off
+        phi_raw_1 = self.head_1(d0)
+
+        if self.training:
+            phi_raw_4 = self.head_4(d2)
+            phi_raw_2 = self.head_2(d1)
+            return [phi_raw_4, phi_raw_2, phi_raw_1], k_off
+
+        return phi_raw_1, k_off
 
 
 class EMA:

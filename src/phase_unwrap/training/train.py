@@ -340,14 +340,21 @@ def train(
             try:
                 with autocast(device_type=device.type, enabled=use_amp):
                     phi_raw, k_off = model(I_input)
-                    phi_abs = phi_raw + k_off
+
+                    if isinstance(phi_raw, list):
+                        phi_abs = [p + k_off for p in phi_raw]
+                        # Ensure curvature loss is only calculated on the finest resolution
+                        phi_abs_fine = phi_abs[-1]
+                    else:
+                        phi_abs = phi_raw + k_off
+                        phi_abs_fine = phi_abs
 
                     L_phase, parts = loss_fn(
                         phi_abs,
                         phi_gt,
                         I_raw_n if cfg.loss.int_wgrad else None,
                     )
-                    L_curv = cfg.loss.w_curv * curvature_loss(phi_abs)
+                    L_curv = cfg.loss.w_curv * curvature_loss(phi_abs_fine)
                     loss = cfg.loss.w_data * L_phase + L_curv
 
                 scaler.scale(loss).backward()
@@ -357,9 +364,19 @@ def train(
                     cfg.optim.grad_clip,
                     error_if_nonfinite=False,
                 )
+
+                # AMP scaler.step may skip the optimizer step if gradients are NaN/Inf.
+                # If it skips, we shouldn't step the LR scheduler.
+                scale_before = scaler.get_scale()
                 scaler.step(opt)
                 scaler.update()
-                sched.step()
+                scale_after = scaler.get_scale()
+
+                # Only step the scheduler if the scaler didn't reduce the scale
+                # (which indicates it skipped the opt.step due to nan/inf grads).
+                if scale_after >= scale_before:
+                    sched.step()
+
                 ema.update(model)
 
             except RuntimeError as e:
