@@ -109,6 +109,10 @@ def _create_objective(
         sched = torch.optim.lr_scheduler.SequentialLR(
             opt, schedulers=[warmup_sched, cosine_sched], milestones=[warmup_steps]
         )
+        # Dummy step to initialize LR and silence warnings
+        opt.step()
+        sched.step()
+
         scaler = GradScaler(device=device.type, enabled=use_amp)
         ema = EMA(model, decay=cfg.model.ema_decay)
 
