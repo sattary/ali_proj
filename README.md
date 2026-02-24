@@ -99,8 +99,10 @@ The absolute phase `phi` serves as the regression target. This avoids the need f
 ### Model: UNetRes2-AbsPhase
 
 - **Encoder**: 5 downsampling stages, each containing a `Res2_DS_Block` (depthwise-separable + hierarchical residual connections)
+- **Activations**: Mish activations used throughout all blocks to prevent dead gradients and improve continuous phase surface regression
 - **Bottleneck**: Deep Res2 block
 - **Decoder**: Bilinear upsampling + skip concatenation + Res2 block per stage
+- **Multi-Scale Deep Supervision**: The decoder outputs phase predictions at three scales ($1/4$, $1/2$, and full resolution) during training. This creates a multi-scale gradient loss that forces intermediate layers to rapidly learn physics-based phase representations.
 - **Coordinate channels**: CoordConv (`AddCoords`) prepended to input for global position awareness
 - **Output**: Per-pixel phase map (`phi_raw`) and a learned global offset scalar (`k_off`); combined as `phi = phi_raw + k_off`
 - **EMA**: Exponential moving average shadow model (default decay 0.999) is used for all evaluations
