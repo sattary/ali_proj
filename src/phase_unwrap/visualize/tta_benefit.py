@@ -93,7 +93,7 @@ def plot_tta_benefit(
     errors_tta = []
     sample_indices = []
 
-    for batch_idx, (I_input, phi_gt, _) in enumerate(loader):
+    for batch_idx, (I_input, phi_gt, _, _) in enumerate(loader):
         if batch_idx >= max_samples // I_input.size(0):
             break
 
