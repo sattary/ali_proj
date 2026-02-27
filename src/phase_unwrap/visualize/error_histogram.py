@@ -17,6 +17,7 @@ import numpy as np
 import seaborn as sns
 import torch
 from torch.amp import autocast
+from tqdm import tqdm
 
 from ..core.config import load_train_config
 from ..core.ops import affine_align
@@ -79,13 +80,16 @@ def plot_error_histogram(
 
     sample_maes: list[float] = []
 
-    for I_input, phi_gt, _, _ in loader:
+    for I_input, phi_gt, _, _ in tqdm(loader, desc="Evaluating Dataset (CPU)"):
         I_input = I_input.to(device)
         phi_gt = phi_gt.to(device)
 
         with autocast(device_type=device.type, enabled=False):
             phi_raw, k_off = model(I_input)
-            phi_abs = phi_raw + k_off
+            if isinstance(phi_raw, list):
+                phi_abs = phi_raw[-1] + k_off
+            else:
+                phi_abs = phi_raw + k_off
 
         aligned, _, _ = affine_align(phi_abs, phi_gt)
 
