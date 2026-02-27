@@ -31,6 +31,7 @@ def run_plot_all_local(
     run_dir: Path,
     data_dir: Optional[Path],
     n_samples: int,
+    subset: str = "val",
 ) -> None:
     """Central sequence to render downloaded Kaggle/Colab payload locally on CPU."""
     from ..analysis.gradcam import plot_gradcam
@@ -73,6 +74,7 @@ def run_plot_all_local(
         out_path=str(final_figs_dir / "qualitative_grid.png"),
         n_samples=n_samples,
         config_path=cfg_arg,
+        subset=subset,
     )
 
     print("\n[3/8] Generating Phase Profile...")
@@ -82,6 +84,7 @@ def run_plot_all_local(
         out_path=str(final_figs_dir / "phase_profile.png"),
         sample_idx=0,
         config_path=cfg_arg,
+        subset=subset,
     )
 
     print("\n[4/8] Generating Error Histogram...")
@@ -90,6 +93,7 @@ def run_plot_all_local(
         data_dir=dataset_dir,
         out_path=str(final_figs_dir / "error_histogram.png"),
         config_path=cfg_arg,
+        subset=subset,
     )
 
     print("\n[5/8] Generating Loss Landscape...")
@@ -100,6 +104,7 @@ def run_plot_all_local(
         num_eval_samples=50,
         grid_size=3,
         config_path=cfg_arg,
+        subset=subset,
     )
 
     print("\n[6/8] Generating GradCAM (enc5)...")
@@ -110,6 +115,7 @@ def run_plot_all_local(
         n_samples=n_samples,
         target_layer_name="enc5",
         config_path=cfg_arg,
+        subset=subset,
     )
 
     print("\n[7/8] Generating Baseline Superiority Matrix...")
@@ -119,6 +125,7 @@ def run_plot_all_local(
         out_path=str(final_figs_dir / "baseline_comparison.png"),
         n_samples=n_samples,
         config_path=cfg_arg,
+        subset=subset,
     )
 
     print("\n[8/8] Generating Noise Degradation Grid...")
@@ -128,6 +135,7 @@ def run_plot_all_local(
         out_path=str(final_figs_dir / "noise_degradation.png"),
         sample_idx=0,
         config_path=cfg_arg,
+        subset=subset,
     )
 
     print("\n" + "=" * 60)

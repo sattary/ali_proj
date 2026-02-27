@@ -1007,6 +1007,9 @@ def run_local_cmd(
     n_samples: int = typer.Option(
         4, "--n-samples", help="Number of samples for grids."
     ),
+    subset: str = typer.Option(
+        "val", "--subset", help="Dataset subset (train, val, test)."
+    ),
 ) -> None:
     """Render downloaded Kaggle/Colab payload locally on CPU."""
     from .visualize.runner import run_plot_all_local
@@ -1015,6 +1018,7 @@ def run_local_cmd(
         run_dir=Path(run_dir),
         data_dir=Path(data_dir) if data_dir else None,
         n_samples=n_samples,
+        subset=subset,
     )
 
 

@@ -56,6 +56,7 @@ def plot_noise_degradation(
     out_path: str = "results/figs/noise_degradation",
     sample_idx: int = 0,
     config_path: str | None = None,
+    subset: str = "val",
 ) -> None:
     """
     Nature-style iterative noise degradation evaluation.
@@ -144,7 +145,10 @@ def plot_noise_degradation(
 
             with autocast(device_type=device.type, enabled=False):
                 phi_raw_pred, k_off_pred = model(noisy_input)
-                phi_abs_pred = phi_raw_pred + k_off_pred
+                if isinstance(phi_raw_pred, list):
+                    phi_abs_pred = phi_raw_pred[-1] + k_off_pred
+                else:
+                    phi_abs_pred = phi_raw_pred + k_off_pred
 
             phi_aligned, _, _ = affine_align(phi_abs_pred, phi_gt)
 
