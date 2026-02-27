@@ -79,7 +79,7 @@ def plot_error_histogram(
 
     sample_maes: list[float] = []
 
-    for I_input, phi_gt, _ in loader:
+    for I_input, phi_gt, _, _ in loader:
         I_input = I_input.to(device)
         phi_gt = phi_gt.to(device)
 
