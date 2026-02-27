@@ -30,7 +30,7 @@ def plot_curriculum_noise(
     with H5ShardDataset(
         paths, I_key=cfg.data.I_key, phi_key=cfg.data.phi_key, noise_aug=None
     ) as ds:
-        _, _, I_raw = ds[sample_idx]
+        _, _, I_raw, _ = ds[sample_idx]
 
     I_raw = I_raw.unsqueeze(0)  # [1, 1, H, W]
 
