@@ -38,6 +38,8 @@ def plot_tta_benefit(
     config_path: str | None = None,
     n_augments: int = 8,
     max_samples: int = 100,
+    subset: str = "val",
+    all_data: bool = False,
 ) -> None:
     """
     Visualize TTA benefits with statistical analysis.
@@ -56,6 +58,11 @@ def plot_tta_benefit(
     cfg.data.data_dir = data_dir
     cfg.data.augment = False
 
+    if all_data:
+        cfg.data.val_frac = 0.0
+        cfg.data.test_frac = 0.0
+        subset = "train"
+
     device = pick_device(cfg.model.device)
     model = build_model(cfg.model).to(device)
     # weights_only=False: loading trusted checkpoint from own training runs
@@ -64,8 +71,22 @@ def plot_tta_benefit(
     model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
-    _, val_loader, _ = build_dataloaders(cfg, device, seed=cfg.logging.seed)
-    loader = val_loader or build_dataloaders(cfg, device, seed=cfg.logging.seed)[0]
+    train_loader, val_loader, test_loader = build_dataloaders(
+        cfg, device, seed=cfg.logging.seed
+    )
+
+    if subset == "test":
+        if test_loader is None:
+            raise ValueError("Test set requested but test_frac=0 in config.")
+        loader = test_loader
+    elif subset == "val":
+        loader = (
+            val_loader
+            if (val_loader is not None and len(val_loader) > 0)
+            else train_loader
+        )
+    else:
+        loader = train_loader
 
     # Collect errors with and without TTA
     errors_no_tta = []
@@ -82,7 +103,10 @@ def plot_tta_benefit(
         # Without TTA
         with autocast(device_type=device.type, enabled=False):
             phi_raw, k_off = model(I_input)
-            phi_no_tta = phi_raw + k_off
+            if isinstance(phi_raw, list):
+                phi_no_tta = phi_raw[-1] + k_off
+            else:
+                phi_no_tta = phi_raw + k_off
         aligned_no_tta, _, _ = affine_align(phi_no_tta, phi_gt)
 
         # With TTA
