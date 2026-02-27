@@ -82,15 +82,20 @@ def _evaluate_loss(
     """Compute average loss over (at most) num_samples examples."""
     total_loss = 0.0
     n = 0
-    for I_input, phi_gt, I_raw in loader:
+    for I_input, phi_gt, I_raw_n, _ in loader:
         if n >= num_samples:
             break
         I_input = I_input.to(device)
         phi_gt = phi_gt.to(device)
+        I_raw_n = I_raw_n.to(device) if I_raw_n is not None else None
+
         with autocast(device_type=device.type, enabled=False):
             phi_raw, k_off = model(I_input)
-            phi_abs = phi_raw + k_off
-            loss, _ = loss_fn(phi_abs, phi_gt, None)
+            if isinstance(phi_raw, list):
+                phi_abs = [p + k_off for p in phi_raw]
+            else:
+                phi_abs = phi_raw + k_off
+            loss, _ = loss_fn(phi_abs, phi_gt, I_raw_n)
         total_loss += float(loss.item()) * I_input.size(0)
         n += I_input.size(0)
     return total_loss / max(1, n)

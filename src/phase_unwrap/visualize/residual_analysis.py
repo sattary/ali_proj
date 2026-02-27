@@ -89,7 +89,10 @@ def plot_residual_analysis(
 
         with autocast(device_type=device.type, enabled=False):
             phi_raw, k_off = model(I_input)
-            phi_abs = phi_raw + k_off
+            if isinstance(phi_raw, list):
+                phi_abs = phi_raw[-1] + k_off
+            else:
+                phi_abs = phi_raw + k_off
 
         aligned, _, _ = affine_align(phi_abs, phi_gt)
 
