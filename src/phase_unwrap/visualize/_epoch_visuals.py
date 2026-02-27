@@ -65,6 +65,7 @@ def save_epoch_visuals(
     I_noisy = (
         to_numpy(I_raw_noisy) if I_raw_noisy is not None else to_numpy(I_input[:, 0:1])
     )
+    I_clean = to_numpy(I_raw_clean) if I_raw_clean is not None else None
 
     pred_rad = phi_pred_abs_aligned.float()
     gt_rad = phi_gt.float()
@@ -80,26 +81,38 @@ def save_epoch_visuals(
 
         fig, axes = plt.subplots(
             current_batch_size,
-            5,
-            figsize=(15, 3.5 * current_batch_size),
+            6,
+            figsize=(18, 3.5 * current_batch_size),
             squeeze=False,
         )
 
         for local_idx, i in enumerate(range(start_idx, end_idx)):
-            # Panel 1: Noisy Input
+            # Panel 1: Clean Input (Pristine physics)
             ax = axes[local_idx, 0]
+            if I_clean is not None:
+                draw_intensity_panel(ax, I_clean[i, 0], "Clean Input", colorbar=False)
+            else:
+                ax.axis("off")
+                ax.text(
+                    0.5, 0.5, "No Clean\nData", ha="center", va="center", fontsize=8
+                )
+
+            # Panel 2: Noisy Input (What model sees)
+            ax = axes[local_idx, 1]
             noise_text = (
-                f"Noise: {noise_level:.2f}" if noise_level > 0 else "Input (Clean)"
+                f"Noisy Input (L:{noise_level:.2f})"
+                if noise_level > 0
+                else "Input (Clean)"
             )
             draw_intensity_panel(ax, I_noisy[i, 0], noise_text, colorbar=False)
 
-            # Panel 2: GT Phase
-            ax = axes[local_idx, 1]
+            # Panel 3: GT Phase
+            ax = axes[local_idx, 2]
             gt_np = to_numpy(gt_rad[i, 0])
             draw_phase_panel(ax, gt_np, "GT Phase")
 
-            # Panel 3: Wrapped Phase
-            ax = axes[local_idx, 2]
+            # Panel 4: Wrapped Phase
+            ax = axes[local_idx, 3]
             draw_phase_panel(
                 ax,
                 wrap_phase(gt_np),
@@ -109,13 +122,13 @@ def save_epoch_visuals(
                 vmax=np.pi,
             )
 
-            # Panel 4: Predicted Phase
-            ax = axes[local_idx, 3]
+            # Panel 5: Predicted Phase
+            ax = axes[local_idx, 4]
             pred_np = to_numpy(pred_rad[i, 0])
             draw_phase_panel(ax, pred_np, "Prediction")
 
-            # Panel 5: Error Map
-            ax = axes[local_idx, 4]
+            # Panel 6: Error Map
+            ax = axes[local_idx, 5]
             err_raw = pred_rad[i] - gt_rad[i]
             mae = float(err_raw.abs().mean().item())
             rmse = float(torch.sqrt((err_raw**2).mean()).item())
@@ -123,7 +136,7 @@ def save_epoch_visuals(
             draw_error_panel(
                 ax,
                 to_numpy(err_raw[0].abs()),
-                f"Error\nMAE:{mae:.2f} RMSE:{rmse:.2f}",
+                f"Error\nMAE:{mae:.3f} RMSE:{rmse:.3f}",
                 vmax=emax,
             )
 
