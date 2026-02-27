@@ -901,6 +901,11 @@ def plot_prediction_scatter_cmd(
         "val", "--subset", help="Dataset subset (train, val, test)."
     ),
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
+    noise_level: Optional[float] = typer.Option(
+        None,
+        "--noise-level",
+        help="Override curriculum noise level (0.0=clean, 1.0=max phase-7 destruction).",
+    ),
 ) -> None:
     """Plot GT vs prediction scatter with regression line."""
     from .visualize import plot_prediction_scatter
@@ -912,6 +917,7 @@ def plot_prediction_scatter_cmd(
         max_samples=max_samples,
         config_path=config,
         subset=subset,
+        noise_level=noise_level,
     )
 
 
@@ -931,6 +937,9 @@ def plot_residual_analysis_cmd(
         "val", "--subset", help="Dataset subset (train, val, test)."
     ),
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
+    noise_level: Optional[float] = typer.Option(
+        None, "--noise-level", help="Override curriculum noise level."
+    ),
 ) -> None:
     """Plot residual analysis with spatial heatmaps."""
     from .visualize import plot_residual_analysis
@@ -942,6 +951,7 @@ def plot_residual_analysis_cmd(
         max_samples=max_samples,
         config_path=config,
         subset=subset,
+        noise_level=noise_level,
     )
 
 

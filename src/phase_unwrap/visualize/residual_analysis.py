@@ -40,6 +40,7 @@ def plot_residual_analysis(
     config_path: str | None = None,
     max_samples: int = 500,
     subset: str = "val",
+    noise_level: float | None = None,
 ) -> None:
     """
     Comprehensive residual diagnostic plots.
@@ -48,7 +49,10 @@ def plot_residual_analysis(
     cfg_path = config_path or str(Path(run_dir) / "config.yaml")
     cfg = load_train_config(cfg_path if Path(cfg_path).exists() else None)
     cfg.data.data_dir = data_dir
-    cfg.data.augment = False
+    if noise_level is not None and noise_level > 0.0:
+        cfg.data.augment = True
+    else:
+        cfg.data.augment = False
 
     # Standard overrides for CLI/Standalone
     if __name__ == "__main__":
@@ -78,6 +82,13 @@ def plot_residual_analysis(
         )
     else:
         loader = train_loader
+
+    if noise_level is not None and noise_level > 0.0:
+        if (
+            hasattr(loader.dataset, "noise_aug")
+            and loader.dataset.noise_aug is not None
+        ):
+            loader.dataset.noise_aug.set_level(noise_level)
 
     # Collect predictions
     all_pred = []
