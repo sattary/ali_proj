@@ -83,6 +83,8 @@ def evaluate_tta(
     data_dir: str,
     n_augments: int = 8,
     config_path: str | None = None,
+    subset: str = "val",
+    all_data: bool = False,
 ) -> dict[str, float]:
     """
     Compare model MAE with and without TTA on the validation set.
@@ -95,6 +97,11 @@ def evaluate_tta(
     cfg.data.data_dir = data_dir
     cfg.data.augment = False
 
+    if all_data:
+        cfg.data.val_frac = 0.0
+        cfg.data.test_frac = 0.0
+        subset = "train"
+
     device = pick_device(cfg.model.device)
     model = build_model(cfg.model).to(device)
     # weights_only=False: loading trusted checkpoint from own training runs
@@ -103,8 +110,22 @@ def evaluate_tta(
     model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
-    _, val_loader, _ = build_dataloaders(cfg, device, seed=cfg.logging.seed)
-    loader = val_loader or build_dataloaders(cfg, device, seed=cfg.logging.seed)[0]
+    train_loader, val_loader, test_loader = build_dataloaders(
+        cfg, device, seed=cfg.logging.seed
+    )
+
+    if subset == "test":
+        if test_loader is None:
+            raise ValueError("Test set requested but test_frac=0 in config.")
+        loader = test_loader
+    elif subset == "val":
+        loader = (
+            val_loader
+            if (val_loader is not None and len(val_loader) > 0)
+            else train_loader
+        )
+    else:
+        loader = train_loader
 
     ALL_AUGS = (
         "rot0",

@@ -979,6 +979,9 @@ def plot_tta_benefit_cmd(
         "val", "--subset", help="Dataset subset (train, val, test)."
     ),
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
+    all_data: bool = typer.Option(
+        False, "--all-data", help="Use entire dataset (disable val/test splits)."
+    ),
 ) -> None:
     """Plot TTA benefit analysis."""
     from .visualize import plot_tta_benefit
@@ -990,6 +993,7 @@ def plot_tta_benefit_cmd(
         max_samples=max_samples,
         config_path=config,
         subset=subset,
+        all_data=all_data,
     )
 
 
