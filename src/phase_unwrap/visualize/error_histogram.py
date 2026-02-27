@@ -123,14 +123,7 @@ def plot_error_histogram(
             linewidth=1,
         )
 
-        # Overlay swarm for outliers
-        sns.swarmplot(
-            data=[maes],
-            ax=ax1,
-            color=palette[1],
-            size=2,
-            alpha=0.5,
-        )
+        # Removed sns.swarmplot because it has O(n^2) scaling and hangs endlessly on large datasets.
 
         # Statistical lines
         ax1.axhline(
