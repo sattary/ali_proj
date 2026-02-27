@@ -906,6 +906,9 @@ def plot_prediction_scatter_cmd(
         "--noise-level",
         help="Override curriculum noise level (0.0=clean, 1.0=max phase-7 destruction).",
     ),
+    all_data: bool = typer.Option(
+        False, "--all-data", help="Use entire dataset (disable val/test splits)."
+    ),
 ) -> None:
     """Plot GT vs prediction scatter with regression line."""
     from .visualize import plot_prediction_scatter
@@ -918,6 +921,7 @@ def plot_prediction_scatter_cmd(
         config_path=config,
         subset=subset,
         noise_level=noise_level,
+        all_data=all_data,
     )
 
 
@@ -940,6 +944,9 @@ def plot_residual_analysis_cmd(
     noise_level: Optional[float] = typer.Option(
         None, "--noise-level", help="Override curriculum noise level."
     ),
+    all_data: bool = typer.Option(
+        False, "--all-data", help="Use entire dataset (disable val/test splits)."
+    ),
 ) -> None:
     """Plot residual analysis with spatial heatmaps."""
     from .visualize import plot_residual_analysis
@@ -952,6 +959,7 @@ def plot_residual_analysis_cmd(
         config_path=config,
         subset=subset,
         noise_level=noise_level,
+        all_data=all_data,
     )
 
 

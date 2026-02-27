@@ -42,6 +42,7 @@ def plot_prediction_scatter(
     max_samples: int = 1000,
     subset: str = "val",
     noise_level: float | None = None,
+    all_data: bool = False,
 ) -> None:
     """
     Create prediction vs GT scatter with hexbin and Bland-Altman.
@@ -54,6 +55,11 @@ def plot_prediction_scatter(
         cfg.data.augment = True
     else:
         cfg.data.augment = False
+
+    if all_data:
+        cfg.data.val_frac = 0.0
+        cfg.data.test_frac = 0.0
+        subset = "train"  # When splits are 0, everything falls into train_loader
 
     # Standard overrides for CLI/Standalone
     if __name__ == "__main__":

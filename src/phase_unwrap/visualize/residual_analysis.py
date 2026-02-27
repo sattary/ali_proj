@@ -41,6 +41,7 @@ def plot_residual_analysis(
     max_samples: int = 500,
     subset: str = "val",
     noise_level: float | None = None,
+    all_data: bool = False,
 ) -> None:
     """
     Comprehensive residual diagnostic plots.
@@ -53,6 +54,11 @@ def plot_residual_analysis(
         cfg.data.augment = True
     else:
         cfg.data.augment = False
+
+    if all_data:
+        cfg.data.val_frac = 0.0
+        cfg.data.test_frac = 0.0
+        subset = "train"
 
     # Standard overrides for CLI/Standalone
     if __name__ == "__main__":
