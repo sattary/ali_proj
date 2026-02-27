@@ -39,7 +39,10 @@ class _GradCAM:
     def __call__(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         self.model.zero_grad()
         phi_raw, k_off = self.model(x)
-        phi_abs = phi_raw + k_off
+        if isinstance(phi_raw, list):
+            phi_abs = phi_raw[-1] + k_off
+        else:
+            phi_abs = phi_raw + k_off
 
         target = phi_abs.mean()
         target.backward()
@@ -115,7 +118,7 @@ def plot_gradcam(
     else:
         loader = train_loader
 
-    I_input, phi_gt, I_raw = next(iter(loader))
+    I_input, phi_gt, I_raw, _ = next(iter(loader))
     I_input = I_input[:n_samples].to(device).requires_grad_(True)
     I_raw = I_raw[:n_samples]
 

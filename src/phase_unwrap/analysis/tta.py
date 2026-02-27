@@ -63,7 +63,10 @@ def predict_tta(
 
         with autocast(device_type=device.type, enabled=False):
             phi_raw, k_off = model(x)
-            phi_abs = phi_raw + k_off
+            if isinstance(phi_raw, list):
+                phi_abs = phi_raw[-1] + k_off
+            else:
+                phi_abs = phi_raw + k_off
 
         phi_abs = _unrotate90(phi_abs, k)
         if flip:
@@ -119,13 +122,16 @@ def evaluate_tta(
     total_tta = 0.0
     n = 0
 
-    for I_input, phi_gt, _ in loader:
+    for I_input, phi_gt, _, _ in loader:
         I_input = I_input.to(device)
         phi_gt = phi_gt.to(device)
 
         with autocast(device_type=device.type, enabled=False):
             phi_raw, k_off = model(I_input)
-            phi_noaug = phi_raw + k_off
+            if isinstance(phi_raw, list):
+                phi_noaug = phi_raw[-1] + k_off
+            else:
+                phi_noaug = phi_raw + k_off
         aligned_noaug, _, _ = affine_align(phi_noaug, phi_gt)
         total_noaug += float((aligned_noaug - phi_gt).abs().mean()) * I_input.size(0)
 
