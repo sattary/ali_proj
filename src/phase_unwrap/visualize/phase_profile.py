@@ -72,7 +72,7 @@ def plot_phase_profile(
     else:
         loader = train_loader
 
-    I_input, phi_gt, _ = next(iter(loader))
+    I_input, phi_gt, _, _ = next(iter(loader))
     I_in = I_input[sample_idx : sample_idx + 1].to(device)
     gt = phi_gt[sample_idx : sample_idx + 1].to(device)
 
