@@ -28,6 +28,7 @@ from .style import (
 )
 
 
+@torch.no_grad()
 def plot_baseline_comparison(
     checkpoint_path: str,
     data_dir: str,
@@ -82,7 +83,10 @@ def plot_baseline_comparison(
 
     with autocast(device_type=device.type, enabled=False):
         phi_raw, k_off = model(I_input)
-        phi_abs = phi_raw + k_off
+        if isinstance(phi_raw, list):
+            phi_abs = phi_raw[-1] + k_off
+        else:
+            phi_abs = phi_raw + k_off
 
     phi_aligned, _, _ = affine_align(phi_abs, phi_gt)
     unet_np = phi_aligned.cpu().numpy()
