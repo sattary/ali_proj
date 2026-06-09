@@ -115,8 +115,8 @@ def _generate_shard_worker(args: Tuple[int, int, int, Path]) -> int:
 
     shard_name = out_path / f"train_shard_{shard_idx:03d}.h5"
     with h5py.File(shard_name, "w") as f:
-        f.create_dataset("I", data=I_buf, compression="gzip", compression_opts=4)
-        f.create_dataset("phi", data=phi_buf, compression="gzip", compression_opts=4)
+        f.create_dataset("I", data=I_buf, chunks=(1, 1, NY, NX), compression="gzip", compression_opts=4)
+        f.create_dataset("phi", data=phi_buf, chunks=(1, 1, NY, NX), compression="gzip", compression_opts=4)
 
     return n_in_shard
 

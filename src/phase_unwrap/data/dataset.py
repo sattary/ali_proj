@@ -59,7 +59,7 @@ class H5ShardDataset(Dataset):
 
     def _get_shard_handle(self, shard_idx: int) -> h5py.File:
         if shard_idx not in self._handles:
-            self._handles[shard_idx] = h5py.File(self.shard_paths[shard_idx], "r")
+            self._handles[shard_idx] = h5py.File(self.shard_paths[shard_idx], "r", swmr=True)
         return self._handles[shard_idx]
 
     def _locate(self, idx: int) -> Tuple[int, int]:
