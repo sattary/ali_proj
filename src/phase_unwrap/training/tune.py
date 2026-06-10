@@ -47,27 +47,12 @@ def _create_objective(
 
         if batch_size_override is not None:
             cfg.optim.batch_size = batch_size_override
-        else:
-            cfg.optim.batch_size = trial.suggest_categorical(
-                "batch_size", [8, 16, 32, 64]
-            )
 
         cfg.model.base = trial.suggest_categorical("base", [8, 16, 32])
-        cfg.model.activation = trial.suggest_categorical("activation", ["mish", "silu"])
 
         cfg.optim.warmup_steps = trial.suggest_categorical(
             "warmup_steps", [100, 500, 1000]
         )
-
-        # Tune the final actual noise boundaries, assuming a full run of base_cfg.optim.epochs
-        full_run_epochs = max(1, base_cfg.optim.epochs)
-        if getattr(cfg, "aug", None) and cfg.aug.enable:
-            cfg.aug.warmup_epochs = trial.suggest_int(
-                "noise_warmup", 0, max(1, int(full_run_epochs * 0.4))
-            )
-            cfg.aug.full_epoch = trial.suggest_int(
-                "noise_full", max(2, int(full_run_epochs * 0.5)), full_run_epochs
-            )
 
         cfg.logging.run_name = f"optuna/trial_{trial.number:04d}"
         cfg.optim.epochs = tune_epochs
@@ -401,14 +386,8 @@ def run_tuning(
     best_cfg.optim.lr = study.best_params["lr"]
     best_cfg.loss.w_grad = study.best_params["w_grad"]
     best_cfg.loss.w_curv = study.best_params["w_curv"]
-    best_cfg.optim.batch_size = study.best_params["batch_size"]
     best_cfg.model.base = study.best_params["base"]
-    best_cfg.model.activation = study.best_params["activation"]
     best_cfg.optim.warmup_steps = study.best_params["warmup_steps"]
-
-    if "noise_warmup" in study.best_params and getattr(best_cfg, "aug", None):
-        best_cfg.aug.warmup_epochs = study.best_params["noise_warmup"]
-        best_cfg.aug.full_epoch = study.best_params["noise_full"]
 
     best_config_path = os.path.join(optuna_dir, "best_config.yaml")
     Path(best_config_path).write_text(config_to_yaml(best_cfg))
