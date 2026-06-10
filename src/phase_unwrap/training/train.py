@@ -24,6 +24,7 @@ from ..core.losses import MAEGradLoss, compute_metrics
 from ..core.ops import FixedSobel, affine_align, curvature_loss
 from ..core.utils import ensure_dir, pick_device, set_seed
 from ..data import build_dataloaders
+from ..data.augmentation import NoiseAug, NoiseScheduler, prepare_batch
 from ..model import EMA, build_model
 from ..visualize import save_epoch_visuals
 
@@ -147,11 +148,14 @@ def run_eval(
     }
     n = 0
 
-    for I_input, phi_gt, I_raw_n, I_raw_c in loader:
-        I_input = I_input.to(
-            device, non_blocking=True, memory_format=torch.channels_last
-        )
-        phi_gt = phi_gt.to(device, non_blocking=True, memory_format=torch.channels_last)
+    for I_raw, phi_gt in loader:
+        I_raw = I_raw.to(device, non_blocking=True)
+        phi_gt = phi_gt.to(device, non_blocking=True)
+        
+        I_input, phi_gt, _, _ = prepare_batch(I_raw, phi_gt, noise_aug=None)
+        
+        I_input = I_input.contiguous(memory_format=torch.channels_last)
+        phi_gt = phi_gt.contiguous(memory_format=torch.channels_last)
         bs = I_input.size(0)
 
         with autocast(device_type=device.type, enabled=use_amp):
@@ -305,11 +309,25 @@ def train(
     if start_epoch == 1:
         _init_csv(metrics_path)
 
-    # Initialize noise scheduler
+    # Initialize dynamic curriculum augmentation
+    train_aug = None
     noise_sched = None
     if getattr(cfg, "aug", None) and cfg.aug.enable:
-        from ..data.augmentation import NoiseScheduler
-
+        train_aug = NoiseAug(
+            gauss_std=cfg.aug.gauss_std,
+            speckle_std=cfg.aug.speckle_std,
+            poisson_scale=cfg.aug.poisson_scale,
+            lowfreq_amp=cfg.aug.lowfreq_amp,
+            lowfreq_sigma=cfg.aug.lowfreq_sigma,
+            blur_prob=cfg.aug.blur_prob,
+            blur_sigma=(cfg.aug.blur_min, cfg.aug.blur_max),
+            dropout_prob=cfg.aug.dropout_prob,
+            s_and_p_prob=cfg.aug.sap_prob,
+            gain_jitter=(cfg.aug.gain_min, cfg.aug.gain_max),
+            offset_jitter=(cfg.aug.off_min, cfg.aug.off_max),
+            hint_offset_std=cfg.aug.hint_std,
+            enable=True,
+        )
         noise_sched = NoiseScheduler(
             warmup_ratio=cfg.aug.warmup_ratio,
             full_ratio=cfg.aug.full_ratio,
@@ -318,11 +336,10 @@ def train(
         noise_sched.set_total_epochs(cfg.optim.epochs)
 
     for epoch in range(start_epoch, cfg.optim.epochs + 1):
-        if noise_sched is not None and hasattr(train_loader.dataset, "noise_aug"):
-            if train_loader.dataset.noise_aug is not None:
-                lvl = noise_sched.level(epoch)
-                train_loader.dataset.noise_aug.set_level(lvl)
-                print(f"[noise] epoch={epoch} level={lvl:.3f}")
+        if noise_sched is not None and train_aug is not None:
+            lvl = noise_sched.level(epoch)
+            train_aug.set_level(lvl)
+            print(f"[noise] epoch={epoch} level={lvl:.3f}")
 
         t0 = time.time()
         model.train()
@@ -332,16 +349,15 @@ def train(
         cnt = 0
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{cfg.optim.epochs}", leave=False)
-        for I_input, phi_gt, I_raw_n, I_raw_c in pbar:
-            I_input = I_input.to(
-                device, non_blocking=True, memory_format=torch.channels_last
-            )
-            phi_gt = phi_gt.to(
-                device, non_blocking=True, memory_format=torch.channels_last
-            )
-            I_raw_n = I_raw_n.to(
-                device, non_blocking=True, memory_format=torch.channels_last
-            )
+        for I_raw, phi_gt in pbar:
+            I_raw = I_raw.to(device, non_blocking=True)
+            phi_gt = phi_gt.to(device, non_blocking=True)
+            
+            I_input, phi_gt, I_raw_n, I_raw_c = prepare_batch(I_raw, phi_gt, noise_aug=train_aug)
+            
+            I_input = I_input.contiguous(memory_format=torch.channels_last)
+            phi_gt = phi_gt.contiguous(memory_format=torch.channels_last)
+            I_raw_n = I_raw_n.contiguous(memory_format=torch.channels_last)
 
             opt.zero_grad(set_to_none=True)
 
@@ -411,12 +427,9 @@ def train(
                     )
 
                     # If noise is enabled, immediately re-sync the level since we created a new loader
-                    if noise_sched is not None and hasattr(
-                        train_loader.dataset, "noise_aug"
-                    ):
-                        if train_loader.dataset.noise_aug is not None:
-                            lvl = noise_sched.level(epoch)
-                            train_loader.dataset.noise_aug.set_level(lvl)
+                    if noise_sched is not None and train_aug is not None:
+                        lvl = noise_sched.level(epoch)
+                        train_aug.set_level(lvl)
 
                     # Break the current inner epoch loop. The outer 'for epoch' loop will advance
                     # naturally and restart the progress bar on the next sequence with the smaller batch size,
@@ -452,14 +465,15 @@ def train(
 
             try:
                 # Get visualization data from train_loader to show actual noisy data
-                # (val_loader has noise_aug=None, so it always provides clean data)
-                I_input_v, phi_gt_v, I_raw_n_v, I_raw_c_v = next(iter(train_loader))
-                I_input_v = I_input_v.to(
-                    device, non_blocking=True, memory_format=torch.channels_last
-                )
-                phi_gt_v = phi_gt_v.to(
-                    device, non_blocking=True, memory_format=torch.channels_last
-                )
+                I_raw_v, phi_gt_v = next(iter(train_loader))
+                I_raw_v = I_raw_v.to(device, non_blocking=True)
+                phi_gt_v = phi_gt_v.to(device, non_blocking=True)
+                
+                I_input_v, phi_gt_v, I_raw_n_v, I_raw_c_v = prepare_batch(I_raw_v, phi_gt_v, noise_aug=train_aug)
+                
+                I_input_v = I_input_v.contiguous(memory_format=torch.channels_last)
+                phi_gt_v = phi_gt_v.contiguous(memory_format=torch.channels_last)
+                
                 with autocast(device_type=device.type, enabled=use_amp):
                     phi_raw_v, k_off_v = ema.m(I_input_v)
                     phi_abs_v = phi_raw_v + k_off_v

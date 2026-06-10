@@ -24,6 +24,7 @@ from ..core.losses import MAEGradLoss
 from ..core.ops import affine_align, curvature_loss
 from ..core.utils import ensure_dir, pick_device, set_seed
 from ..data import build_dataloaders
+from ..data.augmentation import NoiseAug, NoiseScheduler, prepare_batch
 from ..model import EMA, build_model
 
 
@@ -103,12 +104,25 @@ def _create_objective(
         ema = EMA(model, decay=cfg.model.ema_decay)
 
         # Initialize noise scheduler for tuning
+        train_aug = None
         noise_sched = None
         if getattr(cfg, "aug", None) and cfg.aug.enable:
-            from ..data.augmentation import NoiseScheduler
+            train_aug = NoiseAug(
+                gauss_std=cfg.aug.gauss_std,
+                speckle_std=cfg.aug.speckle_std,
+                poisson_scale=cfg.aug.poisson_scale,
+                lowfreq_amp=cfg.aug.lowfreq_amp,
+                lowfreq_sigma=cfg.aug.lowfreq_sigma,
+                blur_prob=cfg.aug.blur_prob,
+                blur_sigma=(cfg.aug.blur_min, cfg.aug.blur_max),
+                dropout_prob=cfg.aug.dropout_prob,
+                s_and_p_prob=cfg.aug.sap_prob,
+                gain_jitter=(cfg.aug.gain_min, cfg.aug.gain_max),
+                offset_jitter=(cfg.aug.off_min, cfg.aug.off_max),
+                hint_offset_std=cfg.aug.hint_std,
+                enable=True,
+            )
 
-            # Scale the tuned absolute epochs proportionally for this short tuning run
-            scale_factor = tune_epochs / max(1, base_cfg.optim.epochs)
             noise_sched = NoiseScheduler(
                 warmup_ratio=cfg.aug.warmup_ratio,
                 full_ratio=cfg.aug.full_ratio,
@@ -119,9 +133,9 @@ def _create_objective(
         best_mae = float("inf")
 
         for epoch in range(1, tune_epochs + 1):
-            if noise_sched is not None and train_loader.dataset.noise_aug is not None:
+            if noise_sched is not None and train_aug is not None:
                 current_noise = noise_sched.level(epoch)
-                train_loader.dataset.noise_aug.set_level(current_noise)
+                train_aug.set_level(current_noise)
 
             model.train()
             pbar = tqdm(
@@ -132,10 +146,11 @@ def _create_objective(
             )
             run_loss = 0.0
 
-            for step, (I_input, phi_gt, I_raw_n, _) in enumerate(pbar):
-                I_input = I_input.to(device)
+            for step, (I_raw, phi_gt) in enumerate(pbar):
+                I_raw = I_raw.to(device)
                 phi_gt = phi_gt.to(device)
-                I_raw_n = I_raw_n.to(device)
+                
+                I_input, phi_gt, I_raw_n, _ = prepare_batch(I_raw, phi_gt, noise_aug=train_aug)
 
                 opt.zero_grad(set_to_none=True)
                 with autocast(device_type=device.type, enabled=use_amp):
@@ -177,9 +192,10 @@ def _create_objective(
                 total_mae = 0.0
                 n = 0
                 with torch.no_grad():
-                    for I_input, phi_gt, _, _ in val_loader:
-                        I_input = I_input.to(device)
+                    for I_raw, phi_gt in val_loader:
+                        I_raw = I_raw.to(device)
                         phi_gt = phi_gt.to(device)
+                        I_input, phi_gt, _, _ = prepare_batch(I_raw, phi_gt, noise_aug=None)
                         with autocast(device_type=device.type, enabled=use_amp):
                             phi_raw, k_off = ema.m(I_input)
                             phi_abs = phi_raw + k_off

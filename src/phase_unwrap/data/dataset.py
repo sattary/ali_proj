@@ -15,7 +15,6 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from ..core.config import DataConfig, TrainConfig
-from .augmentation import NoiseAug
 
 
 class H5ShardDataset(Dataset):
@@ -23,12 +22,8 @@ class H5ShardDataset(Dataset):
     Dataset backed by multiple HDF5 shard files.
 
     Returns per sample:
-        I_input  [2, H, W]:
-            - channel 0: normalized interferogram (per-sample z-score)
-            - channel 1: phi_hint (broadcast scalar reference phase from GT center)
-        phi_gt   [1, H, W]: ground-truth absolute/unwrapped phase (radians)
-        I_raw_n  [1, H, W]: noisy raw interferogram (after augmentation)
-        I_raw_c  [1, H, W]: clean raw interferogram (before augmentation)
+        I_raw_t  [1, H, W]: raw clean interferogram
+        phi_gt_t [1, H, W]: ground-truth phase
     """
 
     def __init__(
@@ -36,12 +31,10 @@ class H5ShardDataset(Dataset):
         shard_paths: Sequence[str],
         I_key: str = "I",
         phi_key: str = "phi",
-        noise_aug: NoiseAug | None = None,
     ) -> None:
         self.shard_paths = list(shard_paths)
         self.I_key = I_key
         self.phi_key = phi_key
-        self.noise_aug = noise_aug
 
         self._shard_sizes: list[int] = []
         self._cumulative: list[int] = [0]
@@ -96,31 +89,7 @@ class H5ShardDataset(Dataset):
             I_raw_t = torch.rot90(I_raw_t, k, dims=(-2, -1))
             phi_gt_t = torch.rot90(phi_gt_t, k, dims=(-2, -1))
 
-        mean = I_raw_t.mean(dim=(1, 2), keepdim=True)
-        std = I_raw_t.std(dim=(1, 2), keepdim=True).clamp_min(1e-6)
-        I_norm_t = (I_raw_t - mean) / std
-
-        _, H, W = phi_gt_t.shape
-        cy, cx = H // 2, W // 2
-        ref_val = float(phi_gt_t[0, cy, cx].item())
-        phi_hint = torch.full_like(phi_gt_t, ref_val)
-
-        I_raw_clean = I_raw_t.clone()
-        I_raw_noisy = I_raw_t
-
-        # Dynamic Optical/Curriculum Noise Injection
-        if hasattr(self, "noise_aug") and self.noise_aug is not None:
-            I_raw_noisy, I_norm_t, phi_hint, delta = self.noise_aug(
-                I_raw_noisy, phi_hint
-            )
-            if delta != 0.0:
-                phi_gt_t = phi_gt_t + delta
-
-        if phi_hint is None:
-            phi_hint = torch.full_like(phi_gt_t, ref_val)
-
-        I_input = torch.cat([I_norm_t, phi_hint], dim=0)
-        return I_input, phi_gt_t, I_raw_noisy, I_raw_clean
+        return I_raw_t, phi_gt_t
 
     def close(self) -> None:
         """Close all open HDF5 file handles."""
@@ -200,42 +169,21 @@ def build_dataloaders(
         paths, seed=seed, val_frac=cfg.data.val_frac, test_frac=cfg.data.test_frac
     )
 
-    # Initialize dynamic curriculum augmentation
-    train_aug = None
-    if getattr(cfg, "aug", None) and cfg.aug.enable:
-        train_aug = NoiseAug(
-            gauss_std=cfg.aug.gauss_std,
-            speckle_std=cfg.aug.speckle_std,
-            poisson_scale=cfg.aug.poisson_scale,
-            lowfreq_amp=cfg.aug.lowfreq_amp,
-            lowfreq_sigma=cfg.aug.lowfreq_sigma,
-            blur_prob=cfg.aug.blur_prob,
-            blur_sigma=(cfg.aug.blur_min, cfg.aug.blur_max),
-            dropout_prob=cfg.aug.dropout_prob,
-            s_and_p_prob=cfg.aug.sap_prob,
-            gain_jitter=(cfg.aug.gain_min, cfg.aug.gain_max),
-            offset_jitter=(cfg.aug.off_min, cfg.aug.off_max),
-            hint_offset_std=cfg.aug.hint_std,
-            enable=True,
-        )
-        train_aug.set_level(0.0)
-
     train_ds = H5ShardDataset(
         train_paths,
         I_key=cfg.data.I_key,
         phi_key=cfg.data.phi_key,
-        noise_aug=train_aug,
     )
     val_ds = (
         H5ShardDataset(
-            val_paths, I_key=cfg.data.I_key, phi_key=cfg.data.phi_key, noise_aug=None
+            val_paths, I_key=cfg.data.I_key, phi_key=cfg.data.phi_key
         )
         if val_paths
         else None
     )
     test_ds = (
         H5ShardDataset(
-            test_paths, I_key=cfg.data.I_key, phi_key=cfg.data.phi_key, noise_aug=None
+            test_paths, I_key=cfg.data.I_key, phi_key=cfg.data.phi_key
         )
         if test_paths
         else None
