@@ -93,8 +93,8 @@ class AugmentationConfig:
     """Optical curriculum noise hyperparameters."""
 
     enable: bool = True
-    warmup_epochs: int = 5
-    full_epoch: int = 35
+    warmup_ratio: float = 0.1
+    full_ratio: float = 0.4
     profile: str = "cosine"
     gauss_std: float = 0.02
     speckle_std: float = 0.05

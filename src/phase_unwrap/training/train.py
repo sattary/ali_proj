@@ -311,10 +311,11 @@ def train(
         from ..data.augmentation import NoiseScheduler
 
         noise_sched = NoiseScheduler(
-            warmup_epochs=cfg.aug.warmup_epochs,
-            full_epoch=cfg.aug.full_epoch,
+            warmup_ratio=cfg.aug.warmup_ratio,
+            full_ratio=cfg.aug.full_ratio,
             profile=cfg.aug.profile,
         )
+        noise_sched.set_total_epochs(cfg.optim.epochs)
 
     for epoch in range(start_epoch, cfg.optim.epochs + 1):
         if noise_sched is not None and hasattr(train_loader.dataset, "noise_aug"):

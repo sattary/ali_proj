@@ -22,26 +22,34 @@ import torch.nn.functional as F
 
 class NoiseScheduler:
     """
-    Piecewise noise level schedule over epochs.
-    warmup_epochs: noise=0 during [1 .. warmup]
-    full_epoch:    reaches noise=1 by this epoch
+    Piecewise noise level schedule relative to total epochs.
+    warmup_ratio: noise=0 during [0 .. warmup_ratio * total_epochs]
+    full_ratio:   reaches noise=1 by full_ratio * total_epochs
     profile: 'linear' or 'cosine'
     """
 
     def __init__(
-        self, warmup_epochs: int = 0, full_epoch: int = 20, profile: str = "cosine"
+        self, warmup_ratio: float = 0.1, full_ratio: float = 0.4, profile: str = "cosine"
     ):
-        self.warmup = max(0, int(warmup_epochs))
-        self.full = max(1, int(full_epoch))
+        self.warmup_ratio = max(0.0, min(1.0, float(warmup_ratio)))
+        self.full_ratio = max(self.warmup_ratio, min(1.0, float(full_ratio)))
         self.profile = profile
+        self.total_epochs = 1
+
+    def set_total_epochs(self, total_epochs: int) -> None:
+        self.total_epochs = max(1, total_epochs)
 
     def level(self, epoch: int) -> float:
         """Calculate the normalized [0, 1] noise strength for the given epoch."""
-        if epoch <= self.warmup:
+        warmup_ep = self.warmup_ratio * self.total_epochs
+        full_ep = self.full_ratio * self.total_epochs
+        
+        if epoch <= warmup_ep:
             return 0.0
-        if epoch >= self.full:
+        if epoch >= full_ep or full_ep <= warmup_ep:
             return 1.0
-        t = (epoch - self.warmup) / max(1, (self.full - self.warmup))
+            
+        t = (epoch - warmup_ep) / (full_ep - warmup_ep)
         if self.profile == "cosine":
             return 0.5 * (1 - np.cos(np.pi * t))
         return float(t)  # linear

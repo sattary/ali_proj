@@ -124,15 +124,12 @@ def _create_objective(
 
             # Scale the tuned absolute epochs proportionally for this short tuning run
             scale_factor = tune_epochs / max(1, base_cfg.optim.epochs)
-            scaled_warmup = int(cfg.aug.warmup_epochs * scale_factor)
-            scaled_full_epoch = max(
-                scaled_warmup + 1, int(cfg.aug.full_epoch * scale_factor)
-            )
-
             noise_sched = NoiseScheduler(
-                full_epoch=scaled_full_epoch,
-                warmup_epochs=scaled_warmup,
+                warmup_ratio=cfg.aug.warmup_ratio,
+                full_ratio=cfg.aug.full_ratio,
+                profile=cfg.aug.profile,
             )
+            noise_sched.set_total_epochs(cfg.optim.epochs)
 
         best_mae = float("inf")
 
