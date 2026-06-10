@@ -51,7 +51,6 @@ class NoiseAug:
     """
     Input-only augmentation with a schedulable 'level' in [0,1].
     At level=0 -> no noise; at level=1 -> full configured strength.
-    Acts on I_raw and I_norm, optionally perturbs phi_hint by a global offset.
     """
 
     def __init__(
@@ -60,7 +59,7 @@ class NoiseAug:
         speckle_std: float = 0.05,
         poisson_scale: float = 0.0,
         lowfreq_amp: float = 0.05,
-        lowfreq_sigma: int = 21,
+        lowfreq_sigma: int = 21,  # Kept for backward config compatibility but ignored internally
         blur_prob: float = 0.2,
         blur_sigma: tuple[float, float] = (0.5, 1.0),
         dropout_prob: float = 0.02,
@@ -75,7 +74,6 @@ class NoiseAug:
             speckle_std=speckle_std,
             poisson_scale=poisson_scale,
             lowfreq_amp=lowfreq_amp,
-            lowfreq_sigma=int(max(3, lowfreq_sigma // 2 * 2 + 1)),
             blur_prob=blur_prob,
             blur_sigma=blur_sigma,
             dropout_prob=dropout_prob,
@@ -112,13 +110,21 @@ class NoiseAug:
     def __call__(
         self,
         I_raw: torch.Tensor,
-        I_norm: torch.Tensor,
         phi_hint: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
-        """Apply noise mathematically, modifying Raw/Norm tensors gracefully."""
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None, float]:
+        """
+        Apply physics-based optical noise.
+        Returns:
+            I_raw_noisy: The raw physical intensity field (for snapshots).
+            I_norm_noisy: The Z-scored input for the network.
+            phi_hint: The corrupted phase piston hint.
+            delta: The scalar phase shift added to the hint (must be added to phi_gt).
+        """
         L = self._level.value
         if not self.enable or L <= 0:
-            return I_raw, I_norm, phi_hint
+            mean = I_raw.mean(dim=(1, 2), keepdim=True)
+            std = I_raw.std(dim=(1, 2), keepdim=True).clamp_min(1e-6)
+            return I_raw.clone(), (I_raw - mean) / std, phi_hint, 0.0
 
         p = self.base
         device = I_raw.device
@@ -141,59 +147,63 @@ class NoiseAug:
         off_min = 0.0 + p["off_min"] * L  # type: ignore
         off_max = 0.0 + p["off_max"] * L  # type: ignore
 
-        # Gain/offset jitter
-        g = torch.empty(1, device=device).uniform_(gain_min, gain_max).item()
-        b = torch.empty(1, device=device).uniform_(off_min, off_max).item()
-        img: torch.Tensor = float(g) * I_raw + float(b)
+        img = I_raw.clone()
 
-        # Additive Gaussian (scaled by per-image std)
-        if gauss_std > 0:
-            stdI = img.std().clamp_min(1e-6)
-            img = img + torch.randn_like(img) * (gauss_std * float(stdI))
-
-        # Speckle (multiplicative)
-        if speckle_std > 0:
-            img = img * (1.0 + torch.randn_like(img) * speckle_std)  # type: ignore
-
-        # Poisson (optional)
-        if poisson_sc > 0:
-            lam = (img - img.min()) / (img.max() - img.min() + 1e-6) * poisson_sc
-            lam = lam.clamp_min(0.0)
-            img = torch.poisson(lam) / (poisson_sc + 1e-6)
-            img = (img - img.mean()) / (img.std() + 1e-6)
-
-        # Low-frequency bias
-        if lowfreq_amp > 0:
-            lf = torch.randn(1, 1, H, W, device=device, dtype=dtype)
-            lf = self._gaussian_blur(lf, p["lowfreq_sigma"] / 6.0)[0]  # type: ignore
-            lf = lf / (lf.std() + 1e-6) * lowfreq_amp
-            img = img + lf
-
-        # Random blur
+        # 1. Optical Defocus (Lens aberration)
         if bool(torch.rand(1, device=device) < blur_prob):
             smin, smax = p["blur_sigma"]  # type: ignore
             sigma = float(torch.empty(1, device=device).uniform_(smin, smax))
             img = self._gaussian_blur(img.unsqueeze(0), sigma)[0]
 
-        # Pixel dropout
+        # 2. Speckle (Laser physics - multiplicative)
+        if speckle_std > 0:
+            img = img * (1.0 + torch.randn_like(img) * speckle_std)  # type: ignore
+
+        # 3. Uneven Illumination (Slow sweeping beam profile)
+        if lowfreq_amp > 0:
+            lf = torch.randn(1, 1, 4, 4, device=device, dtype=dtype)
+            lf = F.interpolate(lf, size=(H, W), mode='bicubic', align_corners=False)[0]
+            lf = lf / (lf.std() + 1e-6) * lowfreq_amp
+            img = img + lf
+
+        # 4. Sensor Gain & Black Level Offset (Electronics)
+        g = torch.empty(1, device=device).uniform_(gain_min, gain_max).item()
+        b = torch.empty(1, device=device).uniform_(off_min, off_max).item()
+        img = float(g) * img + float(b)
+
+        # 5. Poisson Shot Noise (Quantum counting)
+        if poisson_sc > 0:
+            img_min, img_max = img.min(), img.max()
+            lam = (img - img_min) / (img_max - img_min + 1e-6) * poisson_sc
+            lam = lam.clamp_min(0.0)
+            # Rescale poisson back to physical intensity domain
+            img = torch.poisson(lam) / (poisson_sc + 1e-6) * (img_max - img_min + 1e-6) + img_min
+
+        # 6. Additive Gaussian (Sensor thermal noise)
+        if gauss_std > 0:
+            stdI = img.std().clamp_min(1e-6)
+            img = img + torch.randn_like(img) * (gauss_std * float(stdI))
+
+        # 7. Sensor Defects (Dead / Saturated pixels)
         if dropout_p > 0:
             mask = (torch.rand_like(img) > dropout_p).float()
-            img = img * mask
+            # Drop to physical black (min), not 0.0
+            img = torch.where(mask == 0.0, img.min(), img)
 
-        # Salt & pepper
         if sap_p > 0:
             r = torch.rand_like(img)
             img = torch.where(r < sap_p / 2, img.min(), img)  # type: ignore
             img = torch.where(r > 1 - sap_p / 2, img.max(), img)  # type: ignore
 
         # Corrupt the hint with a global radian shift
+        delta_val = 0.0
         if phi_hint is not None and hint_std > 0:
-            delta = torch.randn(1, device=device, dtype=dtype) * hint_std
-            phi_hint = phi_hint + delta.view(1, 1, 1)
+            delta_val = float(torch.randn(1, device=device, dtype=dtype).item() * hint_std)
+            phi_hint = phi_hint + delta_val
 
-        # Re-normalize for network
+        # Re-normalize for network input
         mean_final = img.mean(dim=(1, 2), keepdim=True)
         std_final = img.std(dim=(1, 2), keepdim=True).clamp_min(1e-6)
         I_norm_noisy = (img - mean_final) / std_final
 
-        return img, I_norm_noisy, phi_hint
+        return img, I_norm_noisy, phi_hint, delta_val
