@@ -178,9 +178,12 @@ def _create_objective(
                 torch.nn.utils.clip_grad_norm_(
                     model.parameters(), cfg.optim.grad_clip, error_if_nonfinite=False
                 )
+                scale_before = scaler.get_scale()
                 scaler.step(opt)
                 scaler.update()
-                sched.step()
+                scale_after = scaler.get_scale()
+                if scale_after >= scale_before:
+                    sched.step()
                 ema.update(model)
 
                 run_loss += float(loss.detach())
