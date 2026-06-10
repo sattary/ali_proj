@@ -110,9 +110,11 @@ class H5ShardDataset(Dataset):
 
         # Dynamic Optical/Curriculum Noise Injection
         if hasattr(self, "noise_aug") and self.noise_aug is not None:
-            I_raw_noisy, I_norm_t, phi_hint = self.noise_aug(
-                I_raw_noisy, I_norm_t, phi_hint
+            I_raw_noisy, I_norm_t, phi_hint, delta = self.noise_aug(
+                I_raw_noisy, phi_hint
             )
+            if delta != 0.0:
+                phi_gt_t = phi_gt_t + delta
 
         if phi_hint is None:
             phi_hint = torch.full_like(phi_gt_t, ref_val)
