@@ -39,10 +39,13 @@ except ImportError:
 # ---------------------------------------------------------------------------
 CSV_COLUMNS = [
     "epoch",
+    "noise_level",
     "train_loss",
     "train_mae",
     "train_grad",
-    "val_mae",
+    "train_curv",
+    "val_abs_mae",
+    "val_topo_mae",
     "val_rmse",
     "val_ssim",
     "val_psnr",
@@ -140,11 +143,11 @@ def run_eval(
     if loader is None:
         return {
             k: float("nan")
-            for k in ["MAE", "RMSE", "SSIM", "PSNR", "MaxErr", "GradMAE"]
+            for k in ["AbsMAE", "TopoMAE", "RMSE", "SSIM", "PSNR", "MaxErr", "GradMAE"]
         }
 
     sums: Dict[str, float] = {
-        k: 0.0 for k in ["MAE", "RMSE", "SSIM", "PSNR", "MaxErr", "GradMAE"]
+        k: 0.0 for k in ["AbsMAE", "TopoMAE", "RMSE", "SSIM", "PSNR", "MaxErr", "GradMAE"]
     }
     n = 0
 
@@ -164,9 +167,11 @@ def run_eval(
 
         phi_aligned, _, _ = affine_align(phi_abs, phi_gt)
 
-        m = compute_metrics(phi_aligned, phi_gt)
-        sums["MAE"] += float(m["MAE"]) * bs
-        sums["RMSE"] += float(m["RMSE"]) * bs
+        m_abs = compute_metrics(phi_abs, phi_gt)
+        m_topo = compute_metrics(phi_aligned, phi_gt)
+        sums["AbsMAE"] += float(m_abs["MAE"]) * bs
+        sums["TopoMAE"] += float(m_topo["MAE"]) * bs
+        sums["RMSE"] += float(m_topo["RMSE"]) * bs
 
         max_err = (phi_aligned - phi_gt).abs().amax(dim=(1, 2, 3)).mean()
         sums["MaxErr"] += float(max_err) * bs
@@ -356,6 +361,7 @@ def train(
         run_loss = 0.0
         run_mae = 0.0
         run_grad = 0.0
+        run_curv = 0.0
         cnt = 0
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{cfg.optim.epochs}", leave=False, mininterval=2.0)
@@ -454,6 +460,7 @@ def train(
             run_loss += float(loss.item()) * bs
             run_mae += float(parts["mae"].item()) * bs
             run_grad += float(parts["grad"].item()) * bs
+            run_curv += float(L_curv.item()) * bs
             cnt += bs
 
             pbar.set_postfix(
@@ -467,6 +474,7 @@ def train(
         train_loss = run_loss / max(1, cnt)
         train_mae = run_mae / max(1, cnt)
         train_grad = run_grad / max(1, cnt)
+        train_curv = run_curv / max(1, cnt)
         epoch_time = time.time() - t0
 
         eval_stats: Dict[str, float] = {}
@@ -511,7 +519,8 @@ def train(
 
             print(
                 f"Epoch {epoch} | train={train_loss:.4f} | "
-                f"MAE={eval_stats.get('MAE', 0):.4f} "
+                f"AbsMAE={eval_stats.get('AbsMAE', 0):.4f} "
+                f"TopoMAE={eval_stats.get('TopoMAE', 0):.4f} "
                 f"RMSE={eval_stats.get('RMSE', 0):.4f} "
                 f"SSIM={eval_stats.get('SSIM', 0):.4f} "
                 f"PSNR={eval_stats.get('PSNR', 0):.2f} "
@@ -519,8 +528,8 @@ def train(
                 f"time={epoch_time:.1f}s"
             )
 
-            if eval_stats.get("MAE", float("inf")) < best_mae:
-                best_mae = eval_stats["MAE"]
+            if eval_stats.get("TopoMAE", float("inf")) < best_mae:
+                best_mae = eval_stats["TopoMAE"]
                 save_checkpoint(
                     os.path.join(run_dir, "best.pth"),
                     epoch,
@@ -546,25 +555,30 @@ def train(
         )
 
         current_lr = opt.param_groups[0]["lr"]
+        
+        # Get current noise level to log it
+        current_noise_level = 0.0
+        if noise_sched is not None:
+            current_noise_level = noise_sched.level(epoch)
+            
         _append_csv(
             metrics_path,
             {
                 "epoch": epoch,
+                "noise_level": f"{current_noise_level:.4f}",
                 "train_loss": f"{train_loss:.6f}",
                 "train_mae": f"{train_mae:.6f}",
                 "train_grad": f"{train_grad:.6f}",
-                "val_mae": f"{eval_stats.get('MAE', ''):.6f}" if eval_stats else "",
+                "train_curv": f"{train_curv:.6f}",
+                "val_abs_mae": f"{eval_stats.get('AbsMAE', ''):.6f}" if eval_stats else "",
+                "val_topo_mae": f"{eval_stats.get('TopoMAE', ''):.6f}" if eval_stats else "",
                 "val_rmse": f"{eval_stats.get('RMSE', ''):.6f}" if eval_stats else "",
                 "val_ssim": f"{eval_stats.get('SSIM', ''):.6f}" if eval_stats else "",
                 "val_psnr": f"{eval_stats.get('PSNR', ''):.4f}" if eval_stats else "",
-                "val_max_err": f"{eval_stats.get('MaxErr', ''):.6f}"
-                if eval_stats
-                else "",
-                "val_grad_mae": f"{eval_stats.get('GradMAE', ''):.6f}"
-                if eval_stats
-                else "",
+                "val_max_err": f"{eval_stats.get('MaxErr', ''):.6f}" if eval_stats else "",
+                "val_grad_mae": f"{eval_stats.get('GradMAE', ''):.6f}" if eval_stats else "",
                 "lr": f"{current_lr:.8f}",
-                "epoch_time_s": f"{epoch_time:.2f}",
+                "epoch_time_s": f"{epoch_time:.1f}",
             },
         )
 
