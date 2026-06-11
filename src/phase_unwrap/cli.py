@@ -28,14 +28,12 @@ app = typer.Typer(
 )
 
 DataApp = typer.Typer(help="Data generation and management commands.")
-TrainApp = typer.Typer(help="Training commands.")
 EvalApp = typer.Typer(help="Evaluation commands.")
 ExportApp = typer.Typer(help="Model export commands.")
 PlotApp = typer.Typer(help="Visualization commands.")
 RunApp = typer.Typer(help="Runtime and rendering commands.")
 
 app.add_typer(DataApp, name="data")
-app.add_typer(TrainApp, name="train")
 app.add_typer(EvalApp, name="eval")
 app.add_typer(ExportApp, name="export")
 app.add_typer(PlotApp, name="plot")
@@ -76,16 +74,10 @@ def data_generate(
 # ============================================================================
 
 
-@TrainApp.command("train")
+@app.command("train")
 def train_cmd(
     config: Optional[Path] = typer.Option(
         None, "--config", "-c", help="Path to YAML or JSON config file."
-    ),
-    data_dir: Optional[Path] = typer.Option(
-        None, "--data-dir", help="Override data directory."
-    ),
-    device: Optional[str] = typer.Option(
-        None, "--device", help="Device: 'auto', 'cuda', or 'cpu'."
     ),
     resume: Optional[Path] = typer.Option(
         None, "--resume", help="Path to checkpoint to resume from."
@@ -93,29 +85,8 @@ def train_cmd(
     run_name: Optional[str] = typer.Option(
         None, "--run-name", help="Name for this training run."
     ),
-    epochs: Optional[int] = typer.Option(
-        None, "--epochs", help="Override number of training epochs."
-    ),
-    batch_size: Optional[int] = typer.Option(
-        None, "--batch-size", help="Override batch size."
-    ),
     multi_gpu: bool = typer.Option(
         False, "--multi-gpu", help="Use all available GPUs with DataParallel."
-    ),
-    gpu_ids: Optional[str] = typer.Option(
-        None, "--gpu-ids", help="Comma-separated GPU IDs (e.g., '0,1')."
-    ),
-    auto_push_interval: Optional[int] = typer.Option(
-        None, "--auto-push-interval", help="Enable auto-push every N epochs."
-    ),
-    auto_push_dry_run: bool = typer.Option(
-        False, "--auto-push-dry-run", help="Test auto-push without actually pushing."
-    ),
-    force_auto_push: bool = typer.Option(
-        False, "--force-auto-push", help="Force auto-push even outside Kaggle/Colab."
-    ),
-    auto_push_pat: Optional[str] = typer.Option(
-        None, "--auto-push-pat", help="GitHub PAT (or set GITHUB_PAT env var)."
     ),
     use_amp: bool = typer.Option(
         False, "--use-amp", help="Enable Automatic Mixed Precision (AMP)."
@@ -128,67 +99,29 @@ def train_cmd(
 
     cfg: TrainConfig = load_train_config(config)
 
-    if data_dir is not None:
-        cfg.data.data_dir = str(data_dir)
-    if device is not None:
-        cfg.model.device = device
     if run_name is not None:
         cfg.logging.run_name = run_name
-    if epochs is not None:
-        cfg.optim.epochs = epochs
-    if batch_size is not None:
-        cfg.optim.batch_size = batch_size
     if use_amp:
         cfg.model.use_amp = True
-
-    gpu_id_list: Optional[list[int]] = None
-    if gpu_ids is not None:
-        gpu_id_list = [int(x.strip()) for x in gpu_ids.split(",")]
 
     if not multi_gpu and torch.cuda.is_available():
         if detect_kaggle_multi_gpu():
             multi_gpu = True
             typer.echo("[kaggle] Auto-enabling multi-GPU mode")
 
-    auto_push_callback = None
-    if auto_push_interval is not None:
-        from .git_automation import AutoPushCallback
-        from .git_automation.cli_integration import validate_auto_push_config
-
-        validate_auto_push_config(
-            auto_push_interval=auto_push_interval,
-            auto_push_dry_run=auto_push_dry_run,
-            force_auto_push=force_auto_push,
-        )
-
-        auto_push_callback = AutoPushCallback(
-            run_dir=cfg.logging.run_dir,
-            push_interval=auto_push_interval,
-            pat=auto_push_pat,
-            dry_run=auto_push_dry_run,
-            force=force_auto_push,
-            include_checkpoints=True,
-        )
-
     run_train(
         cfg,
         resume_path=str(resume) if resume else None,
-        auto_push_callback=auto_push_callback,
+        auto_push_callback=None,
         multi_gpu=multi_gpu,
-        gpu_ids=gpu_id_list,
+        gpu_ids=None,
     )
 
 
-@TrainApp.command("tune")
+@app.command("tune")
 def tune_cmd(
     config: Optional[Path] = typer.Option(
         None, "--config", "-c", help="Path to YAML or JSON config file."
-    ),
-    data_dir: Optional[Path] = typer.Option(
-        None, "--data-dir", help="Override data directory."
-    ),
-    device: Optional[str] = typer.Option(
-        None, "--device", help="Device: 'auto', 'cuda', or 'cpu'."
     ),
     n_trials: int = typer.Option(50, "--n-trials", help="Number of Optuna trials."),
     tune_epochs: int = typer.Option(15, "--tune-epochs", help="Epochs per trial."),
@@ -198,69 +131,25 @@ def tune_cmd(
     n_workers: int = typer.Option(
         1, "--n-workers", "-j", help="Number of parallel workers."
     ),
-    gpu_ids: Optional[str] = typer.Option(
-        None, "--gpu-ids", help="Comma-separated GPU IDs (e.g., '0,1')."
-    ),
-    auto_push: bool = typer.Option(
-        False, "--auto-push", help="Push results to GitHub after HPO completes."
-    ),
-    auto_push_pat: Optional[str] = typer.Option(
-        None, "--auto-push-pat", help="GitHub PAT (or set GITHUB_PAT env var)."
-    ),
-    auto_push_dry_run: bool = typer.Option(
-        False, "--auto-push-dry-run", help="Test auto-push without actually pushing."
-    ),
     use_amp: bool = typer.Option(
         False, "--use-amp", help="Enable Automatic Mixed Precision (AMP)."
-    ),
-    batch_size: Optional[int] = typer.Option(
-        None, "--batch-size", help="Override batch size to prevent OOM."
-    ),
-    workers: Optional[int] = typer.Option(
-        None, "--workers", help="Override dataloader workers (CPU config)."
     ),
 ) -> None:
     """Run Optuna hyperparameter search (TPE + MedianPruner)."""
     import torch
     from .training.tune import run_tuning
-    from .git_automation.environment import is_kaggle, is_colab
-    from .git_automation.tune_push import create_tune_auto_push_callback
 
     cfg: TrainConfig = load_train_config(config)
 
-    if data_dir is not None:
-        cfg.data.data_dir = str(data_dir)
-    if device is not None:
-        cfg.model.device = device
     if use_amp:
         cfg.model.use_amp = True
-    if workers is not None:
-        cfg.data.workers = workers
 
     gpu_id_list: Optional[list[int]] = None
-    if gpu_ids is not None:
-        gpu_id_list = [int(x.strip()) for x in gpu_ids.split(",")]
-    elif n_workers > 1 and torch.cuda.is_available():
+    if n_workers > 1 and torch.cuda.is_available():
         n_gpus = torch.cuda.device_count()
         if n_gpus > 1:
             gpu_id_list = list(range(min(n_workers, n_gpus)))
             typer.echo(f"Auto-detected {n_gpus} GPUs, using: {gpu_id_list}")
-
-    auto_push_callback = None
-    if auto_push:
-        if not auto_push_dry_run and not is_kaggle() and not is_colab():
-            typer.echo(
-                "[auto-push] Warning: Not on Kaggle/Colab. Use --auto-push-dry-run to test."
-            )
-
-        data_dir_str = str(data_dir) if data_dir else cfg.data.data_dir
-        auto_push_callback = create_tune_auto_push_callback(
-            optuna_dir=cfg.logging.run_dir,
-            data_dir=data_dir_str,
-            push_interval=0,
-            pat=auto_push_pat,
-            dry_run=auto_push_dry_run,
-        )
 
     run_tuning(
         cfg,
@@ -269,30 +158,18 @@ def tune_cmd(
         study_name=study_name,
         n_workers=n_workers,
         gpu_ids=gpu_id_list,
-        auto_push_callback=auto_push_callback,
-        batch_size_override=batch_size,
+        auto_push_callback=None,
+        batch_size_override=None,
     )
 
 
-@TrainApp.command("multiseed")
+@app.command("multiseed")
 def multiseed_cmd(
     config: Optional[Path] = typer.Option(
         None, "--config", "-c", help="Path to YAML or JSON config file."
     ),
-    data_dir: Optional[Path] = typer.Option(
-        None, "--data-dir", help="Override data directory."
-    ),
-    device: Optional[str] = typer.Option(
-        None, "--device", help="Device: 'auto', 'cuda', or 'cpu'."
-    ),
     run_name: str = typer.Option(
         "multiseed", "--run-name", help="Base name for the run group."
-    ),
-    epochs: Optional[int] = typer.Option(
-        None, "--epochs", help="Override training epochs."
-    ),
-    batch_size: Optional[int] = typer.Option(
-        None, "--batch-size", help="Override batch size."
     ),
     seeds: Optional[str] = typer.Option(
         None, "--seeds", help="Comma-separated seeds (e.g., '1337,42,7')."
@@ -305,15 +182,6 @@ def multiseed_cmd(
 
     cfg: TrainConfig = load_train_config(config)
 
-    if data_dir is not None:
-        cfg.data.data_dir = str(data_dir)
-    if device is not None:
-        cfg.model.device = device
-    if epochs is not None:
-        cfg.optim.epochs = epochs
-    if batch_size is not None:
-        cfg.optim.batch_size = batch_size
-
     seed_list: list[int]
     if seeds is not None:
         seed_list = [int(s.strip()) for s in seeds.split(",")]
@@ -323,25 +191,13 @@ def multiseed_cmd(
     run_multiseed(cfg, base_run_name=run_name, seeds=seed_list)
 
 
-@TrainApp.command("ablation")
+@app.command("ablation")
 def ablation_cmd(
     config: Optional[Path] = typer.Option(
         None, "--config", "-c", help="Path to YAML or JSON config file."
     ),
-    data_dir: Optional[Path] = typer.Option(
-        None, "--data-dir", help="Override data directory."
-    ),
-    device: Optional[str] = typer.Option(
-        None, "--device", help="Device: 'auto', 'cuda', or 'cpu'."
-    ),
     run_name: str = typer.Option(
         "ablation", "--run-name", help="Base name for ablation run group."
-    ),
-    epochs: Optional[int] = typer.Option(
-        None, "--epochs", help="Override training epochs."
-    ),
-    batch_size: Optional[int] = typer.Option(
-        None, "--batch-size", help="Override batch size."
     ),
     seeds: Optional[str] = typer.Option(
         None, "--seeds", help="Comma-separated seeds (e.g., '1337,42,7')."
@@ -358,15 +214,6 @@ def ablation_cmd(
     import random as _rnd
 
     cfg: TrainConfig = load_train_config(config)
-
-    if data_dir is not None:
-        cfg.data.data_dir = str(data_dir)
-    if device is not None:
-        cfg.model.device = device
-    if epochs is not None:
-        cfg.optim.epochs = epochs
-    if batch_size is not None:
-        cfg.optim.batch_size = batch_size
 
     seed_list: list[int]
     if seeds is not None:
