@@ -165,6 +165,21 @@ Evaluating absolute phase reconstruction is complex due to global scalar shifts 
 \end{equation}
 Metrics are computed on the aligned prediction $\hat{\phi} = a\phi_{\text{pred}} + c$. This explicitly isolates the network's topological unwrapping capability from trivial global drift errors.
 
+\section{Rigorous MLOps Execution Pipeline}
+To ensure the absolute reproducibility and statistical integrity of the empirical results, the entire computational workflow is heavily decoupled into a strict, hardware-agnostic Machine Learning Operations (MLOps) pipeline. The execution sequence is formally enforced as follows:
+
+\subsection{Phase 1: Deterministic Generation (\texttt{generate})}
+The pipeline is initialized by constructing the raw synthetic dataset. Because the topological generator is cryptographically seeded, the resulting HDF5 dataset structure is mathematically invariant across isolated computing environments, guaranteeing that identical noise configurations are presented to the network regardless of the underlying hardware.
+
+\subsection{Phase 2: Hyperparameter Optimization (\texttt{tune})}
+Prior to full-scale training, the Bayesian TPE optimizer rigorously searches the non-linear configuration space (learning rates, loss topology weights, network capacity). To conserve compute limits, this search operates on a localized subset of the dataset. The optimizer ultimately isolates the absolute lowest-error configuration and explicitly freezes it into a \texttt{best\_config.yaml} artifact.
+
+\subsection{Phase 3: Primary Training and Evaluation (\texttt{train})}
+Utilizing the frozen configuration artifact, the architecture is trained from scratch to convergence on the massive primary dataset. Because the hyperparameters are structurally decoupled from the training runtime, the training thread guarantees zero experimental leakage. The model is subsequently evaluated against a completely sequestered, cryptographically isolated test set to extract raw diagnostic metrics (AbsMAE, TopoMAE, RMSE, SSIM, PSNR).
+
+\subsection{Phase 4: Statistical Validation (\texttt{multiseed} and \texttt{ablation})}
+To defend against "lucky seed" anomalies, the final empirical metrics reported in the study are computed exclusively via an automated multi-seed aggregator. The pipeline sequentially spawns $N=3$ completely independent training convergences utilizing the identical frozen configuration, each initialized with a vastly different network weight seed. The final TopoMAE and PSNR results are extracted by aggregating the individual test evaluations to formulate a mathematically unassailable Mean $\pm$ Standard Deviation. Finally, fully automated ablation sweeps isolate specific architectural mechanisms (e.g., Curriculum Noise, Laplacian Regularization) to mathematically quantify their explicit contribution to the structural resilience of the network.
+
 \section{Recent Implementation Refinements}
 To strictly enforce the mathematical integrity and optical realism of the phase unwrapping pipeline, several core architectural optimizations were recently implemented:
 
