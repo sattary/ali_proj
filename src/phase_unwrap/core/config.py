@@ -96,6 +96,8 @@ class AugmentationConfig:
     warmup_ratio: float = 0.1
     full_ratio: float = 0.4
     profile: str = "cosine"
+    cycles: float = 2.0
+    stochastic_std: float = 0.05
     gauss_std: float = 0.02
     speckle_std: float = 0.05
     poisson_scale: float = 0.0

@@ -332,6 +332,8 @@ def train(
             warmup_ratio=cfg.aug.warmup_ratio,
             full_ratio=cfg.aug.full_ratio,
             profile=cfg.aug.profile,
+            cycles=cfg.aug.cycles,
+            stochastic_std=cfg.aug.stochastic_std,
         )
         noise_sched.set_total_epochs(cfg.optim.epochs)
 
