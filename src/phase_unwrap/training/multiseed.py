@@ -70,6 +70,8 @@ def run_multiseed(
     cfg: TrainConfig,
     base_run_name: str,
     seeds: List[int],
+    multi_gpu: bool = False,
+    use_amp: bool = False,
 ) -> None:
     """Run training for each seed, then aggregate metrics."""
     base_dir = os.path.join(cfg.logging.runs_root, base_run_name)
@@ -82,11 +84,14 @@ def run_multiseed(
         seed_cfg.logging.seed = seed
         seed_cfg.logging.run_name = f"{base_run_name}/seed_{seed}"
 
+        if use_amp:
+            seed_cfg.model.use_amp = True
+
         print(f"\n{'=' * 60}")
         print(f"Multi-seed run {i + 1}/{len(seeds)} | seed={seed}")
         print(f"{'=' * 60}\n")
 
-        train(seed_cfg)
+        train(seed_cfg, multi_gpu=multi_gpu)
         run_dirs.append(seed_cfg.logging.run_dir)
 
     agg_path = os.path.join(base_dir, "aggregate.csv")

@@ -172,9 +172,17 @@ def multiseed_cmd(
         None, "--seeds", help="Comma-separated seeds (e.g., '1337,42,7')."
     ),
     num_seeds: int = typer.Option(3, "--num-seeds", help="Auto-generate N seeds."),
+    multi_gpu: bool = typer.Option(
+        False, "--multi-gpu", help="Use all available GPUs with DataParallel."
+    ),
+    use_amp: bool = typer.Option(
+        False, "--use-amp", help="Enable Automatic Mixed Precision (AMP)."
+    ),
 ) -> None:
     """Run N training runs with different seeds, aggregate results."""
+    import torch
     from .training.multiseed import run_multiseed
+    from .training.multi_gpu import detect_kaggle_multi_gpu
     import random as _rnd
 
     cfg: TrainConfig = load_train_config(config)
@@ -185,7 +193,15 @@ def multiseed_cmd(
     else:
         seed_list = [_rnd.randint(0, 2**31) for _ in range(num_seeds)]
 
-    run_multiseed(cfg, base_run_name=run_name, seeds=seed_list)
+    if use_amp:
+        cfg.model.use_amp = True
+
+    if not multi_gpu and torch.cuda.is_available():
+        if detect_kaggle_multi_gpu():
+            multi_gpu = True
+            typer.echo("[kaggle] Auto-enabling multi-GPU mode for multiseed")
+
+    run_multiseed(cfg, base_run_name=run_name, seeds=seed_list, multi_gpu=multi_gpu, use_amp=use_amp)
 
 
 @app.command("ablation")
@@ -205,9 +221,17 @@ def ablation_cmd(
     out_table: str = typer.Option(
         "results/tables/ablation.tex", "--out-table", help="Output LaTeX table path."
     ),
+    multi_gpu: bool = typer.Option(
+        False, "--multi-gpu", help="Use all available GPUs with DataParallel."
+    ),
+    use_amp: bool = typer.Option(
+        False, "--use-amp", help="Enable Automatic Mixed Precision (AMP)."
+    ),
 ) -> None:
     """Run ablation study and produce LaTeX comparison table."""
+    import torch
     from .training.ablation import run_ablation
+    from .training.multi_gpu import detect_kaggle_multi_gpu
     import random as _rnd
 
     cfg: TrainConfig = load_train_config(config)
