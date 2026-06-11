@@ -39,7 +39,7 @@ class ModelConfig:
     """Model and runtime configuration."""
 
     base: int = 32
-    activation: str = "relu"  # "relu" or "silu"
+    activation: str = "silu"  # "relu" or "silu"
     final_dropout: float = 0.3
     ema_decay: float = 0.999
     device: str = "auto"  # "auto", "cuda", "cpu"

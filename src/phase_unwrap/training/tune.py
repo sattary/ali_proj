@@ -372,7 +372,7 @@ def run_tuning(
         objective = _create_objective(
             cfg, tune_epochs, batch_size_override=batch_size_override
         )
-        study.optimize(objective, n_trials=remaining, show_progress_bar=True)
+        study.optimize(objective, n_trials=remaining, show_progress_bar=False)
 
     # Check if any trials completed successfully
     completed_trials = [
