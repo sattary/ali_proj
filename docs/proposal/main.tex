@@ -180,6 +180,13 @@ The simulation of photon arrival statistics (Poisson noise) was restructured to 
 \subsection{Fractional Curriculum Scaling}
 The dynamic noise curriculum $\gamma(\text{epoch})$ was transitioned from absolute epoch tracking to relative fractional scaling (\texttt{warmup\_ratio} and \texttt{full\_ratio}). This ensures the curriculum function robustly self-scales regardless of the specific training horizon, enabling automated multi-trial hyperparameter optimization runs to perfectly compress and replicate the identical noise scheduling dynamics of massive long-duration convergences.
 
+\subsection{Temporal Weight Averaging (EMA Shadowing)}
+Because the stochastic optical noise curriculum is dynamically synthesized at every training iteration, the highly non-linear loss landscape constantly subjects the active network weights $\theta_t$ to chaotic, high-frequency gradient jitter. To isolate the stable structural minimum from this gradient noise, the architecture mathematically maintains an Exponential Moving Average (EMA) shadow model during the backward pass:
+\begin{equation}
+    \theta_{\text{EMA}}^{(t)} = \beta \theta_{\text{EMA}}^{(t-1)} + (1-\beta)\theta^{(t)}
+\end{equation}
+with a rigid decay constant of $\beta = 0.999$. By evaluating validation metrics and extracting final predictions exclusively from the decoupled EMA weights, the pipeline acts as a temporal low-pass filter, mathematically guaranteeing that the final topological mapping represents the stable center of the convergence basin.
+
 \section{Conclusion}
 By rigidly marrying deep convolutional learning with established optical physics, the proposed pipeline represents a robust methodology for phase unwrapping. The implementation of spatial coordinate embeddings, dynamic optical noise scheduling, and multi-derivative loss topologies ensures that the network is explicitly trained to handle empirical, hardware-degraded interferograms with unprecedented accuracy.
 
