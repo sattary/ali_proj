@@ -364,7 +364,7 @@ def train(
         run_curv = 0.0
         cnt = 0
 
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{cfg.optim.epochs}", leave=False, mininterval=2.0)
+        pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{cfg.optim.epochs}", leave=False)
         for I_raw, phi_gt in pbar:
             I_raw = I_raw.to(device, non_blocking=True)
             phi_gt = phi_gt.to(device, non_blocking=True)

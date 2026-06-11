@@ -145,7 +145,6 @@ def _create_objective(
                 desc=f"Trial {trial.number} Ep {epoch}/{tune_epochs}",
                 leave=False,
                 file=sys.stderr,
-                mininterval=2.0,
             )
             run_loss = 0.0
 
