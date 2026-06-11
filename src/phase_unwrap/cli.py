@@ -130,6 +130,9 @@ def tune_cmd(
     use_amp: bool = typer.Option(
         False, "--use-amp", help="Enable Automatic Mixed Precision (AMP)."
     ),
+    batch_size: Optional[int] = typer.Option(
+        None, "--batch-size", help="Override config batch size."
+    ),
 ) -> None:
     """Run Optuna hyperparameter search (TPE + MedianPruner)."""
     import torch
@@ -154,7 +157,7 @@ def tune_cmd(
         n_workers=n_workers,
         gpu_ids=gpu_id_list,
         auto_push_callback=None,
-        batch_size_override=None,
+        batch_size_override=batch_size,
     )
 
 
