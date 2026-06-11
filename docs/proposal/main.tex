@@ -85,13 +85,37 @@ Microscopically, the curriculum level is subjected to continuous Gaussian jitter
 
 \section{Network Architecture and Spatial Anchoring}
 
-\subsection{Breaking Translational Invariance}
-Standard convolutional operations are translationally invariant. However, interferograms represent phase fields modulo $2\pi$, meaning an identical local fringe pattern can represent an infinite number of absolute phase depths (the $2\pi k$ scalar ambiguity). 
+The backbone of the proposed method is a highly modified, physics-informed fully convolutional network (UNetRes2) specifically designed to resolve the macroscopic topological ambiguity of phase unwrapping while preserving high-frequency fringe structures.
 
-To resolve this, our architecture utilizes an \texttt{AddCoords} module, explicitly concatenating normalized spatial grid coordinates $(x,y) \in [-1, 1]^2$ to the input tensor. This breaks the spatial invariance of the U-Net, grounding the predicted manifold and allowing the network to synthesize an absolute scalar offset based on spatial priors.
+\subsection{Global Offset Head and Duality Mapping}
+The absolute physical phase represents a dual-scale topological space: high-frequency local fringe structures governed by continuous spatial gradients, and a low-frequency macroscopic piston shift ($2\pi k$). To mirror this physical duality, our architecture explicitly bifurcates the regression task. The standard U-Net decoding branch reconstructs the local topographical manifold $\phi_{\text{raw}}(x,y)$. Simultaneously, a parallel convolutional head stems from the deepest bottleneck layer and passes through Global Average Pooling to predict a singular scalar shift $k_{\text{off}}$. The final reconstructed absolute phase is assembled as $\phi_{\text{abs}}(x,y) = \phi_{\text{raw}}(x,y) + k_{\text{off}}$, preventing the network from distorting high-frequency local features to compensate for global scalar errors.
 
-\subsection{Piston Phase Hinting}
-To further regularize the solution manifold and prevent dataset memorization, the network is provided with a one-channel scalar hint $\phi_{\text{hint}}$ derived from the center pixel of the target phase. Crucially, a randomized scalar perturbation $\delta$ is applied to this hint and identically reflected in the ground truth target during the curriculum, mathematically penalizing the network if it fails to lock onto the provided macroscopic anchor.
+\subsection{Depthwise Separable Res2 Blocks}
+Standard $3 \times 3$ convolutions possess insufficient receptive fields to track macroscopic phase trends across high-resolution $256 \times 256$ interferograms. To exponentially expand the spatial context without inducing catastrophic overfitting, the standard U-Net blocks are entirely replaced with Depthwise Separable Res2Net modules. Each block splits the channel dimension into $s=4$ discrete groups and applies sequential, hierarchical depthwise convolutions with cumulative residual connections. This mathematically guarantees a massive effective receptive field capable of anchoring global phase structures while maintaining extreme parameter efficiency.
+
+\subsection{Multi-Scale Deep Supervision}
+Phase unwrapping networks frequently suffer from vanishing gradients and structural collapse due to the highly oscillatory nature of the input intensity field. To enforce structural coherence early in the training dynamics, the architecture utilizes Multi-Scale Deep Supervision. Auxiliary regression heads branch off the $1/4\times$ and $1/2\times$ scale decoding layers, returning explicit low-resolution phase predictions. Gradients are injected directly into the intermediate layers of the network during the backward pass, forcing the early decoding blocks to securely establish the macroscopic topological shape before fine-tuning the microscopic details at the terminal $1\times$ resolution.
+
+\subsection{Spatial Anchoring and Phase Hinting}
+Standard convolutions are translationally invariant, which fundamentally contradicts the spatially grounded nature of absolute phase unwrapping. Our architecture utilizes an \texttt{AddCoords} module, explicitly concatenating normalized spatial grid coordinates $(x,y) \in [-1, 1]^2$ to the input tensor to break the spatial invariance. Furthermore, the network is provided with a heavily regularized scalar hint $\phi_{\text{hint}}$, corrupted by a random scalar perturbation $\delta$, to force the network to actively align its predicted manifold with physical macroscopic anchors.
+
+\section{Bayesian Hyperparameter Optimization}
+
+Prior to the deployment of massive, long-duration training convergences, the architectural and topological hyperparameters are rigorously tuned via a fully automated Bayesian Hyperparameter Optimization (HPO) pipeline to escape suboptimal local minima.
+
+\subsection{Tree-Structured Parzen Estimator (TPE)}
+Because the hyperparameter search space (e.g., loss coefficient ratios, learning rate schedules) is highly non-linear, grid or random searches are computationally unviable. The pipeline utilizes the Tree-structured Parzen Estimator (TPE) algorithm. TPE constructs probabilistic models of the objective function, dynamically sampling configurations that maximize the expected improvement over the current best historical trial. 
+
+\subsection{Median Pruning Dynamics}
+To mathematically conserve graphical processing unit (GPU) cycles, the tuning pipeline incorporates a Median Pruner mechanism. The performance of each active trial is evaluated at every epoch against the median historical Mean Absolute Error (MAE) trajectory of all previously completed trials. If a trial structurally underperforms the historical median at a specific epoch, it is aggressively and automatically terminated. 
+
+\subsection{Optimization Space}
+The Bayesian optimizer actively explores a highly constrained parameter manifold to dictate the final training initialization. The search space explicitly tunes:
+\begin{enumerate}
+    \item \textbf{Network Capacity:} The base channel width ($[8, 16, 32]$).
+    \item \textbf{Topological Loss Ratios:} The weighting coefficients for the spatial gradient constraint ($w_{\text{grad}} \in [0.01, 1.0]$) and Laplacian curvature penalty ($w_{\text{curv}} \in [0.0, 0.05]$).
+    \item \textbf{Convergence Dynamics:} The peak cyclic learning rate (log-uniform $[10^{-5}, 10^{-3}]$) and the initial warm-up sequence duration.
+\end{enumerate}
 
 \section{Multi-Term Topological Loss}
 Due to the ill-posed nature of absolute phase unwrapping, optimizing the network weights $\theta$ exclusively via a point-wise absolute error typically fails to capture the high-frequency structural integrity of the continuous optical surface. Consequently, the network is optimized via a multi-objective loss topology $\mathcal{L}_{\text{total}}$ that rigorously enforces physical continuity, spatial derivatives, and localized confidence weighting:
