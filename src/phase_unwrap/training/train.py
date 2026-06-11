@@ -305,6 +305,14 @@ def train(
 
     best_mae = float("inf")
     start_epoch = 1
+    
+    if resume_path and os.path.exists(resume_path):
+        print(f"[resume] Loading checkpoint from {resume_path}")
+        start_epoch, best_mae = load_checkpoint(
+            resume_path, model, ema, opt, sched, scaler, device
+        )
+    elif resume_path:
+        print(f"[resume] Warning: Checkpoint not found at {resume_path}")
 
     if start_epoch == 1:
         _init_csv(metrics_path)
