@@ -39,18 +39,10 @@ def run_ablation(
     use_amp: bool = False,
 ) -> str:
     """
-    Run an ablation study and produce a LaTeX comparison table.
-
-    Args:
-        base_cfg:   Base training configuration.
-        ablations:  Mapping of {label: {config_key: value}}.
-        base_name:  Parent directory name under runs/.
-        seeds:      Seeds for multi-seed runs.
-        metrics:    Metrics to include in the table.
-        out_table:  Output LaTeX file path.
-
-    Returns:
-        LaTeX table string.
+    Rationale: Automates the systematic removal of architectural features to mathematically 
+    quantify their independent structural contributions. Defers all hardware allocation 
+    and seed iteration to the underlying multiseed module to preserve strict 
+    single-responsibility execution boundaries.
     """
     from ..analysis.export_latex import comparison_to_latex
 

@@ -73,7 +73,12 @@ def run_multiseed(
     multi_gpu: bool = False,
     use_amp: bool = False,
 ) -> None:
-    """Run training for each seed, then aggregate metrics."""
+    """
+    Rationale: Sequentially executes identical training configurations across diverse 
+    initialization seeds to rigorously measure statistical variance. Hardware flags 
+    (multi_gpu, use_amp) are explicitly cascaded to bypass redundant auto-detection 
+    overhead in the inner loops, ensuring deterministic compute allocation.
+    """
     base_dir = os.path.join(cfg.logging.runs_root, base_run_name)
     ensure_dir(base_dir)
 
