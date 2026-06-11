@@ -87,6 +87,9 @@ def train_cmd(
     use_amp: bool = typer.Option(
         False, "--use-amp", help="Enable Automatic Mixed Precision (AMP)."
     ),
+    data_dir: Optional[str] = typer.Option(
+        None, "--data-dir", help="Override dataset directory."
+    ),
 ) -> None:
     """Train the UNetRes2 absolute phase reconstruction model."""
     import torch
@@ -99,6 +102,8 @@ def train_cmd(
         cfg.logging.run_name = run_name
     if use_amp:
         cfg.model.use_amp = True
+    if data_dir is not None:
+        cfg.data.data_dir = data_dir
 
     if not multi_gpu and torch.cuda.is_available():
         if detect_kaggle_multi_gpu():
@@ -133,6 +138,9 @@ def tune_cmd(
     batch_size: Optional[int] = typer.Option(
         None, "--batch-size", help="Override config batch size."
     ),
+    data_dir: Optional[str] = typer.Option(
+        None, "--data-dir", help="Override dataset directory."
+    ),
 ) -> None:
     """Run Optuna hyperparameter search (TPE + MedianPruner)."""
     import torch
@@ -142,6 +150,8 @@ def tune_cmd(
 
     if use_amp:
         cfg.model.use_amp = True
+    if data_dir is not None:
+        cfg.data.data_dir = data_dir
 
     gpu_id_list: Optional[list[int]] = None
     if n_workers > 1 and torch.cuda.is_available():
