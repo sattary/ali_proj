@@ -249,12 +249,22 @@ def ablation_cmd(
         "no_ema": {"model.ema_decay": 0.0},
     }
 
+    if use_amp:
+        cfg.model.use_amp = True
+
+    if not multi_gpu and torch.cuda.is_available():
+        if detect_kaggle_multi_gpu():
+            multi_gpu = True
+            typer.echo("[kaggle] Auto-enabling multi-GPU mode for ablation")
+
     run_ablation(
         base_cfg=cfg,
         ablations=ablations,
         base_name=run_name,
         seeds=seed_list,
         out_table=out_table,
+        multi_gpu=multi_gpu,
+        use_amp=use_amp,
     )
 
 
