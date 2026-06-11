@@ -27,13 +27,11 @@ app = typer.Typer(
     add_completion=False,
 )
 
-DataApp = typer.Typer(help="Data generation and management commands.")
 EvalApp = typer.Typer(help="Evaluation commands.")
 ExportApp = typer.Typer(help="Model export commands.")
 PlotApp = typer.Typer(help="Visualization commands.")
 RunApp = typer.Typer(help="Runtime and rendering commands.")
 
-app.add_typer(DataApp, name="data")
 app.add_typer(EvalApp, name="eval")
 app.add_typer(ExportApp, name="export")
 app.add_typer(PlotApp, name="plot")
@@ -45,7 +43,7 @@ app.add_typer(RunApp, name="run")
 # ============================================================================
 
 
-@DataApp.command("generate")
+@app.command("generate")
 def data_generate(
     num_samples: int = typer.Option(
         180_000, "--num-samples", help="Total number of samples to generate."
