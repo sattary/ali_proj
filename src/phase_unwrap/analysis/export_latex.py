@@ -24,8 +24,9 @@ def _bold_best(values: list[str], lower_better: bool = True) -> list[str]:
     """Wrap the best value in \\textbf{}."""
     numerics = []
     for v in values:
+        v_clean = v.replace("$", "").split("\\pm")[0].strip()
         try:
-            numerics.append(float(v))
+            numerics.append(float(v_clean))
         except ValueError:
             numerics.append(float("inf") if lower_better else float("-inf"))
 
@@ -80,7 +81,8 @@ def metrics_to_latex(
 
     if metrics is None:
         metrics = [
-            "val_mae",
+            "val_topo_mae",
+            "val_abs_mae",
             "val_rmse",
             "val_ssim",
             "val_psnr",
@@ -90,7 +92,8 @@ def metrics_to_latex(
 
     # header mapping for prettier column names
     header_map = {
-        "val_mae": "MAE",
+        "val_topo_mae": "TopoMAE",
+        "val_abs_mae": "AbsMAE",
         "val_rmse": "RMSE",
         "val_ssim": "SSIM",
         "val_psnr": "PSNR",
@@ -103,7 +106,8 @@ def metrics_to_latex(
 
     # decimal precision per metric
     precision_map = {
-        "val_mae": 4,
+        "val_topo_mae": 4,
+        "val_abs_mae": 4,
         "val_rmse": 4,
         "val_ssim": 4,
         "val_psnr": 2,
@@ -117,11 +121,22 @@ def metrics_to_latex(
     headers = [header_map.get(m, m) for m in metrics]
     values = []
     for m in metrics:
-        raw = target.get(m, "")
-        try:
-            values.append(_fmt(float(raw), precision_map.get(m, 3)))
-        except (ValueError, TypeError):
-            values.append("--")
+        mean_key = f"{m}_mean"
+        std_key = f"{m}_std"
+        if mean_key in target and std_key in target:
+            try:
+                mean_val = float(target[mean_key])
+                std_val = float(target[std_key])
+                dec = precision_map.get(m, 3)
+                values.append(f"${_fmt(mean_val, dec)} \\pm {_fmt(std_val, dec)}$")
+            except (ValueError, TypeError):
+                values.append("--")
+        else:
+            raw = target.get(m, "")
+            try:
+                values.append(_fmt(float(raw), precision_map.get(m, 3)))
+            except (ValueError, TypeError):
+                values.append("--")
 
     col_spec = "l" + "r" * len(metrics)
 
@@ -177,10 +192,11 @@ def comparison_to_latex(
         LaTeX table string.
     """
     if metrics is None:
-        metrics = ["val_mae", "val_rmse", "val_ssim", "val_psnr"]
+        metrics = ["val_topo_mae", "val_abs_mae", "val_rmse", "val_ssim", "val_psnr"]
 
     header_map = {
-        "val_mae": "MAE",
+        "val_topo_mae": "TopoMAE",
+        "val_abs_mae": "AbsMAE",
         "val_rmse": "RMSE",
         "val_ssim": "SSIM",
         "val_psnr": "PSNR",
@@ -192,7 +208,8 @@ def comparison_to_latex(
     higher_better = {"val_ssim", "val_psnr"}
 
     precision_map = {
-        "val_mae": 4,
+        "val_topo_mae": 4,
+        "val_abs_mae": 4,
         "val_rmse": 4,
         "val_ssim": 4,
         "val_psnr": 2,
@@ -216,11 +233,22 @@ def comparison_to_latex(
         target = rows[epoch]
         vals = []
         for m in metrics:
-            raw = target.get(m, "")
-            try:
-                vals.append(_fmt(float(raw), precision_map.get(m, 3)))
-            except (ValueError, TypeError):
-                vals.append("--")
+            mean_key = f"{m}_mean"
+            std_key = f"{m}_std"
+            if mean_key in target and std_key in target:
+                try:
+                    mean_val = float(target[mean_key])
+                    std_val = float(target[std_key])
+                    dec = precision_map.get(m, 3)
+                    vals.append(f"${_fmt(mean_val, dec)} \\pm {_fmt(std_val, dec)}$")
+                except (ValueError, TypeError):
+                    vals.append("--")
+            else:
+                raw = target.get(m, "")
+                try:
+                    vals.append(_fmt(float(raw), precision_map.get(m, 3)))
+                except (ValueError, TypeError):
+                    vals.append("--")
         all_values[name] = vals
 
     # bold best per column
