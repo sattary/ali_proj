@@ -189,15 +189,18 @@ def build_dataloaders(
         else None
     )
 
+    import os
+    safe_workers = min(cfg.data.workers, os.cpu_count() or 1)
+
     use_cuda = device.type == "cuda"
     dl_kwargs = dict(
         batch_size=cfg.optim.batch_size,
         shuffle=True,
-        num_workers=cfg.data.workers,
+        num_workers=safe_workers,
         pin_memory=use_cuda,
         drop_last=True,
     )
-    if cfg.data.workers > 0:
+    if safe_workers > 0 and getattr(cfg.data, "persistent_workers", False):
         dl_kwargs["persistent_workers"] = True
 
     train_loader = DataLoader(train_ds, **dl_kwargs)
@@ -207,7 +210,7 @@ def build_dataloaders(
             val_ds,
             batch_size=cfg.optim.batch_size,
             shuffle=False,
-            num_workers=cfg.data.workers,
+            num_workers=safe_workers,
             pin_memory=use_cuda,
         )
         if val_ds is not None
@@ -219,7 +222,7 @@ def build_dataloaders(
             test_ds,
             batch_size=cfg.optim.batch_size,
             shuffle=False,
-            num_workers=cfg.data.workers,
+            num_workers=safe_workers,
             pin_memory=use_cuda,
         )
         if test_ds is not None

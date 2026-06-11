@@ -30,6 +30,7 @@ class DataConfig:
     val_frac: float = 0.1
     test_frac: float = 0.1
     workers: int = 4
+    persistent_workers: bool = False
     augment: bool = True
 
 

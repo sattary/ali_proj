@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torch.amp import autocast
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from ..core.config import load_train_config
 from ..data import build_dataloaders
@@ -162,7 +162,7 @@ def plot_loss_landscape(
     total_evals = grid_size * grid_size
     print(f"Loss landscape: {total_evals} evaluations, {num_eval_samples} samples each")
 
-    with tqdm(total=total_evals, desc="Loss landscape") as pbar:
+    with tqdm(total=total_evals, desc="Loss landscape", mininterval=2.0) as pbar:
         for i, a in enumerate(alphas):
             for j, b in enumerate(betas):
                 perturbed = _perturb(base_params, d1, d2, a, b)

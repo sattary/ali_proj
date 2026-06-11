@@ -25,7 +25,7 @@ import h5py
 import numpy as np
 import yaml
 from scipy.ndimage import zoom
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +164,7 @@ def generate_to_h5(
             pool.imap_unordered(_generate_shard_worker, args_list),
             total=n_shards,
             desc="Shards",
+            mininterval=2.0,
         ):
             total_generated += n_in_shard_done
 

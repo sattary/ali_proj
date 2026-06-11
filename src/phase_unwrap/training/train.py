@@ -17,7 +17,7 @@ import torch
 from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
 from torchmetrics.functional import structural_similarity_index_measure as ssim_fn
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from ..core.config import TrainConfig, config_to_yaml
 from ..core.losses import MAEGradLoss, compute_metrics
@@ -358,7 +358,7 @@ def train(
         run_grad = 0.0
         cnt = 0
 
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{cfg.optim.epochs}", leave=False)
+        pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{cfg.optim.epochs}", leave=False, mininterval=2.0)
         for I_raw, phi_gt in pbar:
             I_raw = I_raw.to(device, non_blocking=True)
             phi_gt = phi_gt.to(device, non_blocking=True)

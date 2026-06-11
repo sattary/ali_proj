@@ -17,7 +17,7 @@ import torch
 from optuna.pruners import MedianPruner
 from optuna.samplers import TPESampler
 from torch.amp import GradScaler, autocast
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from ..core.config import TrainConfig, config_to_yaml
 from ..core.losses import MAEGradLoss
@@ -145,6 +145,7 @@ def _create_objective(
                 desc=f"Trial {trial.number} Ep {epoch}/{tune_epochs}",
                 leave=False,
                 file=sys.stderr,
+                mininterval=2.0,
             )
             run_loss = 0.0
 

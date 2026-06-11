@@ -17,7 +17,7 @@ import numpy as np
 import seaborn as sns
 import torch
 from torch.amp import autocast
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from ..core.config import load_train_config
 from ..core.ops import affine_align
@@ -80,7 +80,7 @@ def plot_error_histogram(
 
     sample_maes: list[float] = []
 
-    for I_input, phi_gt, _, _ in tqdm(loader, desc="Evaluating Dataset (CPU)"):
+    for I_input, phi_gt, _, _ in tqdm(loader, desc="Evaluating Dataset (CPU)", mininterval=2.0):
         I_input = I_input.to(device)
         phi_gt = phi_gt.to(device)
 
