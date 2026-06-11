@@ -1,5 +1,6 @@
 \documentclass[11pt,onecolumn]{IEEEtran}
 \usepackage{amsmath,amssymb,amsfonts}
+\usepackage[lite]{mtpro2}
 \usepackage{algorithmic}
 \usepackage{graphicx}
 \usepackage{textcomp}
@@ -49,17 +50,28 @@ The objective of the model is to map the observed intensity $I(x,y)$ directly to
 \end{equation}
 
 \section{Physics-Based Dynamic Noise Curriculum}
-Neural networks are highly susceptible to domain shift when applied to empirical laboratory data. To close the gap between synthetic data and physical instrumentation, we introduce an extensive optical degradation pipeline applied dynamically during training via a piecewise curriculum schedule $\gamma(\text{epoch}) \in [0,1]$.
+Neural networks are highly susceptible to domain shift when applied to empirical laboratory data. To close the gap between synthetic data and physical instrumentation, we introduce an extensive optical degradation pipeline mathematically anchored to the hardware physics of interferometric sensing.
+
+\subsection{Infinite GPU-Native Degradation}
+Classical deep learning datasets often compute noisy input pairs offline to mitigate input/output (I/O) bottlenecks. However, this permits the network to eventually memorize specific noise configurations. We circumvent this by porting the entire physical degradation model directly into the GPU batch-preparation thread. This guarantees that at every single epoch, the network encounters a mathematically unique, non-repeating noise topology for an identical underlying absolute phase structure, effectively acting as an infinite dataset.
 
 The noise synthesis adheres strictly to the physical order of operations within an optical sensing array:
 \begin{enumerate}
-    \item \textbf{Lens Aberration:} Optical defocus is modeled as a Gaussian blur applied to the continuous optical field.
-    \item \textbf{Laser Speckle:} Coherent noise arising from micro-scattering is modeled multiplicatively: $I = I \cdot (1 + \mathcal{N}(0, \sigma_{\text{speckle}}))$.
-    \item \textbf{Uneven Illumination:} Low-frequency beam misalignment is simulated via the bicubic upsampling of an independent, low-dimensional Gaussian manifold.
-    \item \textbf{Sensor Electronics:} Photometric gain and offset jitter simulate variation in camera exposure settings.
-    \item \textbf{Quantum Shot Noise:} Photon arrival statistics are strictly enforced via a positive-domain Poisson counting process.
-    \item \textbf{Thermal Noise:} Additive Gaussian white noise models dark current and thermal sensor fluctuations.
+    \item \textbf{Lens Aberration:} Optical defocus modeled as continuous Gaussian blur.
+    \item \textbf{Laser Speckle:} Multiplicative coherent noise: $I = I \cdot (1 + \mathcal{N}(0, \sigma_{\text{speckle}}))$.
+    \item \textbf{Uneven Illumination:} Low-frequency bicubic beam misalignment.
+    \item \textbf{Sensor Electronics:} Photometric gain and black-level offset jitter.
+    \item \textbf{Quantum Shot Noise:} Photon arrival statistics mathematically enforced via a positive-domain Poisson counting process. Crucially, this operation is executed prior to any non-physical data standardization (e.g., zero-mean Z-scoring) to preserve strict physical intensity boundaries.
+    \item \textbf{Thermal Noise:} Additive Gaussian white noise modeling sensor dark current.
 \end{enumerate}
+
+\subsection{Hybrid N-Cycle Stochastic Curriculum}
+Subjecting a neural network to peak optical degradation immediately at initialization typically causes gradient divergence. Conversely, training a network to convergence on a strictly static noise level severely narrows the breadth of the local minima it settles into. 
+
+To engineer maximum robustness, we introduce a \textit{Hybrid N-Cycle Stochastic Curriculum}. 
+Macroscopically, the overall noise level $\mu(\text{epoch})$ does not monotonically increase; instead, it forms continuous N-cycle cosine waves (mathematically equivalent to Warm Restarts). The noise gracefully rises to push the network to its structural limit, then drops back to near-zero, forcing the model out of sharp local minima and allowing it to fine-tune on perfect data.
+
+Microscopically, the curriculum level is subjected to continuous Gaussian jitter $\gamma_{\text{batch}} \sim \mathcal{N}(\mu, \sigma_{\text{jitter}})$. This ensures that even at the macroscopic peak of the curriculum, the network is randomly forced to correctly reconstruct relatively clean interferograms, preventing catastrophic forgetting of the foundational physical mapping.
 
 \section{Network Architecture and Spatial Anchoring}
 

@@ -29,11 +29,18 @@ class NoiseScheduler:
     """
 
     def __init__(
-        self, warmup_ratio: float = 0.1, full_ratio: float = 0.4, profile: str = "cosine"
+        self, 
+        warmup_ratio: float = 0.1, 
+        full_ratio: float = 0.4, 
+        profile: str = "cosine",
+        cycles: float = 2.0,
+        stochastic_std: float = 0.05
     ):
         self.warmup_ratio = max(0.0, min(1.0, float(warmup_ratio)))
         self.full_ratio = max(self.warmup_ratio, min(1.0, float(full_ratio)))
         self.profile = profile
+        self.cycles = max(0.0, float(cycles))
+        self.stochastic_std = max(0.0, float(stochastic_std))
         self.total_epochs = 1
 
     def set_total_epochs(self, total_epochs: int) -> None:
@@ -42,17 +49,45 @@ class NoiseScheduler:
     def level(self, epoch: int) -> float:
         """Calculate the normalized [0, 1] noise strength for the given epoch."""
         warmup_ep = self.warmup_ratio * self.total_epochs
-        full_ep = self.full_ratio * self.total_epochs
         
         if epoch <= warmup_ep:
-            return 0.0
-        if epoch >= full_ep or full_ep <= warmup_ep:
-            return 1.0
+            base_l = 0.0
+        else:
+            if self.cycles > 0:
+                # N-Cycle Warm Restarts
+                active_epochs = self.total_epochs - warmup_ep
+                if active_epochs <= 0:
+                    base_l = 0.0
+                else:
+                    t = (epoch - warmup_ep) / active_epochs
+                    if self.profile == "cosine":
+                        # Bell curves peaking at 1.0 and returning to 0.0
+                        base_l = 0.5 * (1 - np.cos(2 * np.pi * t * self.cycles))
+                    else:
+                        # Triangle wave
+                        phase = (t * self.cycles) % 1.0
+                        if phase < 0.5:
+                            base_l = phase * 2.0
+                        else:
+                            base_l = 2.0 - (phase * 2.0)
+            else:
+                # Classic monotonically increasing mode
+                full_ep = self.full_ratio * self.total_epochs
+                if epoch >= full_ep or full_ep <= warmup_ep:
+                    base_l = 1.0
+                else:
+                    t = (epoch - warmup_ep) / (full_ep - warmup_ep)
+                    if self.profile == "cosine":
+                        base_l = 0.5 * (1 - np.cos(np.pi * t))
+                    else:
+                        base_l = float(t)
+
+        # Apply Microscopic Stochastic Jitter
+        if self.stochastic_std > 0 and epoch > warmup_ep:
+            noisy_l = np.random.normal(loc=base_l, scale=self.stochastic_std)
+            return float(max(0.0, min(1.0, noisy_l)))
             
-        t = (epoch - warmup_ep) / (full_ep - warmup_ep)
-        if self.profile == "cosine":
-            return 0.5 * (1 - np.cos(np.pi * t))
-        return float(t)  # linear
+        return float(max(0.0, min(1.0, base_l)))
 
 
 class NoiseAug:
