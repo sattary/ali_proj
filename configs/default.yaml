@@ -8,6 +8,7 @@ data:
   phi_key: "phi"
   val_frac: 0.3
   workers: 4
+  persistent_workers: false
   augment: true
 
 aug:
