@@ -30,12 +30,10 @@ app = typer.Typer(
 EvalApp = typer.Typer(help="Evaluation commands.")
 ExportApp = typer.Typer(help="Model export commands.")
 PlotApp = typer.Typer(help="Visualization commands.")
-RunApp = typer.Typer(help="Runtime and rendering commands.")
 
 app.add_typer(EvalApp, name="eval")
 app.add_typer(ExportApp, name="export")
 app.add_typer(PlotApp, name="plot")
-app.add_typer(RunApp, name="run")
 
 
 # ============================================================================
@@ -876,14 +874,11 @@ def plot_tta_benefit_cmd(
 
 
 # ============================================================================
-# RUN COMMANDS
+# INFER COMMANDS
 # ============================================================================
 
 
-
-
-
-@RunApp.command("infer")
+@app.command("infer")
 def run_infer_cmd(
     input_path: str = typer.Option(
         ..., "--input", help="Path to input interferogram (.npy, .png, etc)."
