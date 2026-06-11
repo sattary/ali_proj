@@ -325,10 +325,11 @@ def run_tuning(
         f"Running {remaining} trials ({len(study.trials)} existing, {n_trials} target)"
     )
 
-    if n_workers > 1 and torch.cuda.device_count() > 1:
-        # Parallel execution on multiple GPUs
+    if n_workers > 1 and torch.cuda.is_available():
+        # Parallel execution
         if gpu_ids is None:
-            gpu_ids = list(range(min(n_workers, torch.cuda.device_count())))
+            n_gpus = torch.cuda.device_count()
+            gpu_ids = [i % n_gpus for i in range(n_workers)]
 
         n_workers = min(n_workers, len(gpu_ids), remaining)
         trials_per_worker = remaining // n_workers

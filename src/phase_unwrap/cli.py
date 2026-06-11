@@ -145,9 +145,8 @@ def tune_cmd(
     gpu_id_list: Optional[list[int]] = None
     if n_workers > 1 and torch.cuda.is_available():
         n_gpus = torch.cuda.device_count()
-        if n_gpus > 1:
-            gpu_id_list = list(range(min(n_workers, n_gpus)))
-            typer.echo(f"Auto-detected {n_gpus} GPUs, using: {gpu_id_list}")
+        gpu_id_list = [i % n_gpus for i in range(n_workers)]
+        typer.echo(f"Auto-detected {n_gpus} GPUs, mapping {n_workers} workers: {gpu_id_list}")
 
     run_tuning(
         cfg,
