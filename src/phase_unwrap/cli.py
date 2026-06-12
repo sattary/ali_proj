@@ -90,6 +90,12 @@ def train_cmd(
     data_dir: Optional[str] = typer.Option(
         None, "--data-dir", help="Override dataset directory."
     ),
+    batch_size: Optional[int] = typer.Option(
+        None, "--batch-size", help="Override config batch size."
+    ),
+    epochs: Optional[int] = typer.Option(
+        None, "--epochs", help="Override config training epochs."
+    ),
 ) -> None:
     """Train the UNetRes2 absolute phase reconstruction model."""
     import torch
@@ -104,6 +110,10 @@ def train_cmd(
         cfg.model.use_amp = True
     if data_dir is not None:
         cfg.data.data_dir = data_dir
+    if batch_size is not None:
+        cfg.optim.batch_size = batch_size
+    if epochs is not None:
+        cfg.optim.epochs = epochs
 
     if not multi_gpu and torch.cuda.is_available():
         if detect_kaggle_multi_gpu():
