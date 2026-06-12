@@ -266,12 +266,6 @@ def train(
     )
 
     model = build_model(cfg.model).to(device=device, memory_format=torch.channels_last)
-    if hasattr(torch, "compile") and sys.platform != "win32":
-        try:
-            model = torch.compile(model)
-            print("[startup] torch.compile enabled")
-        except Exception as e:
-            print(f"[startup] torch.compile failed: {e}")
 
     # Setup multi-GPU if requested
     if multi_gpu and use_cuda:
@@ -284,6 +278,12 @@ def train(
         # without exceeding the VRAM limit of any single card.
         print_gpu_info()
         model = setup_multi_gpu(model, gpu_ids=gpu_ids)
+    elif hasattr(torch, "compile") and sys.platform != "win32":
+        try:
+            model = torch.compile(model)
+            print("[startup] torch.compile enabled")
+        except Exception as e:
+            print(f"[startup] torch.compile failed: {e}")
 
     loss_fn = MAEGradLoss(
         w_mae=cfg.loss.w_mae,
