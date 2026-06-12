@@ -36,6 +36,27 @@ app.add_typer(ExportApp, name="export")
 app.add_typer(PlotApp, name="plot")
 
 
+def _apply_cli_overrides(
+    cfg: TrainConfig,
+    run_name: Optional[str] = None,
+    use_amp: Optional[bool] = None,
+    data_dir: Optional[str] = None,
+    batch_size: Optional[int] = None,
+    epochs: Optional[int] = None,
+) -> None:
+    """Apply common CLI overrides to the configuration."""
+    if run_name is not None:
+        cfg.logging.run_name = run_name
+    if use_amp:
+        cfg.model.use_amp = True
+    if data_dir is not None:
+        cfg.data.data_dir = data_dir
+    if batch_size is not None:
+        cfg.optim.batch_size = batch_size
+    if epochs is not None:
+        cfg.optim.epochs = epochs
+
+
 # ============================================================================
 # DATA COMMANDS
 # ============================================================================
@@ -101,16 +122,14 @@ def train_cmd(
 
     cfg: TrainConfig = load_train_config(config)
 
-    if run_name is not None:
-        cfg.logging.run_name = run_name
-    if use_amp:
-        cfg.model.use_amp = True
-    if data_dir is not None:
-        cfg.data.data_dir = data_dir
-    if batch_size is not None:
-        cfg.optim.batch_size = batch_size
-    if epochs is not None:
-        cfg.optim.epochs = epochs
+    _apply_cli_overrides(
+        cfg,
+        run_name=run_name,
+        use_amp=use_amp,
+        data_dir=data_dir,
+        batch_size=batch_size,
+        epochs=epochs,
+    )
 
 
 
@@ -149,10 +168,12 @@ def tune_cmd(
 
     cfg: TrainConfig = load_train_config(config)
 
-    if use_amp:
-        cfg.model.use_amp = True
-    if data_dir is not None:
-        cfg.data.data_dir = data_dir
+    _apply_cli_overrides(
+        cfg,
+        use_amp=use_amp,
+        data_dir=data_dir,
+        batch_size=batch_size,
+    )
 
     gpu_id_list: Optional[list[int]] = None
     if n_workers > 1 and torch.cuda.is_available():
@@ -202,8 +223,7 @@ def multiseed_cmd(
     else:
         seed_list = [_rnd.randint(0, 2**31) for _ in range(num_seeds)]
 
-    if use_amp:
-        cfg.model.use_amp = True
+    _apply_cli_overrides(cfg, use_amp=use_amp)
 
 
 
@@ -253,8 +273,7 @@ def ablation_cmd(
         "no_ema": {"model.ema_decay": 0.0},
     }
 
-    if use_amp:
-        cfg.model.use_amp = True
+    _apply_cli_overrides(cfg, use_amp=use_amp)
 
 
 

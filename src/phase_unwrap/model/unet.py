@@ -179,15 +179,21 @@ class UNetRes2_AbsPhase(nn.Module):
         base: int = 32,
         act: str = "relu",
         final_dropout: float = 0.2,
+        use_coordconv: bool = True,
     ) -> None:
         super().__init__()
-        self.addcoords = AddCoords()
+        self.use_coordconv = use_coordconv
+        if self.use_coordconv:
+            self.addcoords = AddCoords()
+            enc1_in_ch = in_ch + 2
+        else:
+            enc1_in_ch = in_ch
 
         def C(m: int) -> int:
             return int(min(base * m, 1024))
 
         self.enc1 = nn.Sequential(
-            Res2_DS_Block(in_ch + 2, C(1), 4, 1.0, act),
+            Res2_DS_Block(enc1_in_ch, C(1), 4, 1.0, act),
             Res2_DS_Block(C(1), C(1), 4, 1.0, act),
         )
         self.enc2 = nn.Sequential(
@@ -230,7 +236,10 @@ class UNetRes2_AbsPhase(nn.Module):
     def forward(
         self, x_in: torch.Tensor
     ) -> Tuple[torch.Tensor | list[torch.Tensor], torch.Tensor]:
-        x0 = self.addcoords(x_in)
+        if self.use_coordconv:
+            x0 = self.addcoords(x_in)
+        else:
+            x0 = x_in
 
         e1 = self.enc1(x0)
         e2 = self.enc2(e1)
@@ -289,4 +298,5 @@ def build_model(cfg: ModelConfig) -> UNetRes2_AbsPhase:
         base=cfg.base,
         act=cfg.activation,
         final_dropout=cfg.final_dropout,
+        use_coordconv=cfg.use_coordconv,
     )

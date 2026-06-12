@@ -44,6 +44,7 @@ class ModelConfig:
     ema_decay: float = 0.999
     device: str = "auto"  # "auto", "cuda", "cpu"
     use_amp: bool = False
+    use_coordconv: bool = True
 
 
 @dataclass
@@ -103,7 +104,6 @@ class AugmentationConfig:
     speckle_std: float = 0.05
     poisson_scale: float = 0.0
     lowfreq_amp: float = 0.05
-    lowfreq_sigma: int = 21
     blur_prob: float = 0.2
     blur_min: float = 0.5
     blur_max: float = 1.0

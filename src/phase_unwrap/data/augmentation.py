@@ -102,7 +102,6 @@ class NoiseAug:
         speckle_std: float = 0.05,
         poisson_scale: float = 0.0,
         lowfreq_amp: float = 0.05,
-        lowfreq_sigma: int = 21,  # Kept for backward config compatibility but ignored internally
         blur_prob: float = 0.2,
         blur_sigma: tuple[float, float] = (0.5, 1.0),
         dropout_prob: float = 0.02,
