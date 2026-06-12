@@ -117,7 +117,6 @@ def train_cmd(
     run_train(
         cfg,
         resume_path=str(resume) if resume else None,
-        auto_push_callback=None,
     )
 
 
@@ -168,7 +167,6 @@ def tune_cmd(
         study_name=study_name,
         n_workers=n_workers,
         gpu_ids=gpu_id_list,
-        auto_push_callback=None,
         batch_size_override=batch_size,
     )
 

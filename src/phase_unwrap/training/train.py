@@ -29,11 +29,6 @@ from ..data.augmentation import NoiseAug, NoiseScheduler, prepare_batch
 from ..model import EMA, build_model
 from ..visualize import save_epoch_visuals
 
-# Auto-push imports (optional, only used if callback provided)
-try:
-    from ..git_automation.callback import AutoPushCallback
-except ImportError:
-    AutoPushCallback = None
 
 # ---------------------------------------------------------------------------
 # Metrics CSV
@@ -224,7 +219,6 @@ def _build_warmup_scheduler(
 def train(
     cfg: TrainConfig,
     resume_path: Optional[str] = None,
-    auto_push_callback: Optional[Any] = None,
 ) -> None:
     """Main training entrypoint."""
     set_seed(cfg.logging.seed)
@@ -623,19 +617,6 @@ def train(
                 "epoch_time_s": f"{epoch_time:.1f}",
             },
         )
-
-        # Auto-push callback
-        if auto_push_callback is not None:
-            auto_push_callback.on_epoch_end(
-                epoch=epoch,
-                total_epochs=cfg.optim.epochs,
-                metrics=eval_stats if eval_stats else None,
-            )
-
-    # Final auto-push callback
-    if auto_push_callback is not None:
-        auto_push_callback.on_train_end(final_metrics={"best_mae": best_mae})
-
     if test_loader is not None:
         print("\n--- Final Evaluation on Held-Out Test Set ---")
         test_stats = run_eval(
