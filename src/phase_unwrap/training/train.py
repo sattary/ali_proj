@@ -17,13 +17,7 @@ import numpy as np
 import torch
 from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
-try:
-    from torchmetrics.image import structural_similarity_index_measure as ssim_fn
-except ImportError:
-    try:
-        from torchmetrics.functional.image import structural_similarity_index_measure as ssim_fn
-    except ImportError:
-        from torchmetrics.functional import structural_similarity_index_measure as ssim_fn
+from torchmetrics.functional.image import structural_similarity_index_measure as ssim_fn
 from tqdm.auto import tqdm
 
 from ..core.config import TrainConfig, config_to_yaml
