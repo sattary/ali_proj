@@ -10,8 +10,11 @@ import random
 import time
 import sys
 import threading
+import warnings
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+warnings.filterwarnings("ignore", message=".*spectral_angle_mapper.*")
 
 import numpy as np
 import torch

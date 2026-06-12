@@ -1,0 +1,59 @@
+data:
+  data_dir: data/flag_test/
+  pattern: '*.h5'
+  I_key: I
+  phi_key: phi
+  val_frac: 0.5
+  test_frac: 0.1
+  workers: 0
+  persistent_workers: false
+  augment: true
+model:
+  base: 8
+  activation: silu
+  final_dropout: 0.3
+  ema_decay: 0.999
+  device: cpu
+  use_amp: false
+optim:
+  epochs: 2
+  batch_size: 2
+  lr: 0.0003
+  eta_min: 1.0e-06
+  weight_decay: 0.0001
+  grad_clip: 5.0
+  warmup_steps: 1
+loss:
+  w_mae: 1.0
+  w_grad: 0.1
+  int_wgrad: false
+  w_curv: 0.01
+  w_data: 1.0
+logging:
+  run_name: ablation/no_coordconv/seed_1358088105
+  runs_root: runs
+  vis_max: 8
+  val_interval: 1
+  seed: 1358088105
+aug:
+  enable: true
+  warmup_ratio: 0.1
+  full_ratio: 0.4
+  profile: cosine
+  cycles: 2.0
+  stochastic_std: 0.05
+  gauss_std: 0.02
+  speckle_std: 0.05
+  poisson_scale: 0.0
+  lowfreq_amp: 0.05
+  lowfreq_sigma: 21
+  blur_prob: 0.2
+  blur_min: 0.5
+  blur_max: 1.0
+  dropout_prob: 0.02
+  sap_prob: 0.0
+  gain_min: 0.9
+  gain_max: 1.1
+  off_min: -0.05
+  off_max: 0.05
+  hint_std: 0.2

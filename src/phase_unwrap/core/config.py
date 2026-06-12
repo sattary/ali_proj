@@ -58,6 +58,7 @@ class OptimizationConfig:
     weight_decay: float = 1e-4
     grad_clip: float = 5.0
     warmup_steps: int = 500
+    compile: bool = True
 
 
 @dataclass
