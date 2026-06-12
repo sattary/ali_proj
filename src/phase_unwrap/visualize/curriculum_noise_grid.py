@@ -43,7 +43,6 @@ def plot_curriculum_noise(
         speckle_std=aug_cfg.speckle_std,
         poisson_scale=aug_cfg.poisson_scale,
         lowfreq_amp=aug_cfg.lowfreq_amp,
-        lowfreq_sigma=aug_cfg.lowfreq_sigma,
         blur_prob=aug_cfg.blur_prob,
         blur_sigma=(aug_cfg.blur_min, aug_cfg.blur_max),
         dropout_prob=aug_cfg.dropout_prob,

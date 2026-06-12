@@ -332,7 +332,6 @@ def train(
             speckle_std=cfg.aug.speckle_std,
             poisson_scale=cfg.aug.poisson_scale,
             lowfreq_amp=cfg.aug.lowfreq_amp,
-            lowfreq_sigma=cfg.aug.lowfreq_sigma,
             blur_prob=cfg.aug.blur_prob,
             blur_sigma=(cfg.aug.blur_min, cfg.aug.blur_max),
             dropout_prob=cfg.aug.dropout_prob,
