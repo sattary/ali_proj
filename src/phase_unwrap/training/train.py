@@ -9,6 +9,7 @@ import os
 import random
 import time
 import sys
+import threading
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -16,7 +17,13 @@ import numpy as np
 import torch
 from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
-from torchmetrics.functional import structural_similarity_index_measure as ssim_fn
+try:
+    from torchmetrics.image import structural_similarity_index_measure as ssim_fn
+except ImportError:
+    try:
+        from torchmetrics.functional.image import structural_similarity_index_measure as ssim_fn
+    except ImportError:
+        from torchmetrics.functional import structural_similarity_index_measure as ssim_fn
 from tqdm.auto import tqdm
 
 from ..core.config import TrainConfig, config_to_yaml
@@ -146,7 +153,8 @@ def run_eval(
     }
     n = 0
 
-    for I_raw, phi_gt in loader:
+    pbar = tqdm(loader, desc="Validating", leave=False, dynamic_ncols=True)
+    for I_raw, phi_gt in pbar:
         I_raw = I_raw.to(device, non_blocking=True)
         phi_gt = phi_gt.to(device, non_blocking=True)
         
@@ -260,12 +268,6 @@ def train(
 
     model = build_model(cfg.model).to(device=device, memory_format=torch.channels_last)
 
-    if hasattr(torch, "compile") and sys.platform != "win32":
-        try:
-            model = torch.compile(model)
-            print("[startup] torch.compile enabled")
-        except Exception as e:
-            print(f"[startup] torch.compile failed: {e}")
 
     loss_fn = MAEGradLoss(
         w_mae=cfg.loss.w_mae,
@@ -298,6 +300,11 @@ def train(
 
     scaler = GradScaler(device=device.type, enabled=use_amp)
     ema = EMA(model, decay=cfg.model.ema_decay)
+
+    if cfg.optim.compile:
+        print("[startup] torch.compile enabled")
+        model = torch.compile(model)
+        ema.m = torch.compile(ema.m)
 
     best_mae = float("inf")
     start_epoch = 1
@@ -530,20 +537,33 @@ def train(
                 if noise_sched is not None:
                     current_noise_level = noise_sched.level(epoch)
 
-                save_epoch_visuals(
-                    I_input_v.cpu(),
-                    phi_aligned_v.detach().cpu(),
-                    phi_gt_v.cpu(),
-                    vis_dir,
-                    epoch,
-                    cfg.logging.vis_max,
-                    I_raw_clean=I_raw_c_v.cpu(),
-                    I_raw_noisy=I_raw_n_v.cpu(),
-                    noise_level=current_noise_level,
-                    samples_per_file=4,
-                )
+                def _save_visuals_bg(*args, **kwargs):
+                    try:
+                        save_epoch_visuals(*args, **kwargs)
+                    except Exception as e:
+                        print(f"Warning: background visual saving failed: {e}")
+
+                threading.Thread(
+                    target=_save_visuals_bg,
+                    args=(
+                        I_input_v.cpu(),
+                        phi_aligned_v.detach().cpu(),
+                        phi_gt_v.cpu(),
+                        vis_dir,
+                        epoch,
+                        cfg.logging.vis_max,
+                    ),
+                    kwargs={
+                        "I_raw_clean": I_raw_c_v.cpu(),
+                        "I_raw_noisy": I_raw_n_v.cpu(),
+                        "noise_level": current_noise_level,
+                        "samples_per_file": 4,
+                    },
+                    daemon=True,
+                ).start()
+
             except Exception as e:
-                print(f"Warning: saving visuals failed: {e}")
+                print(f"Warning: dispatching visuals failed: {e}")
 
             print(
                 f"Epoch {epoch} | train={train_loss:.4f} | "
