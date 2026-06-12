@@ -325,6 +325,18 @@ def train(
         start_epoch, best_mae = load_checkpoint(
             resume_path, model, ema, opt, sched, scaler, device
         )
+        
+        # Rationale (State Synchronization):
+        # If the user explicitly overrides `--epochs` or `--batch-size` on a resumed run, 
+        # the checkpoint's frozen scheduler state will physically overwrite the new `T_max` 
+        # with the old stale math. We must discard the loaded scheduler, reconstruct it 
+        # natively against the new configuration, and mathematically fast-forward it.
+        global_step = (start_epoch - 1) * len(train_loader) + 1
+        sched = _build_warmup_scheduler(
+            opt, warmup_steps, total_steps - warmup_steps, cfg.optim.eta_min
+        )
+        for _ in range(global_step):
+            sched.step()
     elif resume_path:
         print(f"[resume] Warning: Checkpoint not found at {resume_path}")
 
@@ -467,7 +479,8 @@ def train(
                     # just doubled! The pre-computed CosineAnnealingLR max steps are now violently 
                     # out of sync. We must recalculate the total steps and fast-forward the new 
                     # scheduler back to the exact current `global_step` to prevent math corruption.
-                    new_total_steps = global_step + (cfg.optim.epochs - epoch + 1) * len(train_loader)
+                    # Note: We do NOT add +1 to epochs because the current epoch loop breaks immediately.
+                    new_total_steps = global_step + (cfg.optim.epochs - epoch) * len(train_loader)
                     new_warmup = min(cfg.optim.warmup_steps, new_total_steps // 2)
                     sched = _build_warmup_scheduler(
                         opt, new_warmup, new_total_steps - new_warmup, cfg.optim.eta_min
