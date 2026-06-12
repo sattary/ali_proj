@@ -36,8 +36,14 @@ def _log(msg: str) -> None:
 
 def _create_objective(
     base_cfg: TrainConfig, tune_epochs: int, batch_size_override: Optional[int] = None
-):
-    """Build an Optuna objective closure."""
+) -> Callable[[optuna.Trial], float]:
+    """Build an Optuna objective closure.
+    
+    Rationale (Architecture & Memory):
+    Optuna requires a closure that encapsulates the trial logic. We explicitly `deepcopy(base_cfg)` 
+    at the start of every trial to prevent state mutation across sequential runs in the same worker.
+    This guarantees mathematically isolated convergences and prevents memory leaks between trials.
+    """
 
     def objective(trial: optuna.Trial) -> float:
         cfg = deepcopy(base_cfg)
@@ -236,7 +242,8 @@ def _run_trial_worker(
     n_trials: int,
     worker_id: int,
     total_target: int,
-):
+    batch_size_override: Optional[int] = None,
+) -> None:
     """Worker function to run trials on a specific GPU."""
     # Set device for this worker
     device = torch.device(f"cuda:{gpu_id}")
@@ -244,8 +251,8 @@ def _run_trial_worker(
 
     # Create objective with this device
     objective = _create_objective(
-        cfg, tune_epochs, batch_size_override=None
-    )  # Override passed via cfg already outside this func, handled below
+        cfg, tune_epochs, batch_size_override=batch_size_override
+    )
 
     # Load study
     study = optuna.load_study(
@@ -338,7 +345,11 @@ def run_tuning(
         print(f"Parallel HPO: {n_workers} workers on GPUs {gpu_ids}")
         print(f"Trials per worker: ~{trials_per_worker}")
 
-        # Use spawn method for CUDA compatibility
+        # Rationale (Thread Safety):
+        # We MUST force the multiprocessing start method to 'spawn' rather than 'fork'.
+        # 'fork' blindly duplicates the memory space, which severely corrupts the CUDA runtime 
+        # state and causes immediate deadlocks when initializing tensors across multiple child 
+        # processes. 'spawn' guarantees a clean, uncorrupted Python interpreter boot for every worker.
         mp.set_start_method("spawn", force=True)
 
         processes = []
@@ -355,6 +366,7 @@ def run_tuning(
                     worker_trials,
                     i,
                     n_trials,
+                    batch_size_override,
                 ),
             )
             p.start()
