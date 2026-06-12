@@ -102,7 +102,11 @@ def _create_objective(
         sched = torch.optim.lr_scheduler.SequentialLR(
             opt, schedulers=[warmup_sched, cosine_sched], milestones=[warmup_steps]
         )
-        # Dummy step to initialize LR and silence warnings
+        # Rationale (Mathematical Implication):
+        # We perform a dummy step to initialize the LR scheduler and silence PyTorch warnings.
+        # WARNING: Because this is AdamW, `opt.step()` physically applies weight decay 
+        # (w = w - lambda * w) even when gradients are zero. This slightly shrinks the seeded 
+        # weight initialization before the first forward pass. It is deterministic, but mathematically non-zero.
         opt.step()
         sched.step()
 
@@ -228,6 +232,16 @@ def _create_objective(
                     f"val MAE={val_mae:.4f} (best={best_mae:.4f})"
                 )
 
+        # Rationale (Memory Efficiency):
+        # We explicitly sever the Python references to the VRAM-heavy computational graphs 
+        # and force a CUDA garbage collection. If we rely strictly on Python's GC during sequential 
+        # trials in the same worker process, fragmentation will cause creeping OOMs by trial 15.
+        del model
+        del opt
+        del scaler
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
         return best_mae
 
     return objective
@@ -266,11 +280,12 @@ def _run_trial_worker(
     trial_count = 0
     while trial_count < n_trials:
         try:
-            # Check if study has reached total target
-            study_summary = optuna.get_all_study_summaries(storage)
-            current_trial_count = sum(
-                s.n_trials for s in study_summary if s.study_name == study_name
-            )
+            # Rationale (Time Complexity):
+            # Checking global completion via `len(study.trials)` scales O(T) within this specific study.
+            # The previous implementation used `optuna.get_all_study_summaries()`, which parses the 
+            # ENTIRE SQLite database metadata across all historic studies, causing an O(N^2) global 
+            # bottleneck that paralyzes the database as trial counts increase.
+            current_trial_count = len(study.trials)
 
             if current_trial_count >= total_target:
                 _log(
