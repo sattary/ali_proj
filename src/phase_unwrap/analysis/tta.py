@@ -10,11 +10,7 @@ from typing import Sequence
 import torch
 from torch.amp import autocast
 
-from ..core.config import load_train_config
 from ..core.ops import affine_align
-from ..core.utils import pick_device
-from ..data import build_dataloaders
-from ..model import build_model
 
 
 def _rotate90(x: torch.Tensor, k: int) -> torch.Tensor:
@@ -91,24 +87,8 @@ def evaluate_tta(
 
     Returns dict with 'mae_noaug', 'mae_tta', 'improvement_pct'.
     """
-    run_dir = str(Path(checkpoint_path).parent)
-    cfg_path = config_path or str(Path(run_dir) / "config.yaml")
-    cfg = load_train_config(cfg_path if Path(cfg_path).exists() else None)
-    cfg.data.data_dir = data_dir
-    cfg.data.augment = False
-
-    if all_data:
-        cfg.data.val_frac = 0.0
-        cfg.data.test_frac = 0.0
-        subset = "train"
-
-    device = pick_device(cfg.model.device)
-    model = build_model(cfg.model).to(device)
-    # weights_only=False: loading trusted checkpoint from own training runs
-    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    sd = ckpt.get("model_ema", ckpt["model"])
-    model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
-    model.eval()
+    from ..core.inference import load_inference_state
+    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir='', config_path=config_path)
 
     train_loader, val_loader, test_loader = build_dataloaders(
         cfg, device, seed=cfg.logging.seed

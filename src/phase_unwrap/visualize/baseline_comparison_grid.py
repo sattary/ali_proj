@@ -13,11 +13,7 @@ import torch
 from torch.amp import autocast
 
 from ..analysis.baselines import _unwrap_itoh, _unwrap_skimage
-from ..core.config import load_train_config
 from ..core.ops import affine_align
-from ..core.utils import pick_device
-from ..data import build_dataloaders
-from ..model import build_model
 from .style import (
     CMAP_INTENSITY,
     DOUBLE_COL,
@@ -41,23 +37,8 @@ def plot_baseline_comparison(
     Nature-style multiclass visual comparison.
     Columns: Interferogram | Ground Truth | Itoh 1D | Least-Squares | UNetRes2
     """
-    run_dir = str(Path(checkpoint_path).parent)
-    cfg_path = config_path or str(Path(run_dir) / "config.yaml")
-    cfg = load_train_config(cfg_path if Path(cfg_path).exists() else None)
-    cfg.data.data_dir = data_dir
-    cfg.data.augment = False
-    cfg.data.workers = 0
-    cfg.optim.batch_size = n_samples
-
-    device = pick_device("cpu")  # Strict CPU extraction logic
-    model = build_model(cfg.model).to(device)
-    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    if isinstance(ckpt, dict):
-        sd = ckpt.get("model_ema", ckpt.get("model", ckpt))
-        model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
-    else:
-        model.load_state_dict(ckpt.state_dict())
-    model.eval()
+    from ..core.inference import load_inference_state
+    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir='', config_path=config_path)
 
     train_loader, val_loader, test_loader = build_dataloaders(
         cfg, device, seed=cfg.logging.seed

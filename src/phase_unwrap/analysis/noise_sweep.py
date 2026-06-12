@@ -15,11 +15,8 @@ import seaborn as sns
 import torch
 from torch.amp import autocast
 
-from ..core.config import load_train_config
 from ..core.ops import affine_align
-from ..core.utils import pick_device
 from ..data.generate import _build_grid, generate_sample
-from ..model import build_model
 from ..visualize.style import (
     DOUBLE_COL,
     create_nature_palette,
@@ -58,17 +55,8 @@ def noise_robustness_sweep(
     - Individual sample tracking
     - Statistical trend analysis
     """
-    run_dir = str(Path(checkpoint_path).parent)
-    cfg_path = config_path or str(Path(run_dir) / "config.yaml")
-    cfg = load_train_config(cfg_path if Path(cfg_path).exists() else None)
-
-    device = pick_device(device_str)
-    model = build_model(cfg.model).to(device)
-    # weights_only=False: loading trusted checkpoint from own training runs
-    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    sd = ckpt.get("model_ema", ckpt["model"])
-    model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
-    model.eval()
+    from ..core.inference import load_inference_state
+    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir='', config_path=config_path)
 
     x, y, r2 = _build_grid()
 

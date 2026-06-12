@@ -10,9 +10,6 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from ..core.config import load_train_config
-from ..core.utils import pick_device
-from ..model import build_model
 
 
 def export_onnx(
@@ -22,16 +19,8 @@ def export_onnx(
     config_path: str | None = None,
 ) -> None:
     """Export model to ONNX with dynamic spatial axes."""
-    run_dir = str(Path(checkpoint_path).parent)
-    cfg_file = config_path or str(Path(run_dir) / "config.yaml")
-    cfg = load_train_config(cfg_file if Path(cfg_file).exists() else None)
-
-    model = build_model(cfg.model)
-    # weights_only=False: loading trusted checkpoint from own training runs
-    ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    sd = ckpt.get("model_ema", ckpt["model"])
-    model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
-    model.eval()
+    from ..core.inference import load_inference_state
+    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir='', config_path=config_path)
 
     dummy = torch.randn(1, 2, 128, 128)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
