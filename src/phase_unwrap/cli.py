@@ -208,6 +208,15 @@ def multiseed_cmd(
     use_amp: bool = typer.Option(
         False, "--use-amp", help="Enable Automatic Mixed Precision (AMP)."
     ),
+    data_dir: Optional[str] = typer.Option(
+        None, "--data-dir", help="Override dataset directory."
+    ),
+    batch_size: Optional[int] = typer.Option(
+        None, "--batch-size", help="Override config batch size."
+    ),
+    epochs: Optional[int] = typer.Option(
+        None, "--epochs", help="Override config training epochs."
+    ),
 ) -> None:
     """Run N training runs with different seeds, aggregate results."""
     import torch
@@ -223,7 +232,13 @@ def multiseed_cmd(
     else:
         seed_list = [_rnd.randint(0, 2**31) for _ in range(num_seeds)]
 
-    _apply_cli_overrides(cfg, use_amp=use_amp)
+    _apply_cli_overrides(
+        cfg,
+        use_amp=use_amp,
+        data_dir=data_dir,
+        batch_size=batch_size,
+        epochs=epochs,
+    )
 
 
 
@@ -251,6 +266,15 @@ def ablation_cmd(
     use_amp: bool = typer.Option(
         False, "--use-amp", help="Enable Automatic Mixed Precision (AMP)."
     ),
+    data_dir: Optional[str] = typer.Option(
+        None, "--data-dir", help="Override dataset directory."
+    ),
+    batch_size: Optional[int] = typer.Option(
+        None, "--batch-size", help="Override config batch size."
+    ),
+    epochs: Optional[int] = typer.Option(
+        None, "--epochs", help="Override config training epochs."
+    ),
 ) -> None:
     """Run ablation study and produce LaTeX comparison table."""
     import torch
@@ -273,7 +297,13 @@ def ablation_cmd(
         "no_ema": {"model.ema_decay": 0.0},
     }
 
-    _apply_cli_overrides(cfg, use_amp=use_amp)
+    _apply_cli_overrides(
+        cfg,
+        use_amp=use_amp,
+        data_dir=data_dir,
+        batch_size=batch_size,
+        epochs=epochs,
+    )
 
 
 
