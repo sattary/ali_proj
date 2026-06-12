@@ -98,7 +98,6 @@ def train_cmd(
     """Train the UNetRes2 absolute phase reconstruction model."""
     import torch
     from .training.train import train as run_train
-    from .training.multi_gpu import detect_kaggle_multi_gpu
 
     cfg: TrainConfig = load_train_config(config)
 
