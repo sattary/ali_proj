@@ -70,13 +70,12 @@ def run_multiseed(
     cfg: TrainConfig,
     base_run_name: str,
     seeds: List[int],
-    multi_gpu: bool = False,
     use_amp: bool = False,
 ) -> None:
     """
     Rationale: Sequentially executes identical training configurations across diverse 
     initialization seeds to rigorously measure statistical variance. Hardware flags 
-    (multi_gpu, use_amp) are explicitly cascaded to bypass redundant auto-detection 
+    (use_amp) are explicitly cascaded to bypass redundant auto-detection 
     overhead in the inner loops, ensuring deterministic compute allocation.
     """
     base_dir = os.path.join(cfg.logging.runs_root, base_run_name)
@@ -96,7 +95,7 @@ def run_multiseed(
         print(f"Multi-seed run {i + 1}/{len(seeds)} | seed={seed}")
         print(f"{'=' * 60}\n")
 
-        train(seed_cfg, multi_gpu=multi_gpu)
+        train(seed_cfg)
         run_dirs.append(seed_cfg.logging.run_dir)
 
     agg_path = os.path.join(base_dir, "aggregate.csv")

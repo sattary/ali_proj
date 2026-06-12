@@ -1,0 +1,20 @@
+data:
+  data_dir: "data/flag_test/"
+  pattern: "*.h5"
+  workers: 0
+  persistent_workers: false
+  val_frac: 0.5
+
+model:
+  base: 8
+  device: "cpu"
+  use_amp: false
+
+optim:
+  epochs: 2
+  batch_size: 2
+  warmup_steps: 1
+
+logging:
+  run_name: "tiny_test_run"
+  val_interval: 1

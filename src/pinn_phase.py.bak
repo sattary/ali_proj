@@ -1,0 +1,1085 @@
+"""
+PINN Phase Predictor for Interferometry
+========================================
+Physics-Informed Neural Network for absolute phase unwrapping.
+
+Physics laws enforced:
+  1. Intensity formation:   I = A * cos(phi)          [core interferometry equation]
+  2. Phase integrability:   curl(grad(phi)) = 0        [phase must be curl-free]
+  3. Gradient smoothness:   |∇phi - ∇phi_gt|           [supervised gradient match]
+  4. GT supervision:        |phi_pred - phi_gt|         [direct label supervision]
+
+Architecture: UNetRes2 (Res2 blocks + CoordConv + global offset head)
+  - Input:  [I_norm, phi_hint]  -> [2, 128, 128]
+  - Output: phi_abs [1,128,128], amplitude A [1,128,128]
+
+Dataset: 180k MATLAB-generated .mat files with keys I (interferogram) + dphi (GT unwrapped phase)
+Noise:   Curriculum augmentation ramps from clean -> full noise over training
+"""
+
+import os
+import glob
+import argparse
+import random
+import time
+from copy import deepcopy
+
+import numpy as np
+import matplotlib
+
+HEADLESS = not os.environ.get("DISPLAY")
+if HEADLESS:
+    matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+from tqdm import tqdm
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
+
+try:
+    import h5py
+except Exception:
+    h5py = None
+try:
+    from scipy import io as spio
+except Exception:
+    spio = None
+
+
+# ──────────────────────────────────────────────
+# Utils
+# ──────────────────────────────────────────────
+
+def ensure_dir(d):
+    os.makedirs(d, exist_ok=True)
+
+def meshgrid_ij(x, y):
+    try:
+        return torch.meshgrid(x, y, indexing="ij")
+    except TypeError:
+        return torch.meshgrid(x, y)
+
+def to_np(x):
+    return x.detach().float().cpu().numpy()
+
+def set_seed(s=1337):
+    random.seed(s)
+    np.random.seed(s)
+    torch.manual_seed(s)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(s)
+
+def pick_device(arg):
+    if arg == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    return arg
+
+
+# ──────────────────────────────────────────────
+# Fixed operators (Sobel, Laplacian)
+# ──────────────────────────────────────────────
+
+class FixedSobel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        gx = torch.tensor([[1, 0, -1], [2, 0, -2], [1, 0, -1]], dtype=torch.float32)
+        gy = gx.t().contiguous()
+        self.register_buffer("gx", gx.view(1, 1, 3, 3))
+        self.register_buffer("gy", gy.view(1, 1, 3, 3))
+
+    def forward(self, x):
+        gx = self.gx.to(x.device, x.dtype)
+        gy = self.gy.to(x.device, x.dtype)
+        C = x.shape[1]
+        kx = gx.repeat(C, 1, 1, 1)
+        ky = gy.repeat(C, 1, 1, 1)
+        px = F.pad(x, (1, 1, 1, 1), mode="reflect")
+        return F.conv2d(px, kx, groups=C), F.conv2d(px, ky, groups=C)
+
+
+def laplacian(u):
+    """u: [B,1,H,W] -> Laplacian [B,1,H,W]"""
+    p = F.pad(u, (1, 1, 1, 1), mode="reflect")
+    return (
+        -4 * p[..., 1:-1, 1:-1]
+        + p[..., 1:-1, 2:]
+        + p[..., 1:-1, :-2]
+        + p[..., 2:, 1:-1]
+        + p[..., :-2, 1:-1]
+    )
+
+
+# ──────────────────────────────────────────────
+# PINN Loss
+# ──────────────────────────────────────────────
+
+class PINNLoss(nn.Module):
+    """
+    Combines four physics-informed terms:
+
+    L_total = w_gt     * L_gt              (supervised: |phi_pred - phi_gt|)
+            + w_grad   * L_grad            (supervised: |∇phi_pred - ∇phi_gt|)
+            + w_iform  * L_intensity       (physics:    |A*cos(phi_pred) - I_norm|)
+            + w_curl   * L_integrability   (physics:    |∂²phi/∂x∂y - ∂²phi/∂y∂x|)
+            + w_smooth * L_smooth          (physics:    |∇²phi| curvature penalty)
+
+    L_intensity is the core PINN term — it anchors the prediction
+    to the actual interferometry measurement equation I = A * cos(phi).
+    """
+
+    def __init__(
+        self,
+        w_gt=1.0,
+        w_grad=0.1,
+        w_iform=0.5,
+        w_curl=0.05,
+        w_smooth=0.003,
+    ):
+        super().__init__()
+        self.w_gt     = w_gt
+        self.w_grad   = w_grad
+        self.w_iform  = w_iform
+        self.w_curl   = w_curl
+        self.w_smooth = w_smooth
+        self.sobel    = FixedSobel()
+
+    def forward(self, phi_pred, amp_pred, phi_gt, I_norm, conf):
+        """
+        phi_pred : [B,1,H,W]  predicted absolute phase
+        amp_pred : [B,1,H,W]  predicted amplitude A  (softplus >= 0)
+        phi_gt   : [B,1,H,W]  GT unwrapped phase
+        I_norm   : [B,1,H,W]  z-score normalised interferogram
+        conf     : [B,1,H,W]  confidence weight in [0,1]
+        """
+        parts = {}
+
+        # ── 1. GT supervision ───────────────────────────────────────────
+        L_gt = (conf * (phi_pred - phi_gt).abs()).mean()
+        parts["gt"] = L_gt.detach()
+
+        # ── 2. Gradient supervision ─────────────────────────────────────
+        pgx, pgy = self.sobel(phi_pred)
+        tgx, tgy = self.sobel(phi_gt)
+        L_grad = (conf * ((pgx - tgx).abs() + (pgy - tgy).abs())).mean()
+        parts["grad"] = L_grad.detach()
+
+        # ── 3. Intensity formation (core PINN term) ──────────────────────
+        # Physics: I(x,y) = A(x,y) * cos(phi(x,y))
+        # We normalise the reconstruction to match I_norm scale
+        I_reconstructed = amp_pred * torch.cos(phi_pred)
+        # Normalise reconstruction per-sample to match I_norm statistics
+        r_mean = I_reconstructed.mean(dim=(2, 3), keepdim=True)
+        r_std  = I_reconstructed.std(dim=(2, 3), keepdim=True).clamp_min(1e-6)
+        I_recon_norm = (I_reconstructed - r_mean) / r_std
+        L_iform = (conf * (I_recon_norm - I_norm).abs()).mean()
+        parts["iform"] = L_iform.detach()
+
+        # ── 4. Phase integrability (curl-free condition) ──────────────────
+        # Physics: real phase fields satisfy ∂(∂phi/∂x)/∂y = ∂(∂phi/∂y)/∂x
+        # Violation = residue = phase discontinuity / unwrapping error
+        gx, gy = self.sobel(phi_pred)
+        # second mixed partials
+        _, gxy = self.sobel(gx)   # ∂gx/∂y
+        gyx, _ = self.sobel(gy)   # ∂gy/∂x
+        L_curl = (conf * (gxy - gyx).abs()).mean()
+        parts["curl"] = L_curl.detach()
+
+        # ── 5. Smoothness (Laplacian / curvature) ────────────────────────
+        L_smooth = (conf * laplacian(phi_pred).abs()).mean()
+        parts["smooth"] = L_smooth.detach()
+
+        # ── Total ────────────────────────────────────────────────────────
+        total = (
+            self.w_gt     * L_gt
+            + self.w_grad   * L_grad
+            + self.w_iform  * L_iform
+            + self.w_curl   * L_curl
+            + self.w_smooth * L_smooth
+        )
+        parts["total"] = total.detach()
+        return total, parts
+
+
+# ──────────────────────────────────────────────
+# Curriculum Noise Augmentation
+# ──────────────────────────────────────────────
+
+class NoiseAug:
+    """
+    Input augmentation with schedulable level in [0, 1].
+    Level is passed explicitly per __call__ — no mutable state —
+    so it works correctly with persistent DataLoader workers.
+    """
+
+    def __init__(
+        self,
+        gauss_std=0.02,
+        speckle_std=0.05,
+        poisson_scale=0.0,
+        lowfreq_amp=0.05,
+        lowfreq_sigma=21,
+        blur_prob=0.2,
+        blur_sigma=(0.5, 1.5),
+        dropout_prob=0.02,
+        gain_jitter=(0.9, 1.1),
+        offset_jitter=(-0.05, 0.05),
+        hint_offset_std=0.2,
+    ):
+        self.cfg = dict(
+            gauss_std=gauss_std,
+            speckle_std=speckle_std,
+            poisson_scale=poisson_scale,
+            lowfreq_amp=lowfreq_amp,
+            lowfreq_sigma=int(max(3, lowfreq_sigma // 2 * 2 + 1)),
+            blur_prob=blur_prob,
+            blur_smin=blur_sigma[0],
+            blur_smax=blur_sigma[1],
+            dropout_prob=dropout_prob,
+            gain_min=gain_jitter[0],
+            gain_max=gain_jitter[1],
+            off_min=offset_jitter[0],
+            off_max=offset_jitter[1],
+            hint_offset_std=hint_offset_std,
+        )
+
+    @staticmethod
+    def _gauss_blur(x, sigma):
+        if sigma <= 0:
+            return x
+        ksize = int(max(3, round(6 * sigma) // 2 * 2 + 1))
+        t = torch.arange(ksize, device=x.device, dtype=x.dtype) - (ksize - 1) / 2
+        g = torch.exp(-0.5 * (t / sigma) ** 2)
+        g = g / g.sum()
+        g1 = g.view(1, 1, 1, ksize)
+        g2 = g.view(1, 1, ksize, 1)
+        pad = ksize // 2
+        x = F.pad(x, (pad,) * 4, mode="reflect")
+        x = F.conv2d(x, g1, groups=1)
+        x = F.conv2d(x, g2, groups=1)
+        return x
+
+    def __call__(self, I_raw, I_norm, phi_hint, level: float):
+        """
+        level: float in [0,1] — passed explicitly, not stored as state.
+        This makes it safe with persistent_workers=True.
+        """
+        if level <= 0:
+            return I_raw, I_norm, phi_hint
+
+        L = float(level)
+        p = self.cfg
+        device, dtype = I_raw.device, I_raw.dtype
+        _, H, W = I_raw.shape
+
+        gauss_std   = p["gauss_std"]   * L
+        speckle_std = p["speckle_std"] * L
+        lowfreq_amp = p["lowfreq_amp"] * L
+        blur_prob   = p["blur_prob"]   * L
+        dropout_p   = p["dropout_prob"]* L
+        hint_std    = p["hint_offset_std"] * L
+        gain_min    = 1.0 + (p["gain_min"] - 1.0) * L
+        gain_max    = 1.0 + (p["gain_max"] - 1.0) * L
+        off_min     = p["off_min"] * L
+        off_max     = p["off_max"] * L
+
+        I = I_raw.clone()
+
+        # Gain + offset jitter
+        g = torch.empty(1, device=device).uniform_(gain_min, gain_max).item()
+        b = torch.empty(1, device=device).uniform_(off_min, off_max).item()
+        I = g * I + b
+
+        # Additive Gaussian
+        if gauss_std > 0:
+            stdI = I.std().clamp_min(1e-6)
+            I = I + torch.randn_like(I) * (gauss_std * stdI)
+
+        # Speckle (multiplicative)
+        if speckle_std > 0:
+            I = I * (1.0 + torch.randn_like(I) * speckle_std)
+
+        # Low-frequency bias field (simulates illumination drift)
+        if lowfreq_amp > 0:
+            lf = torch.randn(1, 1, H, W, device=device, dtype=dtype)
+            lf = self._gauss_blur(lf, p["lowfreq_sigma"] / 6.0)[0]
+            lf = lf / (lf.std() + 1e-6) * lowfreq_amp
+            I = I + lf
+
+        # Random blur (simulates defocus / vibration)
+        if torch.rand(1).item() < blur_prob:
+            sigma = float(torch.empty(1).uniform_(p["blur_smin"], p["blur_smax"]))
+            I = self._gauss_blur(I.unsqueeze(0), sigma)[0]
+
+        # Pixel dropout (dead detector pixels)
+        if dropout_p > 0:
+            mask = (torch.rand_like(I) > dropout_p).float()
+            I = I * mask
+
+        # Corrupt the reference hint (models reference measurement uncertainty)
+        if phi_hint is not None and hint_std > 0:
+            delta = torch.randn(1, device=device, dtype=dtype) * hint_std
+            phi_hint = phi_hint + delta.view(1, 1, 1)
+
+        # Re-normalise
+        mean = I.mean(dim=(1, 2), keepdim=True)
+        std  = I.std(dim=(1, 2), keepdim=True).clamp_min(1e-6)
+        I_norm_out = (I - mean) / std
+
+        return I, I_norm_out, phi_hint
+
+
+class NoiseScheduler:
+    """
+    Piecewise noise level schedule over epochs.
+    warmup_epochs: noise=0 during [1..warmup]
+    full_epoch:    noise reaches 1.0 at this epoch
+    profile: 'linear' or 'cosine'
+    """
+
+    def __init__(self, warmup_epochs=5, full_epoch=40, profile="cosine"):
+        self.warmup  = max(0, int(warmup_epochs))
+        self.full    = max(1, int(full_epoch))
+        self.profile = profile
+
+    def level(self, epoch: int) -> float:
+        if epoch <= self.warmup:
+            return 0.0
+        if epoch >= self.full:
+            return 1.0
+        t = (epoch - self.warmup) / max(1, self.full - self.warmup)
+        if self.profile == "cosine":
+            return float(0.5 * (1 - np.cos(np.pi * t)))
+        return float(t)
+
+
+# ──────────────────────────────────────────────
+# Dataset
+# ──────────────────────────────────────────────
+
+def to_chw(a: np.ndarray) -> np.ndarray:
+    a = np.array(a)
+    if a.ndim == 2:
+        return np.ascontiguousarray(a[None])
+    if a.ndim == 3:
+        if a.shape[-1] <= 8 and a.shape[0] >= 16 and a.shape[1] >= 16:
+            return np.ascontiguousarray(np.transpose(a, (2, 0, 1)))
+        return np.ascontiguousarray(a)
+    raise ValueError(f"Unsupported ndim={a.ndim}")
+
+
+class MatPhaseDataset(Dataset):
+    """
+    Returns:
+        I_input  [2, H, W]  channel 0 = z-score normalised interferogram
+                            channel 1 = phi_hint (reference phase scalar, broadcast)
+        phi_gt   [1, H, W]  GT unwrapped absolute phase (radians)
+        I_raw    [1, H, W]  raw interferogram (for intensity formation loss)
+        noise_level  float  current curriculum level (set by loader each epoch)
+
+    phi_hint:
+        Built from GT phase at the image centre during training — this is a valid
+        proxy for the physical reference measurement (reference arm, flat region)
+        that any real interferometric system provides. At inference, substitute
+        the actual physical reference value.
+    """
+
+    def __init__(self, paths, I_key="I", phi_key="dphi", augment=None):
+        self.paths   = paths
+        self.I_key   = I_key
+        self.phi_key = phi_key
+        self.augment = augment
+        self.noise_level = 0.0   # set by train loop each epoch — safe for persistent workers
+
+    def __len__(self):
+        return len(self.paths)
+
+    def _load(self, path):
+        if h5py is not None:
+            try:
+                with h5py.File(path, "r") as f:
+                    return np.array(f[self.I_key]), np.array(f[self.phi_key])
+            except Exception:
+                pass
+        if spio is not None:
+            d = spio.loadmat(path)
+            return np.array(d[self.I_key]), np.array(d[self.phi_key])
+        raise RuntimeError("Need h5py or scipy.io to read .mat files")
+
+    def __getitem__(self, idx):
+        I_np, phi_np = self._load(self.paths[idx])
+        I_np   = to_chw(I_np).astype(np.float32)
+        phi_np = to_chw(phi_np).astype(np.float32)
+
+        I_raw_t  = torch.from_numpy(I_np)
+        phi_gt_t = torch.from_numpy(phi_np)
+
+        # z-score normalise interferogram
+        mean = I_raw_t.mean(dim=(1, 2), keepdim=True)
+        std  = I_raw_t.std(dim=(1, 2), keepdim=True).clamp_min(1e-6)
+        I_norm_t = (I_raw_t - mean) / std
+
+        # phi_hint: GT phase at centre pixel broadcast to full map
+        _, H, W = phi_gt_t.shape
+        ref_val  = phi_gt_t[0, H // 2, W // 2].item()
+        phi_hint = torch.full_like(phi_gt_t, ref_val)
+
+        # Apply curriculum noise — level is read from dataset attribute
+        # (set by train loop before each epoch, safe because DataLoader
+        #  re-reads the attribute each __getitem__ call)
+        if self.augment is not None:
+            I_raw_t, I_norm_t, phi_hint = self.augment(
+                I_raw_t, I_norm_t, phi_hint, self.noise_level
+            )
+
+        I_input = torch.cat([I_norm_t, phi_hint], dim=0)  # [2,H,W]
+        return I_input, phi_gt_t, I_raw_t
+
+
+# ──────────────────────────────────────────────
+# Architecture
+# ──────────────────────────────────────────────
+
+class AddCoords(nn.Module):
+    """Append normalised (x, y) coordinate channels — helps with position-dependent phase trends."""
+    def forward(self, x):
+        b, c, h, w = x.shape
+        yy, xx = meshgrid_ij(
+            torch.linspace(-1, 1, h, device=x.device, dtype=x.dtype),
+            torch.linspace(-1, 1, w, device=x.device, dtype=x.dtype),
+        )
+        coords = torch.stack([xx, yy], 0).expand(b, -1, -1, -1)
+        return torch.cat([x, coords], 1)
+
+
+class Res2Block(nn.Module):
+    """Res2-style block: multi-scale receptive field via split depthwise convolutions."""
+
+    def __init__(self, in_ch, out_ch, s=4, act="relu"):
+        super().__init__()
+        self.s = max(2, s)
+
+        self.conv1 = nn.Conv2d(in_ch, out_ch, 1, bias=False)
+        self.bn1   = nn.BatchNorm2d(out_ch)
+
+        sizes = []
+        base = out_ch // self.s
+        rem  = out_ch - base * self.s
+        for i in range(self.s):
+            sizes.append(base + (1 if i < rem else 0))
+        self.sizes   = sizes
+        self.offsets = [sum(sizes[:i]) for i in range(self.s)]
+
+        self.dw = nn.ModuleList([
+            nn.Conv2d(sizes[i], sizes[i], 3, padding=1, groups=sizes[i], bias=False)
+            for i in range(self.s)
+        ])
+
+        self.pw  = nn.Conv2d(out_ch, out_ch, 1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_ch)
+        self.act = nn.ReLU(inplace=True) if act == "relu" else nn.SiLU(inplace=True)
+
+        self.proj = nn.Conv2d(in_ch, out_ch, 1, bias=False) if in_ch != out_ch else None
+
+    def forward(self, x):
+        y = self.act(self.bn1(self.conv1(x)))
+        outs = []
+        for i in range(self.s):
+            c0, c1 = self.offsets[i], self.offsets[i] + self.sizes[i]
+            xi = y[:, c0:c1]
+            zi = self.act(self.dw[i](xi if i == 0 else xi + outs[i - 1]))
+            outs.append(zi)
+        y2 = self.bn2(self.pw(torch.cat(outs, 1)))
+        sc = self.proj(x) if self.proj is not None else x
+        return self.act(sc + y2)
+
+
+class UpBlock(nn.Module):
+    def __init__(self, in_ch_cat, out_ch, act="relu"):
+        super().__init__()
+        self.conv = Res2Block(in_ch_cat, out_ch, act=act)
+
+    def forward(self, x, skip):
+        x = F.interpolate(x, size=skip.shape[-2:], mode="bilinear", align_corners=False)
+        return self.conv(torch.cat([x, skip], 1))
+
+
+class PINNPhaseNet(nn.Module):
+    """
+    UNet with Res2 blocks for PINN-based absolute phase prediction.
+
+    Input:  [B, 2, H, W]  (I_norm, phi_hint) -> AddCoords -> [B, 4, H, W]
+    Output:
+        phi_abs  [B, 1, H, W]  absolute unwrapped phase (radians)
+        amp      [B, 1, H, W]  amplitude A >= 0 (softplus activated)
+                               used in intensity formation loss: I = A * cos(phi)
+
+    The amplitude head replaces the old unused a_pred/b_pred/conf_logit trio.
+    Everything now has a gradient path.
+    """
+
+    def __init__(self, base=32, act="relu", dropout=0.2):
+        super().__init__()
+        self.addcoords = AddCoords()
+
+        def C(m):
+            return int(min(base * m, 512))
+
+        # Encoder (4 levels — appropriate for 128x128, bottleneck = 8x8)
+        self.enc1 = nn.Sequential(Res2Block(4,    C(1), act=act), Res2Block(C(1), C(1), act=act))
+        self.enc2 = nn.Sequential(nn.MaxPool2d(2), Res2Block(C(1), C(2), act=act))
+        self.enc3 = nn.Sequential(nn.MaxPool2d(2), Res2Block(C(2), C(4), act=act))
+        self.enc4 = nn.Sequential(nn.MaxPool2d(2), Res2Block(C(4), C(8), act=act))
+
+        # Bottleneck (128x128 -> 8x8 after 4 pools)
+        self.bott = nn.Sequential(
+            nn.MaxPool2d(2),
+            Res2Block(C(8), C(16), act=act),
+            Res2Block(C(16), C(16), act=act),
+        )
+
+        # Decoder
+        self.up3 = UpBlock(C(16) + C(8),  C(8),  act=act)
+        self.up2 = UpBlock(C(8)  + C(4),  C(4),  act=act)
+        self.up1 = UpBlock(C(4)  + C(2),  C(2),  act=act)
+        self.up0 = UpBlock(C(2)  + C(1),  C(1),  act=act)
+
+        self.drop = nn.Dropout2d(dropout)
+
+        # Phase head: outputs raw phi map
+        self.head_phi = nn.Conv2d(C(1), 1, 1)
+
+        # Amplitude head: outputs A >= 0 via softplus
+        # This is the physically meaningful quantity in I = A * cos(phi)
+        self.head_amp = nn.Sequential(
+            nn.Conv2d(C(1), 1, 1),
+            nn.Softplus(),
+        )
+
+        # Global offset head: corrects 2*pi*n ambiguity
+        # Aggregates bottleneck features -> scalar per image
+        self.off_head = nn.Sequential(
+            nn.Conv2d(C(16), C(4), 1),
+            nn.ReLU(inplace=True) if act == "relu" else nn.SiLU(inplace=True),
+            nn.AdaptiveAvgPool2d(1),           # [B, C(4), 1, 1]
+            nn.Conv2d(C(4), 1, 1),             # [B, 1, 1, 1]
+        )
+
+    def forward(self, x_in):
+        x = self.addcoords(x_in)   # [B, 4, H, W]
+
+        e1 = self.enc1(x)
+        e2 = self.enc2(e1)
+        e3 = self.enc3(e2)
+        e4 = self.enc4(e3)
+        b  = self.bott(e4)
+
+        d3 = self.up3(b,  e4)
+        d2 = self.up2(d3, e3)
+        d1 = self.up1(d2, e2)
+        d0 = self.up0(d1, e1)
+        d0 = self.drop(d0)
+
+        phi_local = self.head_phi(d0)               # [B,1,H,W] local phase structure
+        amp       = self.head_amp(d0)               # [B,1,H,W] amplitude A >= 0
+        k_off     = self.off_head(b)                # [B,1,1,1] global 2pi*n correction
+
+        phi_abs = phi_local + k_off                 # [B,1,H,W] absolute phase
+
+        return phi_abs, amp
+
+
+# ──────────────────────────────────────────────
+# EMA
+# ──────────────────────────────────────────────
+
+class EMA:
+    def __init__(self, model, decay=0.999):
+        self.m = deepcopy(model).eval()
+        for p in self.m.parameters():
+            p.requires_grad_(False)
+        self.decay = decay
+
+    @torch.no_grad()
+    def update(self, model):
+        d = self.decay
+        for pe, p in zip(self.m.parameters(), model.parameters()):
+            pe.data.mul_(d).add_(p.data, alpha=1 - d)
+        for be, b in zip(self.m.buffers(), model.buffers()):
+            be.data.copy_(b.data)
+
+
+# ──────────────────────────────────────────────
+# Metrics
+# ──────────────────────────────────────────────
+
+def compute_metrics(phi_pred, phi_gt):
+    diff = phi_pred - phi_gt
+    mae  = diff.abs().mean()
+    rmse = torch.sqrt((diff ** 2).mean().clamp_min(1e-12))
+    return {"MAE": mae.detach(), "RMSE": rmse.detach()}
+
+
+def affine_align(pred, gt):
+    """Per-image least-squares affine alignment: a*pred + c ~ gt"""
+    B = pred.shape[0]
+    pf = pred.view(B, -1)
+    gf = gt.view(B, -1)
+    pm = pf.mean(1, keepdim=True)
+    gm = gf.mean(1, keepdim=True)
+    pc = pf - pm
+    gc = gf - gm
+    var_p = (pc ** 2).mean(1, keepdim=True) + 1e-6
+    cov   = (pc * gc).mean(1, keepdim=True)
+    a = cov / var_p
+    c = gm - a * pm
+    return a.view(B,1,1,1) * pred + c.view(B,1,1,1), a, c
+
+
+# ──────────────────────────────────────────────
+# Visualisation
+# ──────────────────────────────────────────────
+
+def save_epoch_visuals(I_clean, I_noisy, phi_pred, amp_pred, phi_gt, out_dir, prefix, max_items=4):
+    ensure_dir(out_dir)
+    B = min(I_clean.shape[0], max_items)
+
+    # Reconstruct I from physics: I_recon = A * cos(phi)
+    I_recon = (amp_pred * torch.cos(phi_pred)).float()
+
+    err_flat = (phi_pred - phi_gt).abs().flatten()
+    emax = torch.quantile(err_flat, 0.98).item() if err_flat.numel() > 0 else 1.0
+
+    for i in range(B):
+        fig, axs = plt.subplots(2, 3, figsize=(15, 8))
+
+        axs[0, 0].imshow(to_np(I_clean[i, 0]),   cmap="gray");  axs[0, 0].set_title("Input interferogram");       axs[0, 0].axis("off")
+        axs[1, 0].imshow(to_np(I_noisy[i, 0]),   cmap="gray");  axs[1, 0].set_title("Noisy (augmented)");         axs[1, 0].axis("off")
+
+        im_gt   = axs[0, 1].imshow(to_np(phi_gt[i, 0]),   cmap="viridis"); axs[0, 1].set_title("GT phase (rad)");  axs[0, 1].axis("off"); plt.colorbar(im_gt,   ax=axs[0, 1], fraction=0.046)
+        im_pred = axs[1, 1].imshow(to_np(phi_pred[i, 0]), cmap="viridis"); axs[1, 1].set_title("Pred phase (rad)"); axs[1, 1].axis("off"); plt.colorbar(im_pred, ax=axs[1, 1], fraction=0.046)
+
+        err = to_np((phi_pred[i] - phi_gt[i])[0])
+        im_err = axs[0, 2].imshow(err, cmap="PuOr", vmin=-emax, vmax=emax)
+        axs[0, 2].set_title("Error: pred − GT (rad)"); axs[0, 2].axis("off"); plt.colorbar(im_err, ax=axs[0, 2], fraction=0.046)
+
+        # Physics reconstruction check: show A*cos(phi_pred) vs I_input
+        im_rec = axs[1, 2].imshow(to_np(I_recon[i, 0]), cmap="gray")
+        axs[1, 2].set_title("Physics check: A·cos(φ_pred)"); axs[1, 2].axis("off")
+
+        bias = float(err.mean())
+        std  = float(err.std())
+        axs[0, 2].set_xlabel(f"bias={bias:+.3f} rad  std={std:.3f} rad", fontsize=9)
+
+        plt.tight_layout()
+        fig.savefig(os.path.join(out_dir, f"{prefix}_s{i}.png"), dpi=130)
+        plt.close(fig)
+
+
+# ──────────────────────────────────────────────
+# Eval
+# ──────────────────────────────────────────────
+
+@torch.no_grad()
+def run_eval(model, loader, device, use_amp):
+    if loader is None:
+        return {"MAE": float("nan"), "RMSE": float("nan")}
+    model.eval()
+    sums = {"MAE": 0.0, "RMSE": 0.0}
+    n = 0
+    for I_input, phi_gt, _ in loader:
+        I_input = I_input.to(device)
+        phi_gt  = phi_gt.to(device)
+        with torch.cuda.amp.autocast(enabled=use_amp):
+            phi_pred, _ = model(I_input)
+        phi_aligned, _, _ = affine_align(phi_pred, phi_gt)
+        m = compute_metrics(phi_aligned, phi_gt)
+        bs = I_input.size(0)
+        for k in sums:
+            sums[k] += float(m[k]) * bs
+        n += bs
+    model.train()
+    return {k: sums[k] / max(1, n) for k in sums}
+
+
+# ──────────────────────────────────────────────
+# Data split
+# ──────────────────────────────────────────────
+
+def smart_split(paths, seed=1337, val_frac=0.05):
+    """5% val for 180k dataset = 9000 samples — plenty."""
+    n = len(paths)
+    if n <= 1:
+        return paths, []
+    rng = random.Random(seed)
+    paths = paths[:]
+    rng.shuffle(paths)
+    val_count   = max(1, int(round(val_frac * n)))
+    return paths[:-val_count], paths[-val_count:]
+
+
+# ──────────────────────────────────────────────
+# Training
+# ──────────────────────────────────────────────
+
+def train(args):
+    set_seed(args.seed)
+    device  = torch.device(pick_device(args.device))
+    use_amp = device.type == "cuda" and args.use_amp
+
+    print(f"[startup] device={device} | amp={use_amp} | batch={args.batch_size} | workers={args.workers}")
+    ensure_dir(args.out_dir)
+    ensure_dir(args.vis_dir)
+
+    paths = sorted(glob.glob(os.path.join(args.data_dir, args.pattern)))
+    print(f"[data] found {len(paths)} files in {args.data_dir}/{args.pattern}")
+    assert paths, "No .mat files found — check --data-dir and --pattern"
+
+    train_paths, val_paths = smart_split(paths, seed=args.seed, val_frac=0.05)
+    print(f"[data] train={len(train_paths)} | val={len(val_paths)}")
+
+    aug   = NoiseAug(
+        gauss_std=args.aug_gauss_std,
+        speckle_std=args.aug_speckle_std,
+        lowfreq_amp=args.aug_lowfreq_amp,
+        blur_prob=args.aug_blur_prob,
+        dropout_prob=args.aug_dropout_prob,
+        hint_offset_std=args.aug_hint_std,
+    )
+    noise_sched = NoiseScheduler(args.noise_warmup, args.noise_full_epoch, args.noise_profile)
+
+    train_ds = MatPhaseDataset(train_paths, I_key=args.I_key, phi_key=args.phi_key, augment=aug)
+    val_ds   = MatPhaseDataset(val_paths,   I_key=args.I_key, phi_key=args.phi_key, augment=None) if val_paths else None
+
+    # NOTE: persistent_workers=False — noise level is set on dataset object each epoch.
+    # With persistent_workers=True the forked workers would not see level updates.
+    dl_kw = dict(
+        batch_size=args.batch_size,
+        num_workers=args.workers,
+        pin_memory=(device.type == "cuda"),
+        persistent_workers=False,
+    )
+    train_loader = DataLoader(train_ds, shuffle=True,  drop_last=True,  **dl_kw)
+    val_loader   = DataLoader(val_ds,   shuffle=False, drop_last=False, **dl_kw) if val_ds else None
+
+    # Model
+    model = PINNPhaseNet(base=args.base, act=args.activation, dropout=args.dropout).to(device)
+    n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"[model] {n_params:,} trainable parameters")
+
+    # PINN loss
+    criterion = PINNLoss(
+        w_gt=args.w_gt,
+        w_grad=args.w_grad,
+        w_iform=args.w_iform,
+        w_curl=args.w_curl,
+        w_smooth=args.w_smooth,
+    )
+
+    opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    lr_sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.epochs, eta_min=args.eta_min)
+    scaler   = torch.cuda.amp.GradScaler(enabled=use_amp)
+    ema      = EMA(model, decay=args.ema_decay)
+
+    best_mae = float("inf")
+    epochs_x, train_losses, val_maes = [], [], []
+
+    if not HEADLESS:
+        plt.ion()
+    curve_fig, curve_ax = plt.subplots(1, 1, figsize=(7, 4))
+
+    for epoch in range(1, args.epochs + 1):
+        # Set noise level for this epoch on the dataset object
+        lvl = noise_sched.level(epoch)
+        train_ds.noise_level = lvl
+        print(f"[noise] epoch={epoch}  level={lvl:.3f}")
+
+        t0 = time.time()
+        model.train()
+        run_loss = 0.0
+        cnt = 0
+
+        pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{args.epochs}", leave=False)
+        for I_input, phi_gt, I_raw in pbar:
+            I_input = I_input.to(device)
+            phi_gt  = phi_gt.to(device)
+            I_raw   = I_raw.to(device)
+
+            # I_norm is channel 0 of I_input (already z-scored)
+            I_norm = I_input[:, 0:1]
+
+            opt.zero_grad(set_to_none=True)
+            try:
+                with torch.cuda.amp.autocast(enabled=use_amp):
+                    phi_pred, amp = model(I_input)
+
+                    # Affine-align prediction to GT for supervision terms
+                    phi_aligned, _, _ = affine_align(phi_pred, phi_gt)
+
+                    conf = torch.ones_like(phi_aligned)
+
+                    loss, parts = criterion(
+                        phi_pred=phi_aligned,
+                        amp_pred=amp,
+                        phi_gt=phi_gt,
+                        I_norm=I_norm,
+                        conf=conf,
+                    )
+
+                scaler.scale(loss).backward()
+                scaler.unscale_(opt)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip, error_if_nonfinite=False)
+                scaler.step(opt)
+                scaler.update()
+                ema.update(model)
+
+            except RuntimeError as e:
+                if "out of memory" in str(e).lower():
+                    print("CUDA OOM — try reducing --batch-size")
+                    torch.cuda.empty_cache()
+                    plt.close("all")
+                    return
+                raise   # re-raise all other RuntimeErrors with full traceback
+
+            run_loss += loss.item() * I_input.size(0)
+            cnt += I_input.size(0)
+            pbar.set_postfix({
+                "tot":   f"{loss.item():.4f}",
+                "gt":    f"{parts['gt']:.4f}",
+                "iform": f"{parts['iform']:.4f}",
+                "curl":  f"{parts['curl']:.4f}",
+            })
+
+        lr_sched.step()
+        train_loss = run_loss / max(1, cnt)
+
+        # Validation
+        cur_val_mae = float("nan")
+        if epoch % args.val_interval == 0 and val_loader is not None:
+            stats = run_eval(ema.m, val_loader, device, use_amp)
+            cur_val_mae = stats["MAE"]
+
+            # Visualise
+            try:
+                I_input_v, phi_gt_v, I_raw_v = next(iter(val_loader))
+                I_input_v = I_input_v.to(device)
+                phi_gt_v  = phi_gt_v.to(device)
+                I_raw_v   = I_raw_v.to(device)
+
+                ema.m.eval()
+                with torch.cuda.amp.autocast(enabled=use_amp):
+                    phi_pred_v, amp_v = ema.m(I_input_v)
+                ema.m.train()
+
+                phi_aligned_v, _, _ = affine_align(phi_pred_v, phi_gt_v)
+                I_clean_vis = I_input_v[:, 0:1].cpu()
+
+                # Generate noisy vis using current aug level
+                if lvl > 0:
+                    with torch.no_grad():
+                        _, I_noisy_norm, _ = aug(I_raw_v, I_raw_v, None, lvl)
+                        I_noisy_vis = I_noisy_norm.cpu()
+                else:
+                    I_noisy_vis = I_clean_vis.clone()
+
+                save_epoch_visuals(
+                    I_clean_vis,
+                    I_noisy_vis,
+                    phi_aligned_v.detach().cpu(),
+                    amp_v.detach().cpu(),
+                    phi_gt_v.cpu(),
+                    args.vis_dir,
+                    f"e{epoch:03d}",
+                    args.vis_max,
+                )
+            except Exception as e:
+                print(f"Warning: visualisation failed: {e}")
+
+            print(
+                f"Epoch {epoch:03d} | train={train_loss:.4f} | "
+                f"val MAE={stats['MAE']:.4f} RMSE={stats['RMSE']:.4f} | "
+                f"noise={lvl:.2f} | {time.time()-t0:.1f}s"
+            )
+
+            if stats["MAE"] < best_mae:
+                best_mae = stats["MAE"]
+                torch.save(
+                    {"epoch": epoch, "model": model.state_dict(), "ema": ema.m.state_dict()},
+                    os.path.join(args.out_dir, "best.pth"),
+                )
+        else:
+            print(f"Epoch {epoch:03d} | train={train_loss:.4f} | noise={lvl:.2f} | {time.time()-t0:.1f}s")
+
+        # Rolling checkpoint (saves epoch so resume restores noise schedule correctly)
+        torch.save(
+            {
+                "epoch": epoch,
+                "model": model.state_dict(),
+                "ema":   ema.m.state_dict(),
+                "opt":   opt.state_dict(),
+                "noise_level": lvl,
+            },
+            os.path.join(args.out_dir, "final.pth"),
+        )
+
+        epochs_x.append(epoch)
+        train_losses.append(train_loss)
+        val_maes.append(cur_val_mae)
+
+        curve_ax.clear()
+        curve_ax.plot(epochs_x, train_losses, label="Train loss")
+        curve_ax.plot(epochs_x, val_maes, label="Val MAE")
+        curve_ax.set_xlabel("Epoch"); curve_ax.set_ylabel("Value"); curve_ax.legend(); curve_ax.grid(True)
+        if not HEADLESS:
+            curve_fig.canvas.draw(); curve_fig.canvas.flush_events()
+
+    print(f"Done. Best val MAE: {best_mae:.4f}")
+    if not HEADLESS:
+        plt.ioff()
+    curve_fig.savefig(os.path.join(args.out_dir, "training_curve.png"), dpi=150)
+    plt.close(curve_fig)
+
+
+# ──────────────────────────────────────────────
+# Inference (standalone — replaces Fourier/phase-shifting)
+# ──────────────────────────────────────────────
+
+@torch.no_grad()
+def predict(
+    I_raw_np: np.ndarray,
+    ref_phase_rad: float,
+    checkpoint_path: str,
+    device: str = "auto",
+    base: int = 32,
+    activation: str = "relu",
+) -> np.ndarray:
+    """
+    Predict absolute unwrapped phase from a single interferogram.
+
+    Parameters
+    ----------
+    I_raw_np       : np.ndarray [H, W] or [1, H, W]  raw interferogram intensity
+    ref_phase_rad  : float  reference phase value in radians
+                            (from reference arm, flat region, or unloaded frame)
+    checkpoint_path: str    path to best.pth or final.pth
+    device         : str    'auto', 'cuda', or 'cpu'
+
+    Returns
+    -------
+    phi_abs : np.ndarray [H, W]  absolute unwrapped phase in radians
+    """
+    dev = torch.device("cuda" if (device == "auto" and torch.cuda.is_available()) else
+                       "cpu"  if device == "auto" else device)
+
+    # Load model
+    model = PINNPhaseNet(base=base, act=activation).to(dev).eval()
+    ckpt  = torch.load(checkpoint_path, map_location=dev)
+    state = ckpt.get("ema", ckpt.get("model"))
+    model.load_state_dict(state)
+
+    # Prepare input
+    I_np = to_chw(np.array(I_raw_np, dtype=np.float32))   # [1,H,W]
+    I_t  = torch.from_numpy(I_np).to(dev)
+
+    mean = I_t.mean(dim=(1, 2), keepdim=True)
+    std  = I_t.std(dim=(1, 2), keepdim=True).clamp_min(1e-6)
+    I_norm = (I_t - mean) / std
+
+    phi_hint = torch.full_like(I_t, ref_phase_rad)
+    I_input  = torch.cat([I_norm, phi_hint], dim=0).unsqueeze(0)   # [1,2,H,W]
+
+    phi_abs, amp = model(I_input)
+    return to_np(phi_abs[0, 0])   # [H, W]
+
+
+# ──────────────────────────────────────────────
+# Resume utility
+# ──────────────────────────────────────────────
+
+def maybe_resume(args, model, ema, opt):
+    """Resume from final.pth if --resume flag is set."""
+    ckpt_path = os.path.join(args.out_dir, "final.pth")
+    if not (args.resume and os.path.exists(ckpt_path)):
+        return 0
+    ckpt = torch.load(ckpt_path, map_location="cpu")
+    model.load_state_dict(ckpt["model"])
+    ema.m.load_state_dict(ckpt["ema"])
+    if "opt" in ckpt:
+        opt.load_state_dict(ckpt["opt"])
+    start_epoch = ckpt.get("epoch", 0)
+    print(f"[resume] restored from epoch {start_epoch}")
+    return start_epoch
+
+
+# ──────────────────────────────────────────────
+# CLI
+# ──────────────────────────────────────────────
+
+def parse_args():
+    p = argparse.ArgumentParser(description="PINN interferometry phase predictor")
+
+    # Data
+    p.add_argument("--data-dir",  default="F:/unet/U")
+    p.add_argument("--pattern",   default="*.mat")
+    p.add_argument("--I-key",     default="I")
+    p.add_argument("--phi-key",   default="dphi")
+
+    # Output
+    p.add_argument("--out-dir",   default="F:/unet/runs_pinn")
+    p.add_argument("--vis-dir",   default="F:/unet/viz_pinn")
+    p.add_argument("--resume",    action="store_true", help="Resume from final.pth")
+
+    # Model
+    p.add_argument("--base",       type=int,   default=32,    help="Base channel width")
+    p.add_argument("--activation", choices=["relu","silu"], default="relu")
+    p.add_argument("--dropout",    type=float, default=0.2)
+
+    # Training
+    p.add_argument("--epochs",       type=int,   default=100)
+    p.add_argument("--batch-size",   type=int,   default=40)
+    p.add_argument("--lr",           type=float, default=3e-4)
+    p.add_argument("--eta-min",      type=float, default=1e-6)
+    p.add_argument("--weight-decay", type=float, default=1e-4)
+    p.add_argument("--grad-clip",    type=float, default=5.0)
+    p.add_argument("--ema-decay",    type=float, default=0.999)
+    p.add_argument("--workers",      type=int,   default=4)
+    p.add_argument("--device",       default="auto")
+    p.add_argument("--seed",         type=int,   default=1337)
+    p.add_argument("--use-amp",      action="store_true")
+
+    # PINN loss weights
+    p.add_argument("--w-gt",     type=float, default=1.0,  help="GT supervision weight")
+    p.add_argument("--w-grad",   type=float, default=0.1,  help="Gradient supervision weight")
+    p.add_argument("--w-iform",  type=float, default=0.5,  help="Intensity formation loss weight (core PINN term)")
+    p.add_argument("--w-curl",   type=float, default=0.05, help="Phase integrability / curl-free weight")
+    p.add_argument("--w-smooth", type=float, default=0.003,help="Laplacian smoothness weight")
+
+    # Noise curriculum
+    p.add_argument("--noise-warmup",      type=int,   default=5)
+    p.add_argument("--noise-full-epoch",  type=int,   default=40)
+    p.add_argument("--noise-profile",     choices=["linear","cosine"], default="cosine")
+    p.add_argument("--aug-gauss-std",     type=float, default=0.02)
+    p.add_argument("--aug-speckle-std",   type=float, default=0.05)
+    p.add_argument("--aug-lowfreq-amp",   type=float, default=0.05)
+    p.add_argument("--aug-blur-prob",     type=float, default=0.2)
+    p.add_argument("--aug-dropout-prob",  type=float, default=0.02)
+    p.add_argument("--aug-hint-std",      type=float, default=0.2)
+
+    # Eval / vis
+    p.add_argument("--val-interval", type=int, default=1)
+    p.add_argument("--vis-max",      type=int, default=4)
+
+    return p.parse_args()
+
+
+# ──────────────────────────────────────────────
+# Main
+# ──────────────────────────────────────────────
+
+if __name__ == "__main__":
+    args = parse_args()
+    ensure_dir(args.out_dir)
+    ensure_dir(args.vis_dir)
+    train(args)

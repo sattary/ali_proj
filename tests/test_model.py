@@ -12,6 +12,7 @@ from phase_unwrap.model import build_model, EMA
 class TestUNetRes2:
     def test_output_shapes(self, default_config):
         model = build_model(default_config.model)
+        model.eval()
         x = torch.randn(2, 2, 128, 128)
         phi_raw, k_off = model(x)
 
@@ -21,6 +22,7 @@ class TestUNetRes2:
     def test_different_spatial_sizes(self, default_config):
         """Model should handle any spatial size divisible by 16."""
         model = build_model(default_config.model)
+        model.eval()
         for size in [64, 128, 256]:
             x = torch.randn(1, 2, size, size)
             phi_raw, k_off = model(x)
@@ -39,9 +41,10 @@ class TestUNetRes2:
     def test_gradient_flow(self, default_config):
         """Verify gradients propagate to all parameters."""
         model = build_model(default_config.model)
+        model.train()
         x = torch.randn(1, 2, 128, 128)
-        phi_raw, k_off = model(x)
-        loss = phi_raw.mean() + k_off.mean()
+        phi_raw_list, k_off = model(x)
+        loss = sum(p.mean() for p in phi_raw_list) + k_off.mean()
         loss.backward()
 
         for name, p in model.named_parameters():
@@ -56,8 +59,8 @@ class TestEMA:
 
         # simulate a training step
         x = torch.randn(1, 2, 128, 128)
-        phi_raw, k_off = model(x)
-        (phi_raw.mean() + k_off.mean()).backward()
+        phi_raw_list, k_off = model(x)
+        (phi_raw_list[2].mean() + k_off.mean()).backward()
 
         # manually change a parameter
         with torch.no_grad():

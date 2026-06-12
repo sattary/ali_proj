@@ -54,8 +54,8 @@ def plot_curriculum_noise(
         enable=True,
     )
     noise_sched = NoiseScheduler(
-        warmup_epochs=aug_cfg.warmup_epochs,
-        full_epoch=aug_cfg.full_epoch,
+        warmup_ratio=aug_cfg.warmup_ratio,
+        full_ratio=aug_cfg.full_ratio,
         profile=aug_cfg.profile,
     )
 

@@ -79,14 +79,11 @@ def save_checkpoint(
     scaler: GradScaler,
     best_mae: float,
 ) -> None:
-    # Handle DataParallel wrapper when saving
-    from .multi_gpu import get_model_state_dict
-
     state = {
         "epoch": epoch,
         "best_mae": best_mae,
-        "model": get_model_state_dict(model),
-        "model_ema": get_model_state_dict(ema.m),
+        "model": model.state_dict(),
+        "model_ema": ema.m.state_dict(),
         "optimizer": optimizer.state_dict(),
         "scheduler": scheduler.state_dict(),
         "scaler": scaler.state_dict(),
@@ -109,12 +106,10 @@ def load_checkpoint(
     device: torch.device,
 ) -> tuple[int, float]:
     """Load full training state. Returns (start_epoch, best_mae)."""
-    from .multi_gpu import load_model_state_dict
-
     # weights_only=False: loading trusted checkpoint from own training runs
     ckpt = torch.load(path, map_location=device, weights_only=False)
-    load_model_state_dict(model, ckpt["model"])
-    load_model_state_dict(ema.m, ckpt["model_ema"])
+    model.load_state_dict(ckpt["model"])
+    ema.m.load_state_dict(ckpt["model_ema"])
     optimizer.load_state_dict(ckpt["optimizer"])
     scheduler.load_state_dict(ckpt["scheduler"])
     scaler.load_state_dict(ckpt["scaler"])
@@ -228,8 +223,6 @@ def train(
     cfg: TrainConfig,
     resume_path: Optional[str] = None,
     auto_push_callback: Optional[Any] = None,
-    multi_gpu: bool = False,
-    gpu_ids: Optional[list[int]] = None,
 ) -> None:
     """Main training entrypoint."""
     set_seed(cfg.logging.seed)
@@ -267,18 +260,7 @@ def train(
 
     model = build_model(cfg.model).to(device=device, memory_format=torch.channels_last)
 
-    # Setup multi-GPU if requested
-    if multi_gpu and use_cuda:
-        from .multi_gpu import print_gpu_info, setup_multi_gpu
-
-        # Rationale (Architecture & Memory):
-        # By wrapping the model in PyTorch's `DataParallel` via `setup_multi_gpu`, the global
-        # `--batch-size` is physically chunked into `N` equal partitions across `N` GPUs. 
-        # This mathematically guarantees we can double our global batch size on a 2x GPU instance
-        # without exceeding the VRAM limit of any single card.
-        print_gpu_info()
-        model = setup_multi_gpu(model, gpu_ids=gpu_ids)
-    elif hasattr(torch, "compile") and sys.platform != "win32":
+    if hasattr(torch, "compile") and sys.platform != "win32":
         try:
             model = torch.compile(model)
             print("[startup] torch.compile enabled")

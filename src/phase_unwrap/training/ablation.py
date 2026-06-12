@@ -35,7 +35,6 @@ def run_ablation(
     seeds: Sequence[int] = (42, 1337, 7),
     metrics: Optional[Sequence[str]] = None,
     out_table: str = "results/tables/ablation.tex",
-    multi_gpu: bool = False,
     use_amp: bool = False,
 ) -> str:
     """
@@ -61,7 +60,7 @@ def run_ablation(
         _apply_overrides(cfg, overrides)
 
         group_name = f"{base_name}/{label}"
-        run_multiseed(cfg, base_run_name=group_name, seeds=list(seeds), multi_gpu=multi_gpu, use_amp=use_amp)
+        run_multiseed(cfg, base_run_name=group_name, seeds=list(seeds), use_amp=use_amp)
         run_dirs[label] = os.path.join(cfg.logging.runs_root, group_name)
 
     table = comparison_to_latex(

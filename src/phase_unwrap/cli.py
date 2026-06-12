@@ -81,9 +81,7 @@ def train_cmd(
     run_name: Optional[str] = typer.Option(
         None, "--run-name", help="Name for this training run."
     ),
-    multi_gpu: bool = typer.Option(
-        False, "--multi-gpu", help="Use all available GPUs with DataParallel."
-    ),
+
     use_amp: bool = typer.Option(
         False, "--use-amp", help="Enable Automatic Mixed Precision (AMP)."
     ),
@@ -121,8 +119,6 @@ def train_cmd(
         cfg,
         resume_path=str(resume) if resume else None,
         auto_push_callback=None,
-        multi_gpu=multi_gpu,
-        gpu_ids=None,
     )
 
 
@@ -190,9 +186,7 @@ def multiseed_cmd(
         None, "--seeds", help="Comma-separated seeds (e.g., '1337,42,7')."
     ),
     num_seeds: int = typer.Option(3, "--num-seeds", help="Auto-generate N seeds."),
-    multi_gpu: bool = typer.Option(
-        False, "--multi-gpu", help="Use all available GPUs with DataParallel."
-    ),
+
     use_amp: bool = typer.Option(
         False, "--use-amp", help="Enable Automatic Mixed Precision (AMP)."
     ),
@@ -200,7 +194,7 @@ def multiseed_cmd(
     """Run N training runs with different seeds, aggregate results."""
     import torch
     from .training.multiseed import run_multiseed
-    from .training.multi_gpu import detect_kaggle_multi_gpu
+
     import random as _rnd
 
     cfg: TrainConfig = load_train_config(config)
@@ -216,7 +210,7 @@ def multiseed_cmd(
 
 
 
-    run_multiseed(cfg, base_run_name=run_name, seeds=seed_list, multi_gpu=multi_gpu, use_amp=use_amp)
+    run_multiseed(cfg, base_run_name=run_name, seeds=seed_list, use_amp=use_amp)
 
 
 @app.command("ablation")
@@ -236,9 +230,7 @@ def ablation_cmd(
     out_table: str = typer.Option(
         "results/tables/ablation.tex", "--out-table", help="Output LaTeX table path."
     ),
-    multi_gpu: bool = typer.Option(
-        False, "--multi-gpu", help="Use all available GPUs with DataParallel."
-    ),
+
     use_amp: bool = typer.Option(
         False, "--use-amp", help="Enable Automatic Mixed Precision (AMP)."
     ),
@@ -246,7 +238,7 @@ def ablation_cmd(
     """Run ablation study and produce LaTeX comparison table."""
     import torch
     from .training.ablation import run_ablation
-    from .training.multi_gpu import detect_kaggle_multi_gpu
+
     import random as _rnd
 
     cfg: TrainConfig = load_train_config(config)
@@ -275,7 +267,6 @@ def ablation_cmd(
         base_name=run_name,
         seeds=seed_list,
         out_table=out_table,
-        multi_gpu=multi_gpu,
         use_amp=use_amp,
     )
 
