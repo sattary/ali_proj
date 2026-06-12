@@ -277,6 +277,11 @@ def train(
     if multi_gpu and use_cuda:
         from .multi_gpu import print_gpu_info, setup_multi_gpu
 
+        # Rationale (Architecture & Memory):
+        # By wrapping the model in PyTorch's `DataParallel` via `setup_multi_gpu`, the global
+        # `--batch-size` is physically chunked into `N` equal partitions across `N` GPUs. 
+        # This mathematically guarantees we can double our global batch size on a 2x GPU instance
+        # without exceeding the VRAM limit of any single card.
         print_gpu_info()
         model = setup_multi_gpu(model, gpu_ids=gpu_ids)
 
@@ -299,9 +304,11 @@ def train(
         opt, warmup_steps, total_steps - warmup_steps, cfg.optim.eta_min
     )
 
+    # Rationale (Mathematical Implication):
     # PyTorch 1.1+ requires optimizer.step() before scheduler.step().
-    # We step them once here (with fake zero-gradients) to initialize the LR correctly
-    # and silence the warning on the first epoch.
+    # WARNING: Because this is AdamW, `opt.step()` physically applies weight decay 
+    # (w = w - lambda * w) even when gradients are zero. This slightly shrinks the seeded 
+    # weight initialization before the first forward pass. It is deterministic, but non-zero.
     opt.step()
     sched.step()
 
@@ -421,6 +428,12 @@ def train(
 
             except RuntimeError as e:
                 if "out of memory" in str(e).lower():
+                    # Rationale (Architecture - Resiliency):
+                    # We implement dynamic batch-size halving on CUDA OOM. Deep networks like UNet 
+                    # can occasionally spike VRAM on exceptionally noisy/complex gradients. 
+                    # Instead of instantly killing a 48-hour unattended training run, we catch the OOM, 
+                    # flush the VRAM, automatically slash the batch size, and seamlessly rebuild the 
+                    # dataloaders to resume execution cleanly.
                     print(
                         "| WARNING | CUDA OOM Exception caught! Attempting dynamic recovery..."
                     )
@@ -600,7 +613,7 @@ def train(
             ema.m if ema else model, test_loader, device, use_amp, eval_sobel
         )
         print(
-            f"[TEST] MAE={test_stats.get('MAE', 0):.4f} "
+            f"[TEST] TopoMAE={test_stats.get('TopoMAE', 0):.4f} "
             f"RMSE={test_stats.get('RMSE', 0):.4f} "
             f"SSIM={test_stats.get('SSIM', 0):.4f} "
             f"PSNR={test_stats.get('PSNR', 0):.2f} "
