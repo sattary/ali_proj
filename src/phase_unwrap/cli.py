@@ -115,10 +115,7 @@ def train_cmd(
     if epochs is not None:
         cfg.optim.epochs = epochs
 
-    if not multi_gpu and torch.cuda.is_available():
-        if detect_kaggle_multi_gpu():
-            multi_gpu = True
-            typer.echo("[kaggle] Auto-enabling multi-GPU mode")
+
 
     run_train(
         cfg,
@@ -217,10 +214,7 @@ def multiseed_cmd(
     if use_amp:
         cfg.model.use_amp = True
 
-    if not multi_gpu and torch.cuda.is_available():
-        if detect_kaggle_multi_gpu():
-            multi_gpu = True
-            typer.echo("[kaggle] Auto-enabling multi-GPU mode for multiseed")
+
 
     run_multiseed(cfg, base_run_name=run_name, seeds=seed_list, multi_gpu=multi_gpu, use_amp=use_amp)
 
@@ -273,10 +267,7 @@ def ablation_cmd(
     if use_amp:
         cfg.model.use_amp = True
 
-    if not multi_gpu and torch.cuda.is_available():
-        if detect_kaggle_multi_gpu():
-            multi_gpu = True
-            typer.echo("[kaggle] Auto-enabling multi-GPU mode for ablation")
+
 
     run_ablation(
         base_cfg=cfg,
