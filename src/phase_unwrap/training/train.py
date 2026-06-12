@@ -309,8 +309,10 @@ def train(
     # WARNING: Because this is AdamW, `opt.step()` physically applies weight decay 
     # (w = w - lambda * w) even when gradients are zero. This slightly shrinks the seeded 
     # weight initialization before the first forward pass. It is deterministic, but non-zero.
+    global_step = 0
     opt.step()
     sched.step()
+    global_step += 1
 
     scaler = GradScaler(device=device.type, enabled=use_amp)
     ema = EMA(model, decay=cfg.model.ema_decay)
@@ -423,6 +425,7 @@ def train(
                 # (which indicates it skipped the opt.step due to nan/inf grads).
                 if scale_after >= scale_before:
                     sched.step()
+                    global_step += 1
 
                 ema.update(model)
 
@@ -454,6 +457,23 @@ def train(
                     train_loader, val_loader, test_loader = build_dataloaders(
                         cfg, device, seed=cfg.logging.seed
                     )
+
+                    # Rationale (State Synchronization):
+                    # 1. Update the frozen `config.yaml` so anyone resuming or reproducing this run 
+                    # doesn't crash on the old toxic batch size.
+                    Path(config_snap_path).write_text(config_to_yaml(cfg))
+
+                    # 2. Rebuild the LR scheduler. Because batch size halved, `len(train_loader)` 
+                    # just doubled! The pre-computed CosineAnnealingLR max steps are now violently 
+                    # out of sync. We must recalculate the total steps and fast-forward the new 
+                    # scheduler back to the exact current `global_step` to prevent math corruption.
+                    new_total_steps = global_step + (cfg.optim.epochs - epoch + 1) * len(train_loader)
+                    new_warmup = min(cfg.optim.warmup_steps, new_total_steps // 2)
+                    sched = _build_warmup_scheduler(
+                        opt, new_warmup, new_total_steps - new_warmup, cfg.optim.eta_min
+                    )
+                    for _ in range(global_step):
+                        sched.step()
 
                     # If noise is enabled, immediately re-sync the level since we created a new loader
                     if noise_sched is not None and train_aug is not None:
