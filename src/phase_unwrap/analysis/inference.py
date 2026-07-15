@@ -92,9 +92,10 @@ def run_inference(
     I_tensor = torch.from_numpy(I_norm).unsqueeze(0).unsqueeze(0).to(device)
     I_padded = F.pad(I_tensor, (pad_left, pad_right, pad_top, pad_bottom), mode="reflect")
 
-    # Create blank phase hint
-    hint_padded = torch.zeros_like(I_padded)
+    # Option B: zero phase hint — must match training hint_mode="zero"
+    from ..data.augmentation import build_phi_hint
 
+    hint_padded = build_phi_hint(I_padded, phi_gt=None, hint_mode="zero")
     x_in = torch.cat([I_padded, hint_padded], dim=1)
 
     # 4. Inference

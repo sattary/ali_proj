@@ -31,10 +31,12 @@ class H5ShardDataset(Dataset):
         shard_paths: Sequence[str],
         I_key: str = "I",
         phi_key: str = "phi",
+        augment: bool = True,
     ) -> None:
         self.shard_paths = list(shard_paths)
         self.I_key = I_key
         self.phi_key = phi_key
+        self.augment = bool(augment)
 
         self._shard_sizes: list[int] = []
         self._cumulative: list[int] = [0]
@@ -77,17 +79,18 @@ class H5ShardDataset(Dataset):
         I_raw_t = torch.from_numpy(np.ascontiguousarray(I_np)).float()
         phi_gt_t = torch.from_numpy(np.ascontiguousarray(phi_np)).float()
 
-        # Phase topology geometric augmentation
-        if random.random() > 0.5:
-            I_raw_t = I_raw_t.flip(-1)
-            phi_gt_t = phi_gt_t.flip(-1)
-        if random.random() > 0.5:
-            I_raw_t = I_raw_t.flip(-2)
-            phi_gt_t = phi_gt_t.flip(-2)
-        k = random.randint(0, 3)
-        if k > 0:
-            I_raw_t = torch.rot90(I_raw_t, k, dims=(-2, -1))
-            phi_gt_t = torch.rot90(phi_gt_t, k, dims=(-2, -1))
+        # Geometric aug is train-only; val/test must be orientation-stable for metrics.
+        if self.augment:
+            if random.random() > 0.5:
+                I_raw_t = I_raw_t.flip(-1)
+                phi_gt_t = phi_gt_t.flip(-1)
+            if random.random() > 0.5:
+                I_raw_t = I_raw_t.flip(-2)
+                phi_gt_t = phi_gt_t.flip(-2)
+            k = random.randint(0, 3)
+            if k > 0:
+                I_raw_t = torch.rot90(I_raw_t, k, dims=(-2, -1))
+                phi_gt_t = torch.rot90(phi_gt_t, k, dims=(-2, -1))
 
         return I_raw_t, phi_gt_t
 
@@ -173,17 +176,24 @@ def build_dataloaders(
         train_paths,
         I_key=cfg.data.I_key,
         phi_key=cfg.data.phi_key,
+        augment=cfg.data.augment,
     )
     val_ds = (
         H5ShardDataset(
-            val_paths, I_key=cfg.data.I_key, phi_key=cfg.data.phi_key
+            val_paths,
+            I_key=cfg.data.I_key,
+            phi_key=cfg.data.phi_key,
+            augment=False,
         )
         if val_paths
         else None
     )
     test_ds = (
         H5ShardDataset(
-            test_paths, I_key=cfg.data.I_key, phi_key=cfg.data.phi_key
+            test_paths,
+            I_key=cfg.data.I_key,
+            phi_key=cfg.data.phi_key,
+            augment=False,
         )
         if test_paths
         else None

@@ -25,7 +25,7 @@ from tqdm.auto import tqdm
 
 from ..core.config import TrainConfig, config_to_yaml
 from ..core.losses import MAEGradLoss, compute_metrics
-from ..core.ops import FixedSobel, affine_align, curvature_loss
+from ..core.ops import FixedSobel, curvature_loss, piston_align
 from ..core.utils import ensure_dir, pick_device, set_seed
 from ..data import build_dataloaders
 from ..data.augmentation import NoiseAug, NoiseScheduler, prepare_batch
@@ -132,8 +132,14 @@ def run_eval(
     device: torch.device,
     use_amp: bool,
     sobel: FixedSobel,
+    hint_mode: str = "zero",
 ) -> Dict[str, float]:
-    """Evaluate using affine-aligned predictions."""
+    """
+    Evaluate with Option-B inputs by default (zero hint).
+
+    TopoMAE key retained for CSV compatibility but is **piston-only** aligned
+    (no GT scale fit). AbsMAE is raw absolute error (primary selection metric).
+    """
     if loader is None:
         return {
             k: float("nan")
@@ -149,9 +155,11 @@ def run_eval(
     for I_raw, phi_gt in pbar:
         I_raw = I_raw.to(device, non_blocking=True)
         phi_gt = phi_gt.to(device, non_blocking=True)
-        
-        I_input, phi_gt, _, _ = prepare_batch(I_raw, phi_gt, noise_aug=None)
-        
+
+        I_input, phi_gt, _, _ = prepare_batch(
+            I_raw, phi_gt, noise_aug=None, hint_mode=hint_mode
+        )
+
         I_input = I_input.contiguous(memory_format=torch.channels_last)
         phi_gt = phi_gt.contiguous(memory_format=torch.channels_last)
         bs = I_input.size(0)
@@ -160,7 +168,8 @@ def run_eval(
             phi_raw, k_off = model(I_input)
             phi_abs = phi_raw + k_off
 
-        phi_aligned, _, _ = affine_align(phi_abs, phi_gt)
+        # TopoMAE key retained for CSV compat; now offset-only (piston) aligned.
+        phi_aligned, _ = piston_align(phi_abs, phi_gt)
 
         m_abs = compute_metrics(phi_abs, phi_gt)
         m_topo = compute_metrics(phi_aligned, phi_gt)
@@ -369,7 +378,9 @@ def train(
             I_raw = I_raw.to(device, non_blocking=True)
             phi_gt = phi_gt.to(device, non_blocking=True)
             
-            I_input, phi_gt, I_raw_n, I_raw_c = prepare_batch(I_raw, phi_gt, noise_aug=train_aug)
+            I_input, phi_gt, I_raw_n, I_raw_c = prepare_batch(
+                I_raw, phi_gt, noise_aug=train_aug, hint_mode=cfg.aug.hint_mode
+            )
             
             I_input = I_input.contiguous(memory_format=torch.channels_last)
             phi_gt = phi_gt.contiguous(memory_format=torch.channels_last)
@@ -504,23 +515,36 @@ def train(
 
         eval_stats: Dict[str, float] = {}
         if (epoch % cfg.logging.val_interval == 0) and (val_loader is not None):
-            eval_stats = run_eval(ema.m, val_loader, device, use_amp, eval_sobel)
+            eval_stats = run_eval(
+                ema.m,
+                val_loader,
+                device,
+                use_amp,
+                eval_sobel,
+                hint_mode=cfg.aug.hint_mode,
+            )
 
             try:
                 # Get visualization data from train_loader to show actual noisy data
                 I_raw_v, phi_gt_v = next(iter(train_loader))
                 I_raw_v = I_raw_v.to(device, non_blocking=True)
                 phi_gt_v = phi_gt_v.to(device, non_blocking=True)
-                
-                I_input_v, phi_gt_v, I_raw_n_v, I_raw_c_v = prepare_batch(I_raw_v, phi_gt_v, noise_aug=train_aug)
-                
+
+                I_input_v, phi_gt_v, I_raw_n_v, I_raw_c_v = prepare_batch(
+                    I_raw_v,
+                    phi_gt_v,
+                    noise_aug=train_aug,
+                    hint_mode=cfg.aug.hint_mode,
+                )
+
                 I_input_v = I_input_v.contiguous(memory_format=torch.channels_last)
                 phi_gt_v = phi_gt_v.contiguous(memory_format=torch.channels_last)
-                
+
                 with autocast(device_type=device.type, enabled=use_amp):
                     phi_raw_v, k_off_v = ema.m(I_input_v)
                     phi_abs_v = phi_raw_v + k_off_v
-                phi_aligned_v, _, _ = affine_align(phi_abs_v, phi_gt_v)
+                # Epoch PNGs: piston-only (same as metrics); affine_align remains for other plots
+                phi_aligned_v, _ = piston_align(phi_abs_v, phi_gt_v)
 
                 # Get current noise level for visualization
                 current_noise_level = 0.0
@@ -566,8 +590,9 @@ def train(
                 f"time={epoch_time:.1f}s"
             )
 
-            if eval_stats.get("TopoMAE", float("inf")) < best_mae:
-                best_mae = eval_stats["TopoMAE"]
+            # Primary selection: raw AbsMAE (no GT scale/piston fit). TopoMAE is diagnostic.
+            if eval_stats.get("AbsMAE", float("inf")) < best_mae:
+                best_mae = eval_stats["AbsMAE"]
                 save_checkpoint(
                     os.path.join(run_dir, "best.pth"),
                     epoch,
@@ -622,13 +647,36 @@ def train(
     if test_loader is not None:
         print("\n--- Final Evaluation on Held-Out Test Set ---")
         test_stats = run_eval(
-            ema.m if ema else model, test_loader, device, use_amp, eval_sobel
+            ema.m if ema else model,
+            test_loader,
+            device,
+            use_amp,
+            eval_sobel,
+            hint_mode=cfg.aug.hint_mode,
         )
         print(
-            f"[TEST] TopoMAE={test_stats.get('TopoMAE', 0):.4f} "
+            f"[TEST] AbsMAE={test_stats.get('AbsMAE', 0):.4f} "
+            f"TopoMAE(piston)={test_stats.get('TopoMAE', 0):.4f} "
             f"RMSE={test_stats.get('RMSE', 0):.4f} "
             f"SSIM={test_stats.get('SSIM', 0):.4f} "
             f"PSNR={test_stats.get('PSNR', 0):.2f} "
         )
+        test_path = os.path.join(run_dir, "test_metrics.csv")
+        _init_csv(
+            test_path,
+            ["AbsMAE", "TopoMAE", "RMSE", "SSIM", "PSNR", "MaxErr", "GradMAE"],
+        )
+        _append_csv(
+            test_path,
+            {
+                "AbsMAE": f"{test_stats.get('AbsMAE', float('nan')):.6f}",
+                "TopoMAE": f"{test_stats.get('TopoMAE', float('nan')):.6f}",
+                "RMSE": f"{test_stats.get('RMSE', float('nan')):.6f}",
+                "SSIM": f"{test_stats.get('SSIM', float('nan')):.6f}",
+                "PSNR": f"{test_stats.get('PSNR', float('nan')):.4f}",
+                "MaxErr": f"{test_stats.get('MaxErr', float('nan')):.6f}",
+                "GradMAE": f"{test_stats.get('GradMAE', float('nan')):.6f}",
+            },
+        )
 
-    print(f"\nDone. Best Val MAE: {best_mae:.4f}")
+    print(f"\nDone. Best Val AbsMAE: {best_mae:.4f}")

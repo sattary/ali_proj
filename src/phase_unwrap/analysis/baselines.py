@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from ..core.ops import affine_align
+from ..core.ops import piston_align
 from ..data.generate import _build_grid, generate_sample
 
 
@@ -66,7 +66,7 @@ def evaluate_baselines(
                 pred = method(I_clean)
                 pred_t = torch.from_numpy(pred).unsqueeze(0).unsqueeze(0)
                 gt_t = torch.from_numpy(dphi_gt).unsqueeze(0).unsqueeze(0)
-                aligned, _, _ = affine_align(pred_t, gt_t)
+                aligned, _ = piston_align(pred_t, gt_t)
 
                 results[name]["mae"].append(float((aligned - gt_t).abs().mean().item()))
                 results[name]["rmse"].append(
@@ -126,7 +126,8 @@ def evaluate_dl_baseline(
         I_mean = I_clean.mean()
         I_std = I_clean.std() + 1e-6
         I_norm = (I_clean - I_mean) / I_std
-        phi_hint = np.angle(np.exp(1j * I_clean))
+        # Option B: zero hint — same as train/deploy (no GT absolute channel)
+        phi_hint = np.zeros_like(I_norm, dtype=np.float32)
 
         inp_t = (
             torch.from_numpy(np.stack([I_norm, phi_hint], 0)).unsqueeze(0).to(device)
@@ -137,7 +138,7 @@ def evaluate_dl_baseline(
             phi_raw, k_off = model(inp_t)
             phi_abs = phi_raw + k_off
 
-        aligned, _, _ = affine_align(phi_abs, gt_t)
+        aligned, _ = piston_align(phi_abs, gt_t)
         maes.append(float((aligned - gt_t).abs().mean().item()))
         rmses.append(float(((aligned - gt_t) ** 2).mean().sqrt().item()))
 

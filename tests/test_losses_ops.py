@@ -8,7 +8,7 @@ import torch
 import pytest
 
 from phase_unwrap.core.losses import MAEGradLoss, compute_metrics
-from phase_unwrap.core.ops import FixedSobel, affine_align, curvature_loss
+from phase_unwrap.core.ops import FixedSobel, affine_align, curvature_loss, piston_align
 
 
 class TestComputeMetrics:
@@ -74,6 +74,24 @@ class TestAffineAlign:
         pred[1] = pred[1] * 0.5 - 2.0
         aligned, _, _ = affine_align(pred, gt)
         torch.testing.assert_close(aligned, gt, atol=1e-4, rtol=1e-4)
+
+
+class TestPistonAlign:
+    def test_does_not_hide_scale_error(self):
+        gt = torch.randn(2, 1, 16, 16)
+        half = 0.5 * gt
+        aff, a, _ = affine_align(half, gt)
+        assert (aff - gt).abs().mean() < 1e-3
+        assert torch.allclose(a, torch.full_like(a, 2.0), atol=1e-2)
+        pist, _ = piston_align(half, gt)
+        assert (pist - gt).abs().mean() > 0.1
+
+    def test_removes_offset(self):
+        gt = torch.randn(2, 1, 16, 16)
+        shifted = gt + 3.7
+        aligned, c = piston_align(shifted, gt)
+        assert (aligned - gt).abs().mean() < 1e-5
+        assert torch.allclose(c.flatten(), torch.full((2,), -3.7), atol=1e-4)
 
 
 class TestFixedSobel:

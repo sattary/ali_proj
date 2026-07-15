@@ -11,6 +11,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
+from ..data import build_dataloaders
+from ..data.augmentation import prepare_batch
 from torch.amp import autocast
 
 from ..core.ops import affine_align
@@ -48,7 +50,7 @@ def add_awgn(signal: torch.Tensor, snr_db: float, seed: int = 42) -> torch.Tenso
 @torch.no_grad()
 def plot_noise_degradation(
     checkpoint_path: str,
-    data_dir: str,
+    data_dir: str | None = None,
     out_path: str = "results/figs/noise_degradation",
     sample_idx: int = 0,
     config_path: str | None = None,
@@ -60,7 +62,7 @@ def plot_noise_degradation(
     Columns: Degraded Interferogram | Predicted Phase | Absolute Error Map.
     """
     from ..core.inference import load_inference_state
-    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir='', config_path=config_path)
+    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir=data_dir, config_path=config_path)
 
     train_loader, val_loader, test_loader = build_dataloaders(
         cfg, device, seed=cfg.logging.seed
@@ -121,12 +123,10 @@ def plot_noise_degradation(
             std = noisy_raw.std(dim=(1, 2, 3), keepdim=True).clamp_min(1e-6)
             noisy_norm = (noisy_raw - mean) / std
 
-            # Extract central hint value from GT
-            _, _, H, W = phi_gt.shape
-            cy, cx = H // 2, W // 2
-            ref_val = float(phi_gt[0, 0, cy, cx].item())
-            phi_hint = torch.full_like(noisy_norm, ref_val)
+            # Option B: zero hint (match train/deploy; no GT absolute leak)
+            from ..data.augmentation import build_phi_hint
 
+            phi_hint = build_phi_hint(noisy_norm, phi_gt=None, hint_mode="zero")
             noisy_input = torch.cat([noisy_norm, phi_hint], dim=1)
 
             with autocast(device_type=device.type, enabled=False):

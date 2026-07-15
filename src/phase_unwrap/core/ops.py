@@ -62,6 +62,9 @@ def affine_align(
     """
     Per-image affine fit: ``a * pred + c ~ gt`` (least squares).
 
+    Diagnostic / figure tool only. Do **not** use for headline metrics: the scale
+    ``a`` is fit to GT and is not available at deployment. Prefer ``piston_align``.
+
     Args:
         pred: [B, 1, H, W] predictions.
         gt:   [B, 1, H, W] ground truth.
@@ -90,3 +93,24 @@ def affine_align(
 
     pred_aligned = a_map * pred + c_map
     return pred_aligned, a, c
+
+
+def piston_align(
+    pred: torch.Tensor, gt: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Per-image offset-only alignment: ``pred + c ~ gt`` (mean piston removal).
+
+    Absolute phase is defined only up to a global additive constant without a
+    reference; removing ``c`` is physically justified. Unlike ``affine_align``
+    this does NOT fit a scale ``a`` to the ground truth.
+
+    Returns:
+        pred_aligned [B,1,H,W], c [B,1].
+    """
+    B = pred.shape[0]
+    pred_flat = pred.reshape(B, -1)
+    gt_flat = gt.reshape(B, -1)
+    c = gt_flat.mean(dim=1, keepdim=True) - pred_flat.mean(dim=1, keepdim=True)
+    c_map = c.unsqueeze(-1).unsqueeze(-1)
+    return pred + c_map, c

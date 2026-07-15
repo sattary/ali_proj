@@ -15,7 +15,7 @@ import seaborn as sns
 import torch
 from torch.amp import autocast
 
-from ..core.ops import affine_align
+from ..core.ops import piston_align
 from ..data.generate import _build_grid, generate_sample
 from ..visualize.style import (
     DOUBLE_COL,
@@ -81,7 +81,8 @@ def noise_robustness_sweep(
             I_mean = I_noisy.mean()
             I_std = I_noisy.std() + 1e-6
             I_norm = (I_noisy - I_mean) / I_std
-            phi_hint = np.angle(np.exp(1j * I_noisy))
+            # Option B: zero hint matches train/deploy
+            phi_hint = np.zeros_like(I_norm, dtype=np.float32)
 
             inp_t = (
                 torch.from_numpy(np.stack([I_norm, phi_hint], 0))
@@ -94,7 +95,7 @@ def noise_robustness_sweep(
                 phi_raw, k_off = model(inp_t)
                 phi_abs = phi_raw + k_off
 
-            aligned, _, _ = affine_align(phi_abs, gt_t)
+            aligned, _ = piston_align(phi_abs, gt_t)
             maes.append(float((aligned - gt_t).abs().mean().item()))
 
         mean_mae = float(np.mean(maes))

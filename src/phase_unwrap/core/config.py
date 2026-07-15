@@ -115,6 +115,9 @@ class AugmentationConfig:
     off_min: float = -0.05
     off_max: float = 0.05
     hint_std: float = 0.2
+    # Option B (default): zero second channel — train/deploy match lab (no GT).
+    # "gt_center" is ablation-only (GT absolute leak). Option A = plan 015 later.
+    hint_mode: str = "zero"  # "zero" | "gt_center"
 
 
 @dataclass

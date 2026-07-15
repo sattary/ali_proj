@@ -13,7 +13,7 @@ from .config import (
     load_train_config,
 )
 from .losses import MAEGradLoss, compute_metrics
-from .ops import FixedSobel, affine_align, curvature_loss, laplacian
+from .ops import FixedSobel, affine_align, curvature_loss, laplacian, piston_align
 from .utils import ensure_dir, pick_device, set_seed
 
 __all__ = [
@@ -29,6 +29,7 @@ __all__ = [
     "compute_metrics",
     "FixedSobel",
     "affine_align",
+    "piston_align",
     "curvature_loss",
     "laplacian",
     "ensure_dir",

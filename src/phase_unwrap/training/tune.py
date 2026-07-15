@@ -21,7 +21,7 @@ from tqdm.auto import tqdm
 
 from ..core.config import TrainConfig, config_to_yaml
 from ..core.losses import MAEGradLoss
-from ..core.ops import affine_align, curvature_loss
+from ..core.ops import curvature_loss
 from ..core.utils import ensure_dir, pick_device, set_seed
 from ..data import build_dataloaders
 from ..data.augmentation import NoiseAug, NoiseScheduler, prepare_batch
@@ -161,7 +161,9 @@ def _create_objective(
                 I_raw = I_raw.to(device)
                 phi_gt = phi_gt.to(device)
                 
-                I_input, phi_gt, I_raw_n, _ = prepare_batch(I_raw, phi_gt, noise_aug=train_aug)
+                I_input, phi_gt, I_raw_n, _ = prepare_batch(
+                    I_raw, phi_gt, noise_aug=train_aug, hint_mode=cfg.aug.hint_mode
+                )
 
                 opt.zero_grad(set_to_none=True)
                 with autocast(device_type=device.type, enabled=use_amp):
@@ -209,13 +211,18 @@ def _create_objective(
                     for I_raw, phi_gt in val_loader:
                         I_raw = I_raw.to(device)
                         phi_gt = phi_gt.to(device)
-                        I_input, phi_gt, _, _ = prepare_batch(I_raw, phi_gt, noise_aug=None)
+                        I_input, phi_gt, _, _ = prepare_batch(
+                            I_raw,
+                            phi_gt,
+                            noise_aug=None,
+                            hint_mode=cfg.aug.hint_mode,
+                        )
                         with autocast(device_type=device.type, enabled=use_amp):
                             phi_raw, k_off = ema.m(I_input)
                             phi_abs = phi_raw + k_off
-                        aligned, _, _ = affine_align(phi_abs, phi_gt)
+                        # HPO objective: raw AbsMAE (no GT scale fit; matches train selection)
                         total_mae += float(
-                            (aligned - phi_gt).abs().mean()
+                            (phi_abs - phi_gt).abs().mean()
                         ) * I_input.size(0)
                         n += I_input.size(0)
 

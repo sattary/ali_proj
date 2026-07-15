@@ -253,26 +253,67 @@ class NoiseAug:
 
         return img, I_norm_noisy, phi_hint, delta_val
 
+
+def build_phi_hint(
+    ref: torch.Tensor,
+    phi_gt: torch.Tensor | None = None,
+    hint_mode: str = "zero",
+) -> torch.Tensor:
+    """
+    Build the second model input channel [B, 1, H, W].
+
+    Option B (default ``zero``): no absolute anchor — matches lab inference.
+    ``gt_center`` is ablation-only (GT absolute leak; not deployable without GT).
+    """
+    B, _, H, W = ref.shape
+    if hint_mode == "zero":
+        return torch.zeros(B, 1, H, W, device=ref.device, dtype=ref.dtype)
+    if hint_mode == "gt_center":
+        if phi_gt is None:
+            raise ValueError(
+                "hint_mode='gt_center' requires phi_gt (unavailable at inference)"
+            )
+        cy, cx = H // 2, W // 2
+        return phi_gt[:, :, cy : cy + 1, cx : cx + 1].expand(B, 1, H, W).clone()
+    if hint_mode == "wrapped":
+        raise NotImplementedError(
+            "hint_mode='wrapped' is not supported (intensity-wrap is not phase); "
+            "use 'zero' (Option B) or implement a lab reference (plan 015 Option A)"
+        )
+    raise ValueError(f"unknown hint_mode: {hint_mode}")
+
+
 def prepare_batch(
-    I_raw: torch.Tensor, phi_gt: torch.Tensor, noise_aug: NoiseAug | None = None
+    I_raw: torch.Tensor,
+    phi_gt: torch.Tensor,
+    noise_aug: NoiseAug | None = None,
+    hint_mode: str = "zero",
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-    Prepare a batch [B, 1, H, W] for training or evaluation natively on the GPU.
-    1. Extracts scalar reference phase from GT to build phi_hint.
-    2. Applies noise augmentation (if enabled).
+    Prepare a batch [B, 1, H, W] for training or evaluation.
+
+    1. Builds phi_hint from ``hint_mode`` (default zero = Option B).
+    2. Applies optical noise augmentation (if enabled).
     3. Concatenates into I_input [B, 2, H, W].
+
+    When hint_mode is ``zero``, hint_std piston jitter is not applied (would
+    reintroduce a random absolute channel and defeat reference-free training).
     """
-    _, _, H, W = phi_gt.shape
-    cy, cx = H // 2, W // 2
-    # Broadcast scalar from center pixel of each image in the batch
-    ref_vals = phi_gt[:, :, cy : cy + 1, cx : cx + 1]
-    phi_hint = ref_vals.expand_as(phi_gt).clone()
+    phi_hint = build_phi_hint(I_raw, phi_gt=phi_gt, hint_mode=hint_mode)
 
     I_raw_clean = I_raw.clone()
 
     if noise_aug is not None:
-        I_raw_noisy, I_norm_noisy, phi_hint, delta = noise_aug(I_raw, phi_hint)
-        phi_gt = phi_gt + delta
+        # Option B: do not couple a free absolute channel into labels via delta.
+        if hint_mode == "zero":
+            I_raw_noisy, I_norm_noisy, _, _ = noise_aug(I_raw, phi_hint=None)
+            delta = torch.zeros(
+                I_raw.shape[0], 1, 1, 1, device=I_raw.device, dtype=I_raw.dtype
+            )
+            phi_hint = build_phi_hint(I_raw_noisy, phi_gt=None, hint_mode="zero")
+        else:
+            I_raw_noisy, I_norm_noisy, phi_hint, delta = noise_aug(I_raw, phi_hint)
+            phi_gt = phi_gt + delta
     else:
         I_raw_noisy = I_raw
         mean = I_raw.mean(dim=(-2, -1), keepdim=True)
