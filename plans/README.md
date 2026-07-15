@@ -18,7 +18,7 @@ Do these before more training or paper number freezes. Order is dependency-aware
 | **007** | Offset-only (piston) metrics; stop GT scale fit in `run_eval` | P0 | M | 013 recommended | DONE |
 | **010** | Select/HPO on honest metric; persist held-out test metrics | P0 | S | **007** hard | DONE |
 | **009** | Unify `phi_hint`; **Option B locked** (`hint_mode=zero`) | P0 | M | 013 soft | DONE |
-| **014** | Repair dead GradCAM / TTA / TorchScript / benchmark CLI | P1 | S | — | TODO |
+| **014** | Repair dead GradCAM / TTA / TorchScript / benchmark CLI | P1 | S | — | DONE |
 | **011** | Fix doc drift (README CLI, proposal claims, dead git_automation text) | P1 | M | B wording | TODO |
 | **015** | Option A reference-guided fallback (**future only**) | P3 | M–L | B stable + lab protocol | TODO |
 
@@ -34,7 +34,7 @@ Option A = `plans/015-option-a-reference-guided-fallback.md` only if B fails abs
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
 | 001  | Write integration tests for core training loop | P1 | M | — | TODO |
-| 002  | Fix EMA update inside optimizer step check | P1 | S | 001 | TODO |
+| 002  | Fix EMA update inside optimizer step check | P1 | S | 001 | DONE |
 | 003  | Prefetch validation visualization batch | P2 | S | 001 | TODO |
 | 004  | Optimize HDF5 DataLoader chunk reads | P2 | L | 001 | TODO |
 | 005  | Refactor CLI into submodule layering | P2 | M | 014 recommended first | TODO |
@@ -46,7 +46,7 @@ Option A = `plans/015-option-a-reference-guided-fallback.md` only if B fails abs
 | 011  | Doc drift and dead artifacts | P1 | M | B wording | TODO |
 | 012  | OOM recovery reproducibility | P2 | M | 001 recommended | TODO |
 | 013  | Disable val/test geometric augmentation | P0 | S | — | DONE |
-| 014  | Fix dead analysis CLI entrypoints | P1 | S | — | TODO |
+| 014  | Fix dead analysis CLI entrypoints | P1 | S | — | DONE |
 | 015  | Option A reference-guided fallback (future) | P3 | M–L | B first | TODO |
 
 ---

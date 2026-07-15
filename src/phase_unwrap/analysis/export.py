@@ -53,12 +53,15 @@ def export_torchscript(
     config_path: str | None = None,
 ) -> None:
     """Export model to TorchScript (traced) format."""
+    # Load weights without build_dataloaders (no dataset required for export).
+    from ..core.config import load_train_config
+    from ..model.unet import build_model
+
     run_dir = str(Path(checkpoint_path).parent)
     cfg_file = config_path or str(Path(run_dir) / "config.yaml")
     cfg = load_train_config(cfg_file if Path(cfg_file).exists() else None)
 
     model = build_model(cfg.model)
-    # weights_only=False: loading trusted checkpoint from own training runs
     ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     sd = ckpt.get("model_ema", ckpt["model"])
     model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
@@ -89,13 +92,16 @@ def benchmark_inference(
     config_path: str | None = None,
 ) -> dict[str, float]:
     """Benchmark mean latency and throughput."""
+    from ..core.config import load_train_config
+    from ..core.utils import pick_device
+    from ..model.unet import build_model
+
     run_dir = str(Path(checkpoint_path).parent)
     cfg_file = config_path or str(Path(run_dir) / "config.yaml")
     cfg = load_train_config(cfg_file if Path(cfg_file).exists() else None)
 
     dev = pick_device(device)
     model = build_model(cfg.model).to(dev)
-    # weights_only=False: loading trusted checkpoint from own training runs
     ckpt = torch.load(checkpoint_path, map_location=dev, weights_only=False)
     sd = ckpt.get("model_ema", ckpt["model"])
     model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})

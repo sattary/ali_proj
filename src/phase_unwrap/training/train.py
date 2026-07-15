@@ -425,11 +425,11 @@ def train(
 
                 # Only step the scheduler if the scaler didn't reduce the scale
                 # (which indicates it skipped the opt.step due to nan/inf grads).
+                # Skip EMA when AMP skipped the optimizer step (NaN/Inf grads).
                 if scale_after >= scale_before:
                     sched.step()
                     global_step += 1
-
-                ema.update(model)
+                    ema.update(model)
 
             except RuntimeError as e:
                 if "out of memory" in str(e).lower():

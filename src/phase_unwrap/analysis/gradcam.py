@@ -81,16 +81,36 @@ def plot_gradcam(
         config_path:        Optional config override.
     """
     from ..core.inference import load_inference_state
-    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir='', config_path=config_path)
+    from ..data.augmentation import prepare_batch
 
-    I_input, phi_gt, I_raw, _ = next(iter(loader))
-    I_input = I_input[:n_samples].to(device).requires_grad_(True)
-    I_raw = I_raw[:n_samples]
+    model, cfg, loader, device = load_inference_state(
+        checkpoint_path,
+        data_dir=data_dir,
+        config_path=config_path,
+        subset=subset,
+    )
+
+    if not hasattr(model, target_layer_name):
+        raise ValueError(f"Unknown layer {target_layer_name!r}")
+    target_layer = getattr(model, target_layer_name)
+    # Hook last child of Sequential stages when present (enc*, bott)
+    if isinstance(target_layer, torch.nn.Sequential) and len(target_layer) > 0:
+        target_layer = target_layer[-1]
+    cam_extractor = _GradCAM(model, target_layer)
+
+    I_raw, phi_gt = next(iter(loader))
+    I_raw = I_raw[:n_samples].to(device)
+    phi_gt = phi_gt[:n_samples].to(device)
+    hint_mode = getattr(cfg.aug, "hint_mode", "zero")
+    I_input, _, _, I_raw_c = prepare_batch(
+        I_raw, phi_gt, noise_aug=None, hint_mode=hint_mode
+    )
+    I_input = I_input.requires_grad_(True)
 
     cam, phi_abs = cam_extractor(I_input)
 
-    cam_np = cam.cpu().numpy()
-    I_raw_np = I_raw.numpy()
+    cam_np = cam.detach().cpu().numpy()
+    I_raw_np = I_raw_c.detach().cpu().numpy()
 
     with nature_style():
         fig, axes = plt.subplots(

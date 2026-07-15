@@ -10,7 +10,7 @@ from typing import Sequence
 import torch
 from torch.amp import autocast
 
-from ..core.ops import affine_align
+from ..core.ops import piston_align
 
 
 def _rotate90(x: torch.Tensor, k: int) -> torch.Tensor:
@@ -88,24 +88,16 @@ def evaluate_tta(
     Returns dict with 'mae_noaug', 'mae_tta', 'improvement_pct'.
     """
     from ..core.inference import load_inference_state
-    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir='', config_path=config_path)
+    from ..data.augmentation import prepare_batch
 
-    train_loader, val_loader, test_loader = build_dataloaders(
-        cfg, device, seed=cfg.logging.seed
+    model, cfg, loader, device = load_inference_state(
+        checkpoint_path,
+        data_dir=data_dir,
+        config_path=config_path,
+        subset=subset,
+        all_data=all_data,
     )
-
-    if subset == "test":
-        if test_loader is None:
-            raise ValueError("Test set requested but test_frac=0 in config.")
-        loader = test_loader
-    elif subset == "val":
-        loader = (
-            val_loader
-            if (val_loader is not None and len(val_loader) > 0)
-            else train_loader
-        )
-    else:
-        loader = train_loader
+    hint_mode = getattr(cfg.aug, "hint_mode", "zero")
 
     ALL_AUGS = (
         "rot0",
@@ -123,9 +115,12 @@ def evaluate_tta(
     total_tta = 0.0
     n = 0
 
-    for I_input, phi_gt, _, _ in loader:
-        I_input = I_input.to(device)
+    for I_raw, phi_gt in loader:
+        I_raw = I_raw.to(device)
         phi_gt = phi_gt.to(device)
+        I_input, phi_gt, _, _ = prepare_batch(
+            I_raw, phi_gt, noise_aug=None, hint_mode=hint_mode
+        )
 
         with autocast(device_type=device.type, enabled=False):
             phi_raw, k_off = model(I_input)
@@ -133,11 +128,11 @@ def evaluate_tta(
                 phi_noaug = phi_raw[-1] + k_off
             else:
                 phi_noaug = phi_raw + k_off
-        aligned_noaug, _, _ = affine_align(phi_noaug, phi_gt)
+        aligned_noaug, _ = piston_align(phi_noaug, phi_gt)
         total_noaug += float((aligned_noaug - phi_gt).abs().mean()) * I_input.size(0)
 
         phi_tta = predict_tta(model, I_input, device, augments=augs)
-        aligned_tta, _, _ = affine_align(phi_tta, phi_gt)
+        aligned_tta, _ = piston_align(phi_tta, phi_gt)
         total_tta += float((aligned_tta - phi_gt).abs().mean()) * I_input.size(0)
 
         n += I_input.size(0)
