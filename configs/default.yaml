@@ -1,5 +1,5 @@
-# Default training configuration.
-# All values match the built-in defaults in phase_unwrap.config.
+# Smoke / short-run configuration (NOT identical to TrainConfig code defaults).
+# Prefer code defaults or runs/optuna/best_config.yaml for full experiments.
 
 data:
   data_dir: "data/smoke_test_6shard/"

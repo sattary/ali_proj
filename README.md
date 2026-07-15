@@ -1,31 +1,28 @@
 # Phase Unwrapping via Absolute Phase Reconstruction
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **UNetRes2-based deep learning pipeline for two-dimensional absolute phase reconstruction from single interferograms.**
+> **UNetRes2 pipeline for 2D continuous phase reconstruction from a single interferogram.**
+
+**Protocol (Option B, locked):** training and inference use the same inputs — normalized intensity plus a **zero** second channel (`hint_mode=zero`). No ground-truth absolute piston is fed into the network. Checkpoint selection uses raw **AbsMAE**. Reported `TopoMAE` is **piston-only** aligned (no GT scale fit). Old GT-center runs are not comparable.
 
 ---
 
 ## Overview
 
-This repository contains the full implementation of a supervised deep learning approach to 2D phase unwrapping. The model, **UNetRes2-AbsPhase**, uses a U-Net architecture augmented with Res2-style depthwise-separable residual blocks and a learned global offset head to directly regress absolute (unwrapped) phase from a normalized interferogram and a reference hint.
+Supervised deep learning for 2D phase reconstruction from synthetic interferograms:
 
-The framework includes:
+- Physics-based HDF5 data generator (HeNe two-beam model)
+- UNetRes2 + CoordConv + global offset head + multi-scale deep supervision (train)
+- Curriculum optical noise (speckle, blur, photometric jitter, …)
+- AMP, EMA, warmup + cosine LR, resume
+- Optuna HPO, multi-seed, ablations
+- Classical baselines (Itoh 1D, least-squares 2D)
+- TTA, GradCAM, noise sweeps, ONNX / TorchScript export
+- Nature-style figure helpers
 
-- A physics-based synthetic data generator
-- A complete training loop with AMP, EMA, cosine+warmup scheduling, and checkpoint resumption
-- **Dynamic Curriculum Noise Pipeline**: On-the-fly random GPU-offloaded optical degradations (speckle, blur, gaussian) scaled progressively over epochs to prevent overfitting.
-- **Git auto-push for cloud training** (Kaggle/Colab) with configurable intervals
-- Optuna-based hyperparameter optimisation
-- Multi-seed aggregated evaluation
-- Classical baseline comparison (Itoh 1D, least-squares 2D)
-- Test-time augmentation (D4 symmetry group, 8 views)
-- GradCAM interpretability visualisation
-- Noise robustness sweep across SNR levels
-- ONNX and TorchScript export
-- Publication-quality LaTeX table generation
-- Nature-style figure suite (qualitative grids, loss landscapes, error histograms, convergence curves)
+CLI is **flat** (not nested): `phase-unwrap generate|train|tune|…`.
 
 ---
 
@@ -33,95 +30,53 @@ The framework includes:
 
 ```
 src/phase_unwrap/
-├── core/             # Configuration, mathematical ops, loss functions, utilities
-│   ├── config.py     #   Dataclass-based config with YAML/JSON I/O
-│   ├── ops.py        #   Fixed Sobel, affine alignment, curvature regularisation
-│   ├── losses.py     #   MAE + gradient loss, RMSE/MAE metrics
-│   └── utils.py      #   seed, device, directory helpers
-│
-├── data/             # Data pipeline
-│   ├── dataset.py    #   HDF5-sharded lazy Dataset, DataLoader builder
-│   └── generate.py   #   Physics-based synthetic interferogram generator
-│
-├── model/            # Neural network architecture
-│   └── unet.py       #   UNetRes2-AbsPhase, Res2_DS_Block, EMA
-│
-├── training/         # Training orchestration
-│   ├── train.py      #   Full training loop (AMP, EMA, warmup+cosine, resume)
-│   ├── multiseed.py  #   N-seed runner with mean+/-std aggregation
-│   ├── tune.py       #   Optuna TPE + MedianPruner HPO (SQLite resume)
-│   └── ablation.py   #   Systematic ablation study runner
-│
-├── analysis/         # Evaluation and export tools
-│   ├── baselines.py      #   Itoh 1D, least-squares 2D classical baselines
-│   ├── noise_sweep.py    #   MAE-vs-SNR robustness sweep with error bars
-│   ├── gradcam.py        #   GradCAM overlays (any encoder stage)
-│   ├── tta.py            #   D4 test-time augmentation (8 views)
-│   ├── export.py         #   ONNX + TorchScript export, inference benchmark
-│   └── export_latex.py   #   LaTeX booktabs table generation
-│
-├── visualize/        # Publication-quality figures (Nature style)
-│   ├── training_curve.py
-│   ├── qualitative_grid.py
-│   ├── phase_profile.py
-│   ├── error_histogram.py
-│   ├── loss_landscape.py
-│   ├── convergence.py
-│   ├── baseline_comparison_grid.py # Classical vs UNet comparison
-│   ├── noise_degradation_grid.py   # SNR sweep failure evaluation
-│   └── style.py          #   Shared rcParams, colour palette, save helpers
-│
-├── git_automation/   # Cloud training with Git auto-push
-│   ├── callback.py       #   AutoPushCallback for training integration
-│   ├── git_pusher.py     #   Git operations with verification
-│   ├── zip_packer.py     #   Artifact compression
-│   ├── state_tracker.py  #   Resume state management
-│   ├── environment.py    #   Kaggle/Colab detection
-│   └── git_lfs_setup.py  #   One-time LFS configuration
-│
-└── cli.py            # Typer CLI entrypoint
+├── core/         # config, ops (piston_align), losses, utils, inference loaders
+├── data/         # HDF5 dataset, generate, augmentation (hint_mode, curriculum noise)
+├── model/        # UNetRes2_AbsPhase, EMA
+├── training/     # train, tune, multiseed, ablation
+├── analysis/     # baselines, noise_sweep, gradcam, tta, export, latex
+├── visualize/    # publication figures
+└── cli.py        # Typer entrypoint
 ```
 
 ---
 
-## Method
+## Method (current code)
 
-### Synthetic Data Generation
+### Data
 
-Interferograms are generated analytically from a superposition of tilted planes, Gaussian bumps, and polynomial phase fields. The wrapped intensity field is:
+Synthetic intensity / absolute-phase pairs written as HDF5 shards. Target phase is min-shifted so `min(phi)=0`.
 
-```
-I(x, y) = cos(phi(x, y) + noise)
-```
+### Model input (Option B)
 
-The absolute phase `phi` serves as the regression target. This avoids the need for real annotated data and yields physically realistic fringe patterns.
+`I_input = [I_norm, phi_hint]` with `phi_hint = 0` by default (`AugmentationConfig.hint_mode = "zero"`).  
+`hint_mode="gt_center"` remains only as an explicit **ablation** of the old leak (not for deploy).
 
-### Model: UNetRes2-AbsPhase
+### Model
 
-- **Encoder**: 5 downsampling stages, each containing a `Res2_DS_Block` (depthwise-separable + hierarchical residual connections)
-- **Activations**: Mish activations used throughout all blocks to prevent dead gradients and improve continuous phase surface regression
-- **Bottleneck**: Deep Res2 block
-- **Decoder**: Bilinear upsampling + skip concatenation + Res2 block per stage
-- **Multi-Scale Deep Supervision**: The decoder outputs phase predictions at three scales ($1/4$, $1/2$, and full resolution) during training. This creates a multi-scale gradient loss that forces intermediate layers to rapidly learn physics-based phase representations.
-- **Coordinate channels**: CoordConv (`AddCoords`) prepended to input for global position awareness
-- **Output**: Per-pixel phase map (`phi_raw`) and a learned global offset scalar (`k_off`); combined as `phi = phi_raw + k_off`
-- **EMA**: Exponential moving average shadow model (default decay 0.999) is used for all evaluations
+- U-Net + Res2 depthwise-separable blocks
+- Default activation: **SiLU** (also supports relu / mish)
+- CoordConv, multi-scale heads in train mode, `phi = phi_raw + k_off`
+- EMA shadow model for eval
 
-### Loss Function
+### Loss
 
 ```
-L = w_mae * |phi_pred - phi_gt| + w_grad * |grad(phi_pred) - grad(phi_gt)|
-  + w_curv * Laplacian^2(phi_pred)
+L = w_mae * |pred - gt| + w_grad * |grad(pred) - grad(gt)| + w_curv * |Laplacian(pred)|
 ```
 
-All predictions are affine-aligned to ground truth before metric computation to separate estimation from global scale/offset ambiguity.
+### Metrics
+
+- **AbsMAE**: raw absolute error (primary; selects `best.pth`)
+- **TopoMAE** (CSV name kept): **piston-only** mean alignment — does **not** fit scale to GT
+- Val/test geometric flips/rots are **off**
 
 ---
 
 ## Installation
 
 ```bash
-# Requires Python 3.10+, uv package manager
+# Python 3.12+, uv
 git clone https://github.com/sattary/ali_proj.git
 cd ali_proj
 uv sync
@@ -131,680 +86,157 @@ uv sync
 
 ## Recommended Workflow
 
-This workflow optimizes hyperparameters first, then trains the final model with tuned settings.
-
-### Step 0: Generate Training Data
+### 0. Generate data
 
 ```bash
-uv run phase-unwrap data generate \
+uv run phase-unwrap generate \
     --num-samples 180000 \
     --shard-size 1000 \
     --out-dir data/full
 ```
 
-### Step 1: Hyperparameter Search
-
-Find optimal learning rate, loss weights, batch size, and model capacity:
+### 1. Hyperparameter search (optional)
 
 ```bash
-uv run phase-unwrap train tune \
+uv run phase-unwrap tune \
     --data-dir data/full \
     --n-trials 50 \
-    --tune-epochs 15 \
-    --n-workers 2 \
-    --gpu-ids 0,1
+    --tune-epochs 15
 ```
 
-**Parallel HPO:** Use `--n-workers 2 --gpu-ids 0,1` to run trials in parallel on multiple GPUs (~2x speedup on Kaggle).
+Writes `runs/optuna/best_config.yaml` when configured by the tune path.
 
-This creates `runs/optuna/best_config.yaml` with the optimal configuration.
-
-### Step 2: Train Final Model
-
-Train with tuned hyperparameters for the full duration:
+### 2. Train (Option B defaults)
 
 ```bash
-uv run phase-unwrap train train \
+uv run phase-unwrap train \
     --data-dir data/full \
     --config runs/optuna/best_config.yaml \
-    --run-name exp1
+    --run-name exp_option_b
 ```
 
-Resume from checkpoint if interrupted:
+Resume:
 
 ```bash
-uv run phase-unwrap train train \
+uv run phase-unwrap train \
     --data-dir data/full \
     --config runs/optuna/best_config.yaml \
-    --resume runs/exp1/final.pth
+    --run-name exp_option_b \
+    --resume runs/exp_option_b/final.pth
 ```
 
-### Step 3: Evaluate and Visualize
+After training, check `runs/exp_option_b/test_metrics.csv` (held-out test) and `metrics.csv` (`val_abs_mae`).
 
-Generate publication-quality figures:
+### 3. Evaluate and plot
 
 ```bash
-# Training progress
-uv run phase-unwrap plot training-curve --run-dir runs/exp1
-
-# Qualitative results
+uv run phase-unwrap plot training-curve --run-dir runs/exp_option_b
 uv run phase-unwrap plot qualitative \
-    --checkpoint runs/exp1/best.pth \
+    --checkpoint runs/exp_option_b/best.pth \
     --data-dir data/full
-
-# Compare with classical baselines
 uv run phase-unwrap eval baselines \
-    --checkpoint runs/exp1/best.pth \
-    --n-samples 500
-
-# Test-time augmentation evaluation
+    --checkpoint runs/exp_option_b/best.pth \
+    --n-samples 200
 uv run phase-unwrap eval tta \
-    --checkpoint runs/exp1/best.pth \
+    --checkpoint runs/exp_option_b/best.pth \
     --data-dir data/full
-
-# Noise robustness analysis
 uv run phase-unwrap eval noise \
-    --checkpoint runs/exp1/best.pth \
+    --checkpoint runs/exp_option_b/best.pth \
     --snr-min 5.0 --snr-max 40.0 --n-steps 8
-
-# GradCAM interpretability
 uv run phase-unwrap plot gradcam \
-    --checkpoint runs/exp1/best.pth \
+    --checkpoint runs/exp_option_b/best.pth \
     --data-dir data/full \
     --layer enc5
 ```
 
-### Step 4: Export for Production
+### 4. Export
 
 ```bash
-# ONNX format
 uv run phase-unwrap export onnx \
-    --checkpoint runs/exp1/best.pth \
+    --checkpoint runs/exp_option_b/best.pth \
     --out results/model.onnx
-
-# TorchScript format
 uv run phase-unwrap export torchscript \
-    --checkpoint runs/exp1/best.pth \
+    --checkpoint runs/exp_option_b/best.pth \
     --out results/model.pt
-
-# Benchmark inference speed
 uv run phase-unwrap eval benchmark \
-    --checkpoint runs/exp1/best.pth \
+    --checkpoint runs/exp_option_b/best.pth \
     --device cpu --n-runs 200
 ```
 
----
-
-## Cloud Training with Git Auto-Push
-
-Train on Kaggle/Colab GPUs with automatic backups to GitHub. Perfect for long-running experiments (e.g., 10K epochs).
-
-### Quick Setup
+### Lab / real interferogram
 
 ```bash
-# 1. Setup Git LFS (one-time)
-uv run python -m phase_unwrap.git_automation.git_lfs_setup
-
-# 2. Configure Git
-export GITHUB_PAT="your_personal_access_token"
-git config user.email "you@example.com"
-git config user.name "Your Name"
-
-# 3. Train with auto-push (pushes every 1000 epochs)
-#    Uses multi-GPU automatically on Kaggle (2x T4)
-uv run phase-unwrap train train \
-    --epochs 10000 \
-    --run-name exp_10k \
-    --batch-size 40 \
-    --auto-push-interval 1000 \
-    --multi-gpu \
-    --device cuda
-
-# 4. Resume if interrupted
-uv run phase-unwrap train train \
-    --resume runs/exp_10k/final.pth \
-    --epochs 10000 \
-    --run-name exp_10k \
-    --batch-size 40 \
-    --auto-push-interval 1000 \
-    --multi-gpu \
-    --device cuda
+uv run phase-unwrap infer \
+    --checkpoint runs/exp_option_b/best.pth \
+    --input path/to/lab_image.png \
+    --out results/lab_phi.npy
 ```
 
-### Auto-Push Options
-
-| Flag                     | Description                                            | Default                   |
-| ------------------------ | ------------------------------------------------------ | ------------------------- |
-| `--auto-push-interval N` | Push every N epochs (train command)                    | `None` (disabled)         |
-| `--auto-push`            | Push optuna results after HPO completes (tune command) | `False`                   |
-| `--auto-push-dry-run`    | Test mode: no actual pushes                            | `False`                   |
-| `--force-auto-push`      | Enable outside Kaggle/Colab (for testing)              | `False`                   |
-| `--auto-push-pat TOKEN`  | GitHub Personal Access Token                           | Uses `GITHUB_PAT` env var |
-
-**Note:** Auto-push only works in Kaggle or Colab environments unless `--force-auto-push` is used.
-
-### Multi-GPU Training (Kaggle 2x T4)
-
-Train using both T4 GPUs on Kaggle for ~1.8x speedup:
-
-```bash
-# Use all available GPUs (auto-detected on Kaggle)
-uv run phase-unwrap train train \
-    --epochs 10000 \
-    --run-name exp_10k \
-    --batch-size 40 \
-    --multi-gpu
-
-# Use specific GPUs
-uv run phase-unwrap train train \
-    --epochs 10000 \
-    --batch-size 40 \
-    --multi-gpu \
-    --gpu-ids "0,1"
-```
-
-**Batch Size Semantics:**
-
-- `--batch-size 40` with `--multi-gpu` on 2 GPUs = 20 per GPU × 2 = 40 total
-- The batch size you specify is the **total effective batch size**
-- Each GPU processes `batch_size / num_gpus` samples
-
-**Checkpoint Compatibility:**
-
-- Single GPU → Multi-GPU: ✓ Works (state dict loads correctly)
-- Multi-GPU → Single GPU: ✓ Works (unwraps automatically)
-- Resume on different GPU count: ✓ Fully supported
+Inference builds a **zero** hint channel — same as training under Option B.
 
 ---
 
-## Complete CLI Reference
-
-### Global Training Flags
+## CLI surface
 
 ```bash
-phase-unwrap train train \
-    # Configuration
-    --config PATH                    # YAML/JSON config file
-    --data-dir PATH                  # Override data directory
-
-    # Training parameters
-    --epochs N                       # Number of training epochs
-    --batch-size N                   # Batch size
-    --device {auto,cuda,cpu}         # Device selection
-    --run-name NAME                  # Run identifier
-    --resume PATH                    # Resume from checkpoint
-
-    # Auto-push (cloud training)
-    --auto-push-interval N           # Push every N epochs
-    --auto-push-dry-run              # Test auto-push setup
-    --force-auto-push                # Force enable (testing)
-    --auto-push-pat TOKEN            # GitHub PAT
-
-    # Multi-GPU training
-    --multi-gpu                      # Use all GPUs with DataParallel
-    --gpu-ids "0,1"                  # Specific GPU IDs (default: all)
+uv run phase-unwrap --help
+# generate | train | tune | multiseed | ablation | infer | eval | export | plot
 ```
 
-### Data Generation
+Examples:
 
 ```bash
-phase-unwrap data generate \
-    --num-samples 180000             # Total samples to generate
-    --shard-size 1000                # Samples per HDF5 file
-    --out-dir data/full              # Output directory
-    --seed 1337                      # RNG seed
-```
-
-### Hyperparameter Tuning
-
-```bash
-phase-unwrap train tune \
-    --data-dir data/full             # Training data location
-    --n-trials 50                    # Number of Optuna trials
-    --tune-epochs 15                 # Epochs per trial
-    --study-name phase_unwrap_hpo    # Optuna study name
-    --n-workers 2                    # Parallel workers (#GPUs)
-    --gpu-ids 0,1                    # GPU IDs for parallel trials
-```
-
-**Auto-push after HPO:** Use `--auto-push` to push optuna results (including `best_config.yaml` and data config) to GitHub after tuning completes:
-
-```bash
-phase-unwrap train tune \
-    --data-dir data/kaggle_full \
-    --n-trials 30 \
-    --tune-epochs 10 \
-    --study-name kaggle_hpo \
-    --n-workers 2 \
-    --gpu-ids 0,1 \
-    --auto-push \
-    --auto-push-pat "$GITHUB_PAT"
-```
-
-This creates a zip named `optuna_{data_name}_n{num_samples}_s{seed}_{timestamp}.zip` containing:
-
-- Optuna study database (`{study_name}.db`)
-- `best_config.yaml` with optimal hyperparameters
-- `data_config.yaml` with data generation parameters
-
-**Note:** For multi-GPU HPO, use `--n-workers N --gpu-ids 0,1,...,N-1` instead of `--device cuda`. Each worker runs on its own GPU.
-
-### Multi-Seed Evaluation
-
-```bash
-phase-unwrap train multiseed \
-    --config runs/optuna/best_config.yaml \
-    --data-dir data/full \
-    --run-name final_model \
-    --seeds "42,1337,7,100,2024"     # Comma-separated seeds
-    --num-seeds 5                    # Auto-generate N random seeds
-    --epochs 200 \
-    --device cuda
-```
-
-### Visualization Commands
-
-```bash
-# Training curves
-phase-unwrap plot training-curve \
-    --run-dir runs/exp1 \
-    --out results/figs/training.png \
-    --no-lr                          # Omit learning rate subplot
-
-# Qualitative grid
-phase-unwrap plot qualitative \
-    --checkpoint runs/exp1/best.pth \
-    --data-dir data/full \
-    --out results/figs/grid.png \
-    --n-samples 4
-
-# Phase profile
-phase-unwrap plot phase-profile \
-    --checkpoint runs/exp1/best.pth \
-    --data-dir data/full \
-    --out results/figs/profile.png \
-    --sample-idx 0
-
-# Error histogram
-phase-unwrap plot error-hist \
-    --checkpoint runs/exp1/best.pth \
-    --data-dir data/full \
-    --out results/figs/errors.png
-
-# Loss landscape
-phase-unwrap plot loss-landscape \
-    --checkpoint runs/exp1/best.pth \
-    --data-dir data/full \
-    --out results/figs/landscape.png \
-    --grid-size 31 \
-    --alpha-range 1.0 \
-    --num-eval-samples 500
-
-# Convergence
-phase-unwrap plot convergence \
-    --run-dir runs/exp1 \
-    --out results/figs/convergence.png
-
-# Curriculum Noise Progression Grid
-phase-unwrap plot curriculum-noise \
-    --data-dir data/full \
-    --out results/figs/curriculum_noise_grid.png \
-    --sample-idx 0
-
-# GradCAM
-phase-unwrap plot gradcam \
-    --checkpoint runs/exp1/best.pth \
-    --data-dir data/full \
-    --out results/figs/gradcam.png \
-    --n-samples 4 \
-    --layer enc5                     # Target encoder layer
-
-# Baseline Comparison Grid
-phase-unwrap plot baseline-comparison \
-    --checkpoint runs/exp1/best.pth \
-    --data-dir data/full \
-    --out results/figs/baseline_comparison.png
-
-# Noise Degradation
-phase-unwrap plot noise-degradation \
-    --checkpoint runs/exp1/best.pth \
-    --data-dir data/full \
-    --out results/figs/noise_degradation.png \
-    --sample-idx 0
-
-# ---------------------------------------------------------------------------
-# Master Cloud Payload Rendering Sequence
-# ---------------------------------------------------------------------------
-# For locally processing an extracted Kaggle/Colab payload directory on CPU
-phase-unwrap run local \
-    --run-dir runs/exp1 \
-    --data-dir data/full \
-    --n-samples 4
-```
-
-### Analysis Commands
-
-```bash
-# Classical baselines comparison
-phase-unwrap eval baselines \
-    --checkpoint runs/exp1/best.pth \
-    --n-samples 200 \
-    --device cpu
-
-# Test-time augmentation
-phase-unwrap eval tta \
-    --checkpoint runs/exp1/best.pth \
-    --data-dir data/full \
-    --n-augments 8                   # Number of augmentation views
-
-# Noise robustness sweep
-phase-unwrap eval noise \
-    --checkpoint runs/exp1/best.pth \
-    --out results/figs/noise.png \
-    --snr-min 5.0 \
-    --snr-max 40.0 \
-    --n-steps 8 \
-    --n-samples 100 \
-    --device auto
-```
-
-### Export Commands
-
-```bash
-# ONNX export
-phase-unwrap export onnx \
-    --checkpoint runs/exp1/best.pth \
-    --out results/model.onnx \
-    --opset 17
-
-# TorchScript export
-phase-unwrap export torchscript \
-    --checkpoint runs/exp1/best.pth \
-    --out results/model.pt
-
-# Benchmark inference
-phase-unwrap eval benchmark \
-    --checkpoint runs/exp1/best.pth \
-    --device cpu \
-    --batch-size 1 \
-    --n-runs 200
-
-# LaTeX table
-phase-unwrap export table \
-    --run-dir runs/final_model \
-    --out results/tables/metrics.tex \
-    --epoch -1                       # -1 = last epoch
-```
-
----
-
-## Alternative Workflows
-
-### Quick Experiment (Skip Tuning)
-
-Use default hyperparameters for rapid prototyping:
-
-```bash
-uv run phase-unwrap train train --data-dir data/full --epochs 50 --run-name quicktest
-```
-
-### Publication-Ready Evaluation
-
-Run multiple seeds and aggregate results:
-
-```bash
-uv run phase-unwrap train multiseed \
-    --data-dir data/full \
-    --config runs/optuna/best_config.yaml \
-    --run-name final_model \
-    --seeds "42,1337,7,100,2024"
-
-# Generate comparison table
-uv run phase-unwrap export table \
-    --run-dir runs/final_model \
-    --out results/tables/metrics.tex
+uv run phase-unwrap multiseed --data-dir data/full --run-name ms --seeds "42,1337,7"
+uv run phase-unwrap ablation --config path/to/config.yaml --data-dir data/full --run-name abl
 ```
 
 ---
 
 ## Configuration
 
-All hyperparameters are controlled via a single nested config object (`TrainConfig`). You can serialise and override it:
+`TrainConfig` YAML/JSON. Important fields:
 
-```bash
-# Export current defaults
-uv run phase-unwrap train train --config path/to/config.yaml
-```
+| Group | Field | Default | Notes |
+|-------|--------|---------|--------|
+| `model` | `base` | `32` | Channel multiplier |
+| `model` | `activation` | `silu` | `relu` \| `silu` \| `mish` |
+| `model` | `ema_decay` | `0.999` | |
+| `model` | `use_coordconv` | `true` | |
+| `optim` | `lr` | `3e-4` | Peak LR |
+| `optim` | `epochs` | `200` | |
+| `loss` | `w_mae` / `w_grad` / `w_curv` | `1.0` / `0.1` / `0.01` | |
+| `data` | `augment` | `true` | Geometric D4 on **train only** |
+| `aug` | `hint_mode` | `zero` | Option B; use `gt_center` only for leak ablations |
+| `aug` | `enable` | `true` | Curriculum optical noise |
 
-Key fields:
-
-| Group   | Field          | Default | Description                     |
-| ------- | -------------- | ------- | ------------------------------- |
-| `model` | `base`         | `32`    | Feature map base multiplier     |
-| `model` | `activation`   | `relu`  | `relu` or `silu`                |
-| `model` | `ema_decay`    | `0.999` | EMA decay                       |
-| `optim` | `lr`           | `3e-4`  | Peak learning rate              |
-| `optim` | `epochs`       | `200`   | Training epochs                 |
-| `optim` | `warmup_steps` | `500`   | Linear warmup steps             |
-| `loss`  | `w_mae`        | `1.0`   | MAE loss weight                 |
-| `loss`  | `w_grad`       | `0.1`   | Gradient consistency weight     |
-| `loss`  | `w_curv`       | `0.01`  | Curvature regularisation weight |
-
----
-
-## Complete Example: Full Workflow with All Flags
-
-Here's a comprehensive example showing a complete training workflow with all major features:
-
-### Step 1: Environment Setup (Kaggle/Colab)
-
-```python
-# In your Kaggle/Colab notebook
-
-# Clone and setup
-!git clone -b alis_code https://github.com/sattary/ali_proj.git
-%cd ali_proj
-!pip install uv
-!uv sync
-
-# Setup Git LFS (one-time)
-!uv run python -m phase_unwrap.git_automation.git_lfs_setup
-
-# Configure Git with your PAT
-import os
-from getpass import getpass
-
-# Option 1: Manual entry (less secure)
-os.environ['GITHUB_PAT'] = getpass("Enter GitHub PAT: ")
-
-# Option 2: Kaggle Secrets (recommended)
-# from kaggle_secrets import UserSecretsClient
-# os.environ['GITHUB_PAT'] = UserSecretsClient().get_secret("GITHUB_PAT")
-
-!git config user.email "your-email@example.com"
-!git config user.name "Your Name"
-```
-
-### Step 2: Generate Data with Custom Settings
-
-```bash
-uv run phase-unwrap data generate \
-    --num-samples 180000 \
-    --shard-size 1000 \
-    --out-dir data/kaggle_full \
-    --seed 1337
-```
-
-### Step 3: Hyperparameter Search (Quick)
-
-```bash
-uv run phase-unwrap train tune \
-    --data-dir data/kaggle_full \
-    --n-trials 30 \
-    --tune-epochs 10 \
-    --study-name kaggle_hpo \
-    --n-workers 2 \
-    --gpu-ids 0,1
-```
-
-**Parallel HPO:** Runs 2 trials simultaneously on 2 GPUs (~2x faster than single-GPU).
-
-### Step 4: Full Training with All Flags
-
-```bash
-uv run phase-unwrap train train \
-    # Configuration
-    --config runs/optuna/best_config.yaml \
-    --data-dir data/kaggle_full \
-    \
-    # Training parameters
-    --epochs 10000 \
-    --batch-size 40 \
-    --device cuda \
-    --run-name exp_10k_full \
-    \
-    # Auto-push configuration (cloud training)
-    --auto-push-interval 1000 \
-    --auto-push-pat "$GITHUB_PAT"
-```
-
-### Step 5: Resume After Interruption
-
-```bash
-# If training is interrupted, resume from last checkpoint
-uv run phase-unwrap train train \
-    --config runs/optuna/best_config.yaml \
-    --data-dir data/kaggle_full \
-    --epochs 10000 \
-    --batch-size 40 \
-    --device cuda \
-    --run-name exp_10k_full \
-    --resume runs/exp_10k_full/final.pth \
-    --auto-push-interval 1000 \
-    --auto-push-pat "$GITHUB_PAT"
-```
-
-### Step 6: Comprehensive Evaluation
-
-```bash
-# Generate all visualizations
-uv run phase-unwrap plot training-curve --run-dir runs/exp_10k_full --out results/exp_10k/training.png
-uv run phase-unwrap plot qualitative --checkpoint runs/exp_10k_full/best.pth --data-dir data/kaggle_full --out results/exp_10k/qualitative.png --n-samples 8
-uv run phase-unwrap plot phase-profile --checkpoint runs/exp_10k_full/best.pth --data-dir data/kaggle_full --out results/exp_10k/profiles.png
-uv run phase-unwrap plot error-hist --checkpoint runs/exp_10k_full/best.pth --data-dir data/kaggle_full --out results/exp_10k/errors.png
-uv run phase-unwrap plot gradcam --checkpoint runs/exp_10k_full/best.pth --data-dir data/kaggle_full --out results/exp_10k/gradcam.png --layer enc5
-
-# Compare with classical baselines
-uv run phase-unwrap eval baselines --checkpoint runs/exp_10k_full/best.pth --n-samples 500 --device cuda
-
-# Test-time augmentation
-uv run phase-unwrap eval tta --checkpoint runs/exp_10k_full/best.pth --data-dir data/kaggle_full --n-augments 8
-
-# Noise robustness
-uv run phase-unwrap eval noise --checkpoint runs/exp_10k_full/best.pth --snr-min 5.0 --snr-max 40.0 --n-steps 10 --n-samples 200 --device cuda
-```
-
-### Step 7: Export for Production
-
-```bash
-# Export to multiple formats
-uv run phase-unwrap export onnx --checkpoint runs/exp_10k_full/best.pth --out results/exp_10k/model.onnx --opset 17
-uv run phase-unwrap export torchscript --checkpoint runs/exp_10k_full/best.pth --out results/exp_10k/model.pt
-
-# Benchmark inference speed
-uv run phase-unwrap eval benchmark --checkpoint runs/exp_10k_full/best.pth --device cpu --batch-size 1 --n-runs 1000
-uv run phase-unwrap eval benchmark --checkpoint runs/exp_10k_full/best.pth --device cuda --batch-size 1 --n-runs 1000
-
-# Generate LaTeX table for paper
-uv run phase-unwrap export table --run-dir runs/exp_10k_full --out results/exp_10k/metrics.tex --epoch -1
-```
-
-### Testing Dry-Run Mode (Local Testing)
-
-Before running on Kaggle, test the auto-push setup locally:
-
-```bash
-# Test with dry-run (no actual pushes)
-uv run phase-unwrap train train \
-    --epochs 100 \
-    --run-name dry_run_test \
-    --batch-size 10 \
-    --auto-push-interval 10 \
-    --auto-push-dry-run \
-    --force-auto-push \
-    --data-dir data/kaggle_full
-```
-
-This will show you:
-
-- Branch name that would be created
-- When pushes would occur
-- What would be committed
-- Without actually pushing to GitHub
+`configs/default.yaml` is a **smoke** config (smaller epochs/base), not a full match to code defaults. Prefer code defaults or Optuna `best_config.yaml` for real runs.
 
 ---
 
 ## Testing
 
 ```bash
-# Run all tests
 uv run pytest tests/ -q
-
-# Run specific test modules
-uv run pytest tests/test_model.py -v
-uv run pytest tests/test_git_automation.py -v
-
-# Run with coverage
-uv run pytest tests/ --cov=src/phase_unwrap --cov-report=html
 ```
 
-31 tests covering data generation, model architecture, loss functions, ops, metrics, and git automation.
+~34 tests: generate, losses/ops (incl. piston_align), model/EMA, hint (Option B), dataset augment, analysis CLI smoke.
 
 ---
 
-## Advanced Features
+## Plans and science notes
 
-### Ablation Studies
+Implementation plans live in `plans/` (methodology 007–010, 013–014 done for Option B).  
+**Option A** (lab-measurable reference channel) is deferred: `plans/015-option-a-reference-guided-fallback.md`.
 
-```bash
-phase-unwrap train ablation \
-    --config runs/optuna/best_config.yaml \
-    --data-dir data/full \
-    --run-name ablation \
-    --num-seeds 3 \
-    --epochs 100 \
-    --device cuda
-```
-
-### Custom Dataset
-
-Use your own interferogram data by implementing a custom Dataset:
-
-```python
-from torch.utils.data import Dataset
-
-class CustomInterferogramDataset(Dataset):
-    def __getitem__(self, idx):
-        # Load your interferogram I and ground truth phi
-        I = ...  # [1, H, W] normalized interferogram
-        phi = ...  # [1, H, W] unwrapped phase
-
-        # Create hint from center value
-        H, W = phi.shape[-2:]
-        cy, cx = H // 2, W // 2
-        phi_hint = torch.full_like(phi, phi[0, cy, cx].item())
-
-        I_input = torch.cat([I, phi_hint], dim=0)  # [2, H, W]
-        return I_input, phi, I
-```
+Synthetic success does **not** guarantee lab transfer. Validate on real interferograms with re-wrap consistency before trusting numbers in a paper.
 
 ---
 
 ## Reproducibility
 
-- All RNG states (Python, NumPy, PyTorch, CUDA) are saved and restored in every checkpoint
-- Shard-level train/val split is deterministic for a given seed
-- `uv.lock` pins all dependencies
+- Checkpointed RNG states (Python / NumPy / PyTorch / CUDA)
+- Deterministic shard-level splits for a given seed
+- `uv.lock` pins dependencies
 
 ---
 

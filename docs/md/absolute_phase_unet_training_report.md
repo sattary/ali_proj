@@ -1,5 +1,10 @@
 ### Technical Report on `src/try.py`: Absolute Phase Reconstruction with a UNet-Style Network
 
+> **HISTORICAL / SUPERSEDED.** Describes a pre-package prototype (`src/try.py`, MATLAB `.mat` loaders).
+> The live pipeline is `src/phase_unwrap/` with HDF5 shards, Typer CLI `phase-unwrap`, and **Option B**
+> (`hint_mode=zero`, AbsMAE selection, piston-only TopoMAE). Do not treat this report as current API docs.
+> See `README.md` and `plans/`.
+
 #### 1. Introduction
 
 This document provides a detailed, academically styled description of the training script `src/try.py`. The script implements a supervised learning pipeline for recovering *absolute* (unwrapped) phase from interferometric measurements stored in MATLAB `.mat` files. It combines:

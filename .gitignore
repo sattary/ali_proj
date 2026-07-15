@@ -20,10 +20,13 @@ runs/
 # OS
 .DS_Store
 
-# Master prompts (development docs)
-prompts/
-
-
 .antigravity/
+# .claude/
+# .agents/
+
 status_handoff.md
 results/
+
+# Tooling caches / prototypes
+graphify-out/
+*.bak

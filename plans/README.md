@@ -19,7 +19,7 @@ Do these before more training or paper number freezes. Order is dependency-aware
 | **010** | Select/HPO on honest metric; persist held-out test metrics | P0 | S | **007** hard | DONE |
 | **009** | Unify `phi_hint`; **Option B locked** (`hint_mode=zero`) | P0 | M | 013 soft | DONE |
 | **014** | Repair dead GradCAM / TTA / TorchScript / benchmark CLI | P1 | S | — | DONE |
-| **011** | Fix doc drift (README CLI, proposal claims, dead git_automation text) | P1 | M | B wording | TODO |
+| **011** | Fix doc drift (README CLI, proposal claims, dead git_automation text) | P1 | M | B wording | DONE |
 | **015** | Option A reference-guided fallback (**future only**) | P3 | M–L | B stable + lab protocol | TODO |
 
 After 007+009+010+013 land: **retrain from scratch under B**, then multiseed, real-lab smoke, proposal tables.
@@ -43,7 +43,7 @@ Option A = `plans/015-option-a-reference-guided-fallback.md` only if B fails abs
 | 008  | Reproducibility / determinism / CI baseline | P1 | M | — | TODO |
 | 009  | `phi_hint` GT leakage / hint_mode (Option B) | P0 | M | 013 soft | DONE |
 | 010  | Selection + HPO + test reporting metric | P0 | S | **007** | DONE |
-| 011  | Doc drift and dead artifacts | P1 | M | B wording | TODO |
+| 011  | Doc drift and dead artifacts | P1 | M | B wording | DONE |
 | 012  | OOM recovery reproducibility | P2 | M | 001 recommended | TODO |
 | 013  | Disable val/test geometric augmentation | P0 | S | — | DONE |
 | 014  | Fix dead analysis CLI entrypoints | P1 | S | — | DONE |
