@@ -38,6 +38,7 @@ from ..visualize import save_epoch_visuals
 # ---------------------------------------------------------------------------
 CSV_COLUMNS = [
     "epoch",
+    "partial",
     "noise_level",
     "train_loss",
     "train_mae",
@@ -55,14 +56,16 @@ CSV_COLUMNS = [
 ]
 
 
-def _init_csv(path: str) -> None:
+def _init_csv(path: str, columns: Optional[list[str]] = None) -> None:
+    cols = columns if columns is not None else CSV_COLUMNS
     with open(path, "w", newline="") as f:
-        csv.writer(f).writerow(CSV_COLUMNS)
+        csv.writer(f).writerow(cols)
 
 
-def _append_csv(path: str, row: Dict[str, Any]) -> None:
+def _append_csv(path: str, row: Dict[str, Any], columns: Optional[list[str]] = None) -> None:
+    cols = columns if columns is not None else CSV_COLUMNS
     with open(path, "a", newline="") as f:
-        csv.writer(f).writerow([row.get(c, "") for c in CSV_COLUMNS])
+        csv.writer(f).writerow([row.get(c, "") for c in cols])
 
 
 # ---------------------------------------------------------------------------
@@ -105,8 +108,8 @@ def load_checkpoint(
     device: torch.device,
 ) -> tuple[int, float]:
     """Load full training state. Returns (start_epoch, best_mae)."""
-    # weights_only=False: loading trusted checkpoint from own training runs
-    ckpt = torch.load(path, map_location=device, weights_only=False)
+    # weights_only=True: loading trusted checkpoint from own training runs
+    ckpt = torch.load(path, map_location=device, weights_only=True)
     model.load_state_dict(ckpt["model"])
     ema.m.load_state_dict(ckpt["model_ema"])
     optimizer.load_state_dict(ckpt["optimizer"])
@@ -359,7 +362,12 @@ def train(
         )
         noise_sched.set_total_epochs(cfg.optim.epochs)
 
+    vis_batch = None
+    if train_loader is not None:
+        vis_batch = next(iter(train_loader))
+
     for epoch in range(start_epoch, cfg.optim.epochs + 1):
+        partial_epoch = False
         if noise_sched is not None and train_aug is not None:
             lvl = noise_sched.level(epoch)
             train_aug.set_level(lvl)
@@ -461,15 +469,23 @@ def train(
                     )
 
                     # Rationale (State Synchronization):
-                    # 1. Update the frozen `config.yaml` so anyone resuming or reproducing this run 
-                    # doesn't crash on the old toxic batch size.
-                    Path(config_snap_path).write_text(config_to_yaml(cfg))
+                    # 1. Update `config_effective.yaml` so anyone resuming or reproducing this run 
+                    # doesn't crash on the old toxic batch size. We don't overwrite config.yaml 
+                    # to preserve the original intent.
+                    effective_snap_path = os.path.join(run_dir, "config_effective.yaml")
+                    Path(effective_snap_path).write_text(config_to_yaml(cfg))
+                    
+                    recovery_log_path = os.path.join(run_dir, "recovery.log")
+                    with open(recovery_log_path, "a") as f:
+                        f.write(f"epoch={epoch} global_step={global_step} old_bs={cfg.optim.batch_size*2} new_bs={cfg.optim.batch_size}\\n")
 
                     # 2. Rebuild the LR scheduler. Because batch size halved, `len(train_loader)` 
                     # just doubled! The pre-computed CosineAnnealingLR max steps are now violently 
                     # out of sync. We must recalculate the total steps and fast-forward the new 
                     # scheduler back to the exact current `global_step` to prevent math corruption.
                     # Note: We do NOT add +1 to epochs because the current epoch loop breaks immediately.
+                    # Note (Reproducibility): `new_total_steps` changes the `T_max` of the cosine schedule,
+                    # so the LR trajectory will stretch and deviate from the original shape.
                     new_total_steps = global_step + (cfg.optim.epochs - epoch) * len(train_loader)
                     new_warmup = min(cfg.optim.warmup_steps, new_total_steps // 2)
                     sched = _build_warmup_scheduler(
@@ -489,6 +505,7 @@ def train(
                     print(
                         "| RECOVER | Epoch aborted gracefully. Resuming at next epoch boundary."
                     )
+                    partial_epoch = True
                     break
                 raise
 
@@ -514,7 +531,7 @@ def train(
         epoch_time = time.time() - t0
 
         eval_stats: Dict[str, float] = {}
-        if (epoch % cfg.logging.val_interval == 0) and (val_loader is not None):
+        if (not partial_epoch) and (epoch % cfg.logging.val_interval == 0) and (val_loader is not None):
             eval_stats = run_eval(
                 ema.m,
                 val_loader,
@@ -525,8 +542,11 @@ def train(
             )
 
             try:
-                # Get visualization data from train_loader to show actual noisy data
-                I_raw_v, phi_gt_v = next(iter(train_loader))
+                # Get visualization data from cached vis_batch
+                if vis_batch is not None:
+                    I_raw_v, phi_gt_v = vis_batch
+                else:
+                    I_raw_v, phi_gt_v = next(iter(train_loader))
                 I_raw_v = I_raw_v.to(device, non_blocking=True)
                 phi_gt_v = phi_gt_v.to(device, non_blocking=True)
 
@@ -628,6 +648,7 @@ def train(
             metrics_path,
             {
                 "epoch": epoch,
+                "partial": 1 if partial_epoch else 0,
                 "noise_level": f"{current_noise_level:.4f}",
                 "train_loss": f"{train_loss:.6f}",
                 "train_mae": f"{train_mae:.6f}",
@@ -677,6 +698,7 @@ def train(
                 "MaxErr": f"{test_stats.get('MaxErr', float('nan')):.6f}",
                 "GradMAE": f"{test_stats.get('GradMAE', float('nan')):.6f}",
             },
+            columns=["AbsMAE", "TopoMAE", "RMSE", "SSIM", "PSNR", "MaxErr", "GradMAE"],
         )
 
     print(f"\nDone. Best Val AbsMAE: {best_mae:.4f}")

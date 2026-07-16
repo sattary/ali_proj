@@ -18,7 +18,7 @@ from ..data import build_dataloaders
 
 def load_inference_state(
     checkpoint_path: str,
-    data_dir: str,
+    data_dir: Optional[str] = None,
     subset: str = "val",
     config_path: Optional[str] = None,
     all_data: bool = False,
@@ -30,7 +30,8 @@ def load_inference_state(
     cfg_path = config_path or str(Path(run_dir) / "config.yaml")
     cfg = load_train_config(cfg_path if Path(cfg_path).exists() else None)
     
-    cfg.data.data_dir = data_dir
+    if data_dir is not None and data_dir != '':
+        cfg.data.data_dir = data_dir
     cfg.data.augment = False
     
     if all_data:
@@ -41,8 +42,8 @@ def load_inference_state(
     device = pick_device(cfg.model.device)
     model = build_model(cfg.model).to(device)
     
-    # weights_only=False is used because this is an internal research checkpoint load
-    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    # weights_only=True is used because this is an internal research checkpoint load
+    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=True)
     sd = ckpt.get("model_ema", ckpt["model"])
     
     # Strip torch.compile DDP prefixes if present

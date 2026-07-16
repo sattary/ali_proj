@@ -55,7 +55,7 @@ def run_inference(
     ema = EMA(model, decay=0.0)
 
     print(f"Loading checkpoint: {checkpoint_path}")
-    ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
     if "ema_state_dict" in ckpt:
         dict_to_load = ckpt["ema_state_dict"]
     elif "model_state_dict" in ckpt:
