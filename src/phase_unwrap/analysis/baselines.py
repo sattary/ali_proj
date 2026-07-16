@@ -42,12 +42,24 @@ def _unwrap_itoh(interferogram: np.ndarray) -> np.ndarray:
 
 
 def evaluate_baselines(
+    data_dir: str,
     n_samples: int = 200,
     seed: int = 42,
 ) -> dict[str, dict[str, float]]:
     """Evaluate classical methods on synthetic test data."""
-    x, y, r2 = _build_grid()
+    from ..core.config import TrainConfig
+    from ..data.dataset import discover_h5_shards, smart_split, H5ShardDataset
+    cfg = TrainConfig()
+    cfg.data.data_dir = data_dir
+    paths = discover_h5_shards(cfg.data)
+    _, _, test_paths = smart_split(paths, seed=seed)
+    
+    if not test_paths:
+        raise ValueError(f"No test data found in {data_dir}")
+        
+    test_ds = H5ShardDataset(test_paths, augment=False)
     rng = np.random.default_rng(seed)
+    indices = rng.choice(len(test_ds), size=min(n_samples, len(test_ds)), replace=False)
 
     methods = {
         "Least-Squares (skimage)": _unwrap_skimage,
@@ -58,8 +70,10 @@ def evaluate_baselines(
         name: {"mae": [], "rmse": []} for name in methods
     }
 
-    for _ in range(n_samples):
-        I_clean, dphi_gt = generate_sample(x, y, r2, rng)
+    for idx in indices:
+        I_t, gt_t = test_ds[int(idx)]
+        I_clean = I_t.squeeze().numpy()
+        dphi_gt = gt_t.squeeze().numpy()
 
         for name, method in methods.items():
             try:
@@ -102,6 +116,7 @@ def evaluate_baselines(
 @torch.no_grad()
 def evaluate_dl_baseline(
     checkpoint_path: str,
+    data_dir: str,
     n_samples: int = 200,
     seed: int = 42,
     device_str: str = "cpu",
@@ -109,19 +124,28 @@ def evaluate_dl_baseline(
 ) -> dict[str, float]:
     """Evaluate the DL model on the same samples as the classical baselines."""
     from torch.amp import autocast
-
             
     from ..core.inference import load_inference_state
+    from ..data.dataset import discover_h5_shards, smart_split, H5ShardDataset
     model, cfg, _, device = load_inference_state(checkpoint_path, data_dir='', config_path=config_path)
-
-    x, y, r2 = _build_grid()
+    cfg.data.data_dir = data_dir
+    paths = discover_h5_shards(cfg.data)
+    _, _, test_paths = smart_split(paths, seed=seed)
+    
+    if not test_paths:
+        raise ValueError(f"No test data found in {data_dir}")
+        
+    test_ds = H5ShardDataset(test_paths, augment=False)
     rng = np.random.default_rng(seed)
+    indices = rng.choice(len(test_ds), size=min(n_samples, len(test_ds)), replace=False)
 
     maes: list[float] = []
     rmses: list[float] = []
 
-    for _ in range(n_samples):
-        I_clean, dphi_gt = generate_sample(x, y, r2, rng)
+    for idx in indices:
+        I_t, gt_t = test_ds[int(idx)]
+        I_clean = I_t.squeeze().numpy()
+        dphi_gt = gt_t.squeeze().numpy()
 
         I_mean = I_clean.mean()
         I_std = I_clean.std() + 1e-6
