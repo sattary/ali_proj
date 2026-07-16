@@ -8,13 +8,23 @@ import glob
 import os
 import random
 from typing import List, Sequence, Tuple
+from collections import OrderedDict
 
 import h5py
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Sampler
 
 from ..core.config import DataConfig, TrainConfig
+
+
+def _seed_worker(worker_id: int) -> None:
+    # Derive a per-worker seed from torch's base seed so each worker's
+    # random/numpy streams are distinct and reproducible.
+    base = torch.initial_seed() % (2**32)
+    seed = (base + worker_id) % (2**32)
+    random.seed(seed)
+    np.random.seed(seed)
 
 
 class H5ShardDataset(Dataset):
@@ -48,6 +58,8 @@ class H5ShardDataset(Dataset):
 
         self._total = self._cumulative[-1]
         self._handles: dict[int, h5py.File] = {}
+        self._chunk_cache: OrderedDict[Tuple[int, int], Tuple[np.ndarray, np.ndarray]] = OrderedDict()
+        self._cache_size = 128
 
     def __len__(self) -> int:
         return self._total
@@ -69,12 +81,30 @@ class H5ShardDataset(Dataset):
 
     def __getitem__(
         self, idx: int
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         shard_idx, local_idx = self._locate(idx)
         f = self._get_shard_handle(shard_idx)
 
-        I_np = f[self.I_key][local_idx]
-        phi_np = f[self.phi_key][local_idx]
+        block_start = (local_idx // self._cache_size) * self._cache_size
+        shard_size = self._shard_sizes[shard_idx]
+        block_end = min(block_start + self._cache_size, shard_size)
+
+        cache_key = (shard_idx, block_start)
+        if cache_key not in self._chunk_cache:
+            if len(self._chunk_cache) >= 4:
+                self._chunk_cache.popitem(last=False)
+            
+            I_block = f[self.I_key][block_start:block_end]
+            phi_block = f[self.phi_key][block_start:block_end]
+            self._chunk_cache[cache_key] = (I_block, phi_block)
+        else:
+            self._chunk_cache.move_to_end(cache_key)
+
+        I_block, phi_block = self._chunk_cache[cache_key]
+        idx_in_block = local_idx - block_start
+
+        I_np = I_block[idx_in_block]
+        phi_np = phi_block[idx_in_block]
 
         I_raw_t = torch.from_numpy(np.ascontiguousarray(I_np)).float()
         phi_gt_t = torch.from_numpy(np.ascontiguousarray(phi_np)).float()
@@ -123,20 +153,23 @@ def smart_split(
     paths = list(shard_paths)
     rng.shuffle(paths)
 
-    val_count = max(1, int(round(val_frac * n)))
-    test_count = max(1, int(round(test_frac * n)))
+    val_count = max(1, int(round(val_frac * n))) if val_frac > 0 else 0
+    test_count = max(1, int(round(test_frac * n))) if test_frac > 0 else 0
 
     # Fallback for very small datasets
     if val_count + test_count >= n:
         if n >= 3:
-            val_count = max(1, n // 3)
-            test_count = max(1, n // 3)
+            val_count = max(1, n // 3) if val_frac > 0 else 0
+            test_count = max(1, n // 3) if test_frac > 0 else 0
         else:
             return list(shard_paths), [], []
 
-    train_paths = paths[: -(val_count + test_count)]
-    val_paths = paths[-(val_count + test_count) : -test_count]
-    test_paths = paths[-test_count:]
+    train_end = n - (val_count + test_count)
+    val_end = n - test_count
+
+    train_paths = paths[:train_end]
+    val_paths = paths[train_end:val_end]
+    test_paths = paths[val_end:]
 
     return train_paths, val_paths, test_paths
 
@@ -145,6 +178,38 @@ def discover_h5_shards(cfg: DataConfig) -> List[str]:
     """Discover H5 shard files under data_dir matching the given pattern."""
     data_glob = os.path.join(cfg.data_dir, cfg.pattern)
     return sorted(glob.glob(data_glob))
+
+
+class HDF5BlockSampler(Sampler[int]):
+    def __init__(self, dataset: H5ShardDataset, generator=None):
+        self.dataset = dataset
+        self.generator = generator
+
+    def __iter__(self):
+        n = len(self.dataset)
+        cache_size = getattr(self.dataset, '_cache_size', 128)
+        
+        blocks = []
+        for i in range(0, n, cache_size):
+            blocks.append(range(i, min(i + cache_size, n)))
+            
+        if self.generator is not None:
+            indices_list = torch.randperm(len(blocks), generator=self.generator).tolist()
+        else:
+            indices_list = list(range(len(blocks)))
+            random.shuffle(indices_list)
+        
+        for idx in indices_list:
+            block_indices = list(blocks[idx])
+            if self.generator is not None:
+                perm = torch.randperm(len(block_indices), generator=self.generator).tolist()
+                yield from (block_indices[i] for i in perm)
+            else:
+                random.shuffle(block_indices)
+                yield from block_indices
+
+    def __len__(self) -> int:
+        return len(self.dataset)
 
 
 def build_dataloaders(
@@ -202,18 +267,23 @@ def build_dataloaders(
     import os
     safe_workers = min(cfg.data.workers, os.cpu_count() or 1)
 
+    g = torch.Generator()
+    g.manual_seed(seed)
+
     use_cuda = device.type == "cuda"
     dl_kwargs = dict(
         batch_size=cfg.optim.batch_size,
-        shuffle=True,
         num_workers=safe_workers,
         pin_memory=use_cuda,
         drop_last=True,
+        worker_init_fn=_seed_worker,
+        generator=g,
     )
     if safe_workers > 0 and getattr(cfg.data, "persistent_workers", False):
         dl_kwargs["persistent_workers"] = True
 
-    train_loader = DataLoader(train_ds, **dl_kwargs)
+    train_sampler = HDF5BlockSampler(train_ds, generator=g)
+    train_loader = DataLoader(train_ds, sampler=train_sampler, **dl_kwargs)
 
     val_loader = (
         DataLoader(
@@ -222,6 +292,7 @@ def build_dataloaders(
             shuffle=False,
             num_workers=safe_workers,
             pin_memory=use_cuda,
+            worker_init_fn=_seed_worker,
         )
         if val_ds is not None
         else None
@@ -234,6 +305,7 @@ def build_dataloaders(
             shuffle=False,
             num_workers=safe_workers,
             pin_memory=use_cuda,
+            worker_init_fn=_seed_worker,
         )
         if test_ds is not None
         else None
