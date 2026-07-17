@@ -20,7 +20,7 @@ from tqdm.auto import tqdm
 
 from ..core.config import TrainConfig, config_to_yaml
 from ..core.losses import MAEGradLoss, compute_metrics
-from ..core.ops import FixedSobel, curvature_loss, piston_align
+from ..core.ops import FixedSobel, piston_align
 from ..core.utils import ensure_dir, pick_device, set_seed
 from ..data import build_dataloaders
 from ..data.augmentation import NoiseAug, NoiseScheduler, prepare_batch
@@ -310,19 +310,15 @@ def train(
 
                     if isinstance(phi_raw, list):
                         phi_abs = [p + k_off for p in phi_raw]
-                        # Ensure curvature loss is only calculated on the finest resolution
-                        phi_abs_fine = phi_abs[-1]
                     else:
                         phi_abs = phi_raw + k_off
-                        phi_abs_fine = phi_abs
 
                     L_phase, parts = loss_fn(
                         phi_abs,
                         phi_gt,
                         I_raw_n if cfg.loss.int_wgrad else None,
                     )
-                    L_curv = cfg.loss.w_curv * curvature_loss(phi_abs_fine)
-                    loss = cfg.loss.w_data * L_phase + L_curv
+                    loss = cfg.loss.w_data * L_phase
 
                 scaler.scale(loss).backward()
                 scaler.unscale_(opt)
@@ -421,7 +417,7 @@ def train(
             run_loss += float(loss.item()) * bs
             run_mae += float(parts["mae"].item()) * bs
             run_grad += float(parts["grad"].item()) * bs
-            run_curv += float(L_curv.item()) * bs
+            run_curv += float(parts["curv"].item()) * cfg.loss.w_curv * bs
             cnt += bs
 
             pbar.set_postfix(
