@@ -4,19 +4,14 @@ Training loop for absolute phase reconstruction.
 
 from __future__ import annotations
 
-import csv
 import os
-import random
 import time
-import sys
-import threading
 import warnings
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 warnings.filterwarnings("ignore", message=".*spectral_angle_mapper.*")
 
-import numpy as np
 import torch
 from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
@@ -30,100 +25,12 @@ from ..core.utils import ensure_dir, pick_device, set_seed
 from ..data import build_dataloaders
 from ..data.augmentation import NoiseAug, NoiseScheduler, prepare_batch
 from ..model import EMA, build_model
-from ..visualize import save_epoch_visuals
 
 
 # ---------------------------------------------------------------------------
 # Metrics CSV
 # ---------------------------------------------------------------------------
-CSV_COLUMNS = [
-    "epoch",
-    "partial",
-    "noise_level",
-    "train_loss",
-    "train_mae",
-    "train_grad",
-    "train_curv",
-    "val_abs_mae",
-    "val_topo_mae",
-    "val_rmse",
-    "val_ssim",
-    "val_psnr",
-    "val_max_err",
-    "val_grad_mae",
-    "lr",
-    "epoch_time_s",
-]
-
-
-def _init_csv(path: str, columns: Optional[list[str]] = None) -> None:
-    cols = columns if columns is not None else CSV_COLUMNS
-    with open(path, "w", newline="") as f:
-        csv.writer(f).writerow(cols)
-
-
-def _append_csv(path: str, row: Dict[str, Any], columns: Optional[list[str]] = None) -> None:
-    cols = columns if columns is not None else CSV_COLUMNS
-    with open(path, "a", newline="") as f:
-        csv.writer(f).writerow([row.get(c, "") for c in cols])
-
-
-# ---------------------------------------------------------------------------
-# Checkpoint helpers
-# ---------------------------------------------------------------------------
-def save_checkpoint(
-    path: str,
-    epoch: int,
-    model: torch.nn.Module,
-    ema: EMA,
-    optimizer: torch.optim.Optimizer,
-    scheduler: Any,
-    scaler: GradScaler,
-    best_mae: float,
-) -> None:
-    state = {
-        "epoch": epoch,
-        "best_mae": best_mae,
-        "model": model.state_dict(),
-        "model_ema": ema.m.state_dict(),
-        "optimizer": optimizer.state_dict(),
-        "scheduler": scheduler.state_dict(),
-        "scaler": scaler.state_dict(),
-        "rng_python": random.getstate(),
-        "rng_numpy": np.random.get_state(),
-        "rng_torch": torch.random.get_rng_state(),
-    }
-    if torch.cuda.is_available():
-        state["rng_cuda"] = torch.cuda.get_rng_state_all()
-    torch.save(state, path)
-
-
-def load_checkpoint(
-    path: str,
-    model: torch.nn.Module,
-    ema: EMA,
-    optimizer: torch.optim.Optimizer,
-    scheduler: Any,
-    scaler: GradScaler,
-    device: torch.device,
-) -> tuple[int, float]:
-    """Load full training state. Returns (start_epoch, best_mae)."""
-    # weights_only=True: loading trusted checkpoint from own training runs
-    ckpt = torch.load(path, map_location=device, weights_only=True)
-    model.load_state_dict(ckpt["model"])
-    ema.m.load_state_dict(ckpt["model_ema"])
-    optimizer.load_state_dict(ckpt["optimizer"])
-    scheduler.load_state_dict(ckpt["scheduler"])
-    scaler.load_state_dict(ckpt["scaler"])
-
-    random.setstate(ckpt["rng_python"])
-    np.random.set_state(ckpt["rng_numpy"])
-    torch.random.set_rng_state(ckpt["rng_torch"])
-    if "rng_cuda" in ckpt and torch.cuda.is_available():
-        torch.cuda.set_rng_state_all(ckpt["rng_cuda"])
-
-    return ckpt["epoch"], ckpt["best_mae"]
-
+from .callbacks import CSV_COLUMNS, CSVLogger, CheckpointManager, VisualizationDispatcher
 
 # ---------------------------------------------------------------------------
 # Extended evaluation
@@ -314,7 +221,7 @@ def train(
     
     if resume_path and os.path.exists(resume_path):
         print(f"[resume] Loading checkpoint from {resume_path}")
-        start_epoch, best_mae = load_checkpoint(
+        start_epoch, best_mae = CheckpointManager.load(
             resume_path, model, ema, opt, sched, scaler, device
         )
         
@@ -332,8 +239,9 @@ def train(
     elif resume_path:
         print(f"[resume] Warning: Checkpoint not found at {resume_path}")
 
-    if start_epoch == 1:
-        _init_csv(metrics_path)
+    csv_logger = CSVLogger(metrics_path, columns=CSV_COLUMNS)
+    ckpt_manager = CheckpointManager(run_dir)
+    vis_dispatcher = VisualizationDispatcher(vis_dir, vis_max=cfg.logging.vis_max)
 
     # Initialize dynamic curriculum augmentation
     train_aug = None
@@ -571,30 +479,15 @@ def train(
                 if noise_sched is not None:
                     current_noise_level = noise_sched.level(epoch)
 
-                def _save_visuals_bg(*args, **kwargs):
-                    try:
-                        save_epoch_visuals(*args, **kwargs)
-                    except Exception as e:
-                        print(f"Warning: background visual saving failed: {e}")
-
-                threading.Thread(
-                    target=_save_visuals_bg,
-                    args=(
-                        I_input_v.cpu(),
-                        phi_aligned_v.detach().cpu(),
-                        phi_gt_v.cpu(),
-                        vis_dir,
-                        epoch,
-                        cfg.logging.vis_max,
-                    ),
-                    kwargs={
-                        "I_raw_clean": I_raw_c_v.cpu(),
-                        "I_raw_noisy": I_raw_n_v.cpu(),
-                        "noise_level": current_noise_level,
-                        "samples_per_file": 4,
-                    },
-                    daemon=True,
-                ).start()
+                vis_dispatcher.dispatch(
+                    epoch=epoch,
+                    I_input_v=I_input_v,
+                    phi_aligned_v=phi_aligned_v,
+                    phi_gt_v=phi_gt_v,
+                    I_raw_c_v=I_raw_c_v,
+                    I_raw_n_v=I_raw_n_v,
+                    noise_level=current_noise_level,
+                )
 
             except Exception as e:
                 print(f"Warning: dispatching visuals failed: {e}")
@@ -613,8 +506,8 @@ def train(
             # Primary selection: raw AbsMAE (no GT scale/piston fit). TopoMAE is diagnostic.
             if eval_stats.get("AbsMAE", float("inf")) < best_mae:
                 best_mae = eval_stats["AbsMAE"]
-                save_checkpoint(
-                    os.path.join(run_dir, "best.pth"),
+                ckpt_manager.save(
+                    "best.pth",
                     epoch,
                     model,
                     ema,
@@ -626,8 +519,8 @@ def train(
         else:
             print(f"Epoch {epoch} | train={train_loss:.4f} | time={epoch_time:.1f}s")
 
-        save_checkpoint(
-            os.path.join(run_dir, "final.pth"),
+        ckpt_manager.save(
+            "final.pth",
             epoch,
             model,
             ema,
@@ -644,8 +537,7 @@ def train(
         if noise_sched is not None:
             current_noise_level = noise_sched.level(epoch)
             
-        _append_csv(
-            metrics_path,
+        csv_logger.log(
             {
                 "epoch": epoch,
                 "partial": 1 if partial_epoch else 0,
@@ -663,7 +555,7 @@ def train(
                 "val_grad_mae": f"{eval_stats.get('GradMAE', ''):.6f}" if eval_stats else "",
                 "lr": f"{current_lr:.8f}",
                 "epoch_time_s": f"{epoch_time:.1f}",
-            },
+            }
         )
     if test_loader is not None:
         print("\n--- Final Evaluation on Held-Out Test Set ---")
@@ -683,12 +575,11 @@ def train(
             f"PSNR={test_stats.get('PSNR', 0):.2f} "
         )
         test_path = os.path.join(run_dir, "test_metrics.csv")
-        _init_csv(
+        test_csv_logger = CSVLogger(
             test_path,
-            ["AbsMAE", "TopoMAE", "RMSE", "SSIM", "PSNR", "MaxErr", "GradMAE"],
+            columns=["AbsMAE", "TopoMAE", "RMSE", "SSIM", "PSNR", "MaxErr", "GradMAE"]
         )
-        _append_csv(
-            test_path,
+        test_csv_logger.log(
             {
                 "AbsMAE": f"{test_stats.get('AbsMAE', float('nan')):.6f}",
                 "TopoMAE": f"{test_stats.get('TopoMAE', float('nan')):.6f}",
@@ -697,8 +588,7 @@ def train(
                 "PSNR": f"{test_stats.get('PSNR', float('nan')):.4f}",
                 "MaxErr": f"{test_stats.get('MaxErr', float('nan')):.6f}",
                 "GradMAE": f"{test_stats.get('GradMAE', float('nan')):.6f}",
-            },
-            columns=["AbsMAE", "TopoMAE", "RMSE", "SSIM", "PSNR", "MaxErr", "GradMAE"],
+            }
         )
 
     print(f"\nDone. Best Val AbsMAE: {best_mae:.4f}")

@@ -20,9 +20,13 @@ import os
 from typing import Optional
 
 import matplotlib
+_HEADLESS = not os.environ.get("DISPLAY")
+if _HEADLESS:
+    matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from ..data.augmentation import prepare_batch
 
 from ..core.utils import ensure_dir
 from .utils import (
@@ -32,10 +36,6 @@ from .utils import (
     draw_phase_panel,
     draw_error_panel,
 )
-
-_HEADLESS = not os.environ.get("DISPLAY")
-if _HEADLESS:
-    matplotlib.use("Agg")
 
 
 def save_epoch_visuals(

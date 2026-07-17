@@ -7,6 +7,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import torch
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 from phase_unwrap.core.config import TrainConfig
 from phase_unwrap.data.generate import _build_grid
