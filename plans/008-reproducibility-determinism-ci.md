@@ -214,14 +214,14 @@ Confirm it is 0 bytes and unreferenced, then `git rm test.bak`.
 
 Machine-checkable. ALL must hold:
 
-- [ ] `uv run pytest tests/ -q` exits 0; `tests/test_repro.py` exists and passes
-- [ ] `grep -n "benchmark = True" src/phase_unwrap/core/utils.py` returns no matches
-- [ ] `grep -n "worker_init_fn" src/phase_unwrap/data/dataset.py` returns ≥1 match
-- [ ] `grep -n "git_automation" README.md` returns no matches
-- [ ] `.github/workflows/ci.yml` exists and is valid YAML
-- [ ] `test.bak` no longer exists
-- [ ] No files outside the in-scope list are modified (`git status`)
-- [ ] `plans/README.md` status row updated
+- [x] `uv run pytest tests/ -q` exits 0; `tests/test_repro.py` exists and passes
+- [x] `grep -n "benchmark = True" src/phase_unwrap/core/utils.py` returns no matches
+- [x] `grep -n "worker_init_fn" src/phase_unwrap/data/dataset.py` returns ≥1 match
+- [x] `grep -n "git_automation" README.md` returns no matches
+- [x] `.github/workflows/ci.yml` exists and is valid YAML
+- [x] `test.bak` no longer exists
+- [x] No files outside the in-scope list are modified (`git status`)
+- [x] `plans/README.md` status row updated
 
 ## STOP conditions
 

@@ -65,9 +65,9 @@ Lines 126-132 contain a fallback for very small datasets. Ensure this fallback g
 
 ## Done criteria
 
-- [ ] `uv run pytest tests/test_dataset.py` exits 0; zero-split tests pass
-- [ ] No files outside the in-scope list are modified
-- [ ] `plans/README.md` status row updated
+- [x] `uv run pytest tests/test_dataset.py` exits 0; zero-split tests pass
+- [x] No files outside the in-scope list are modified
+- [x] `plans/README.md` status row updated
 
 ## STOP conditions
 

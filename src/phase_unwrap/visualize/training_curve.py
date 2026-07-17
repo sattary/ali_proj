@@ -114,8 +114,8 @@ def plot_training_curve(
             # Multi-seed: use mean ± std as confidence bands
             tl_mean = np.array(data.get("train_loss_mean", []))
             tl_std = np.array(data.get("train_loss_std", []))
-            vm_mean = np.array(data.get("val_mae_mean", []))
-            vm_std = np.array(data.get("val_mae_std", []))
+            vm_mean = np.array(data.get("val_abs_mae_mean", []))
+            vm_std = np.array(data.get("val_abs_mae_std", []))
 
             # Training loss with confidence band
             sns.lineplot(
@@ -166,7 +166,7 @@ def plot_training_curve(
         else:
             # Single run
             train_loss = np.array(data.get("train_loss", []))
-            val_mae = np.array(data.get("val_mae", []))
+            val_mae = np.array(data.get("val_abs_mae", []))
 
             sns.lineplot(
                 x=epochs,

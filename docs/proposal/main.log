@@ -1,105 +1,120 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026/Arch Linux) (preloaded format=pdflatex 2026.5.21)  11 JUN 2026 20:38
-entering extended mode
- restricted \write18 enabled.
- file:line:error style messages enabled.
- %&-line parsing enabled.
-**/home/sat/Code/Fun/ali_proj/docs/proposal/main.tex
-(/home/sat/Code/Fun/ali_proj/docs/proposal/main.tex
+This is LuaHBTeX, Version 1.24.0 (TeX Live 2026/Arch Linux)  (format=lualatex 2026.5.21)  13 JUN 2026 13:30
+ restricted system commands enabled.
+**main.tex
+(./main.tex
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
-(/usr/share/texmf-dist/tex/latex/ieeetran/IEEEtran.cls
+Lua module: luaotfload 2024-12-03 v3.29 Lua based OpenType font support
+Lua module: lualibs 2023-07-13 v2.76 ConTeXt Lua standard libraries.
+Lua module: lualibs-extended 2023-07-13 v2.76 ConTeXt Lua libraries -- extended 
+collection.
+luaotfload | conf : Root cache directory is "/home/sat/.texlive/texmf-var/luatex
+-cache/generic/names".
+luaotfload | init : Loading fontloader "fontloader-2023-12-28.lua" from kpse-res
+olved path "/usr/share/texmf-dist/tex/luatex/luaotfload/fontloader-2023-12-28.lu
+a".
+Lua-only attribute luaotfload@noligature = 1
+luaotfload | init : Context OpenType loader version 3.134
+Inserting `luaotfload.node_processor' in `pre_linebreak_filter'.
+Inserting `luaotfload.node_processor' in `hpack_filter'.
+Inserting `luaotfload.glyph_stream' in `glyph_stream_provider'.
+Inserting `luaotfload.define_font' in `define_font'.
+Lua-only attribute luaotfload_color_attribute = 2
+luaotfload | conf : Root cache directory is "/home/sat/.texlive/texmf-var/luatex
+-cache/generic/names".
+Inserting `luaotfload.harf.strip_prefix' in `find_opentype_file'.
+Inserting `luaotfload.harf.strip_prefix' in `find_truetype_file'.
+Removing  `luaotfload.glyph_stream' from `glyph_stream_provider'.
+Inserting `luaotfload.harf.glyphstream' in `glyph_stream_provider'.
+Inserting `luaotfload.harf.finalize_vlist' in `post_linebreak_filter'.
+Inserting `luaotfload.harf.finalize_hlist' in `hpack_filter'.
+Inserting `luaotfload.cleanup_files' in `wrapup_run'.
+Inserting `luaotfload.harf.finalize_unicode' in `finish_pdffile'.
+Inserting `luaotfload.glyphinfo' in `glyph_info'.
+Lua-only attribute luaotfload.letterspace_done = 3
+Inserting `luaotfload.aux.set_sscale_dimens' in `luaotfload.patch_font'.
+Inserting `luaotfload.aux.set_font_index' in `luaotfload.patch_font'.
+Inserting `luaotfload.aux.patch_cambria_domh' in `luaotfload.patch_font'.
+Inserting `luaotfload.aux.fixup_fontdata' in `luaotfload.patch_font_unsafe'.
+Inserting `luaotfload.aux.set_capheight' in `luaotfload.patch_font'.
+Inserting `luaotfload.aux.set_xheight' in `luaotfload.patch_font'.
+Inserting `luaotfload.rewrite_fontname' in `luaotfload.patch_font'.
+Inserting `tracingstacklevels' in `input_level_string'. (/usr/share/texmf-dist/
+tex/latex/ieeetran/IEEEtran.cls
 Document Class: IEEEtran 2015/08/26 V1.8b by Michael Shell
 -- See the "IEEEtran_HOWTO" manual for usage information.
 -- http://www.michaelshell.org/tex/ieeetran/
-\@IEEEtrantmpdimenA=\dimen148
-\@IEEEtrantmpdimenB=\dimen149
-\@IEEEtrantmpdimenC=\dimen150
-\@IEEEtrantmpcountA=\count275
-\@IEEEtrantmpcountB=\count276
-\@IEEEtrantmpcountC=\count277
+\@IEEEtrantmpdimenA=\dimen147
+\@IEEEtrantmpdimenB=\dimen148
+\@IEEEtrantmpdimenC=\dimen149
+\@IEEEtrantmpcountA=\count273
+\@IEEEtrantmpcountB=\count274
+\@IEEEtrantmpcountC=\count275
 \@IEEEtrantmptoksA=\toks17
-LaTeX Font Info:    Trying to load font information for OT1+ptm on input line 503.
-(/usr/share/texmf-dist/tex/latex/psnfss/ot1ptm.fd
-File: ot1ptm.fd 2001/06/04 font definitions for OT1/ptm.
-)
+LaTeX Font Info:    Trying to load font information for TU+ptm on input line 50
+3.
+LaTeX Font Info:    No file TUptm.fd. on input line 503.
+
+LaTeX Font Warning: Font shape `TU/ptm/m/n' undefined
+(Font)              using `TU/lmr/m/n' instead on input line 503.
+
+luaotfload | db : Font names database loaded from /home/sat/.texlive/texmf-var/l
+uatex-cache/generic/names/luaotfload-names.luc.gz
 ** ATTENTION: Single column mode is not typically used with IEEE publications.
 -- Using 8.5in x 11in (letter) paper.
--- Using PDF output.
-\@IEEEnormalsizeunitybaselineskip=\dimen151
+-- Using DVI output.
+\@IEEEnormalsizeunitybaselineskip=\dimen150
 -- This is an 11 point document.
-LaTeX Encoding Info:    Redeclaring text command \textunderscore (encoding ?) on input line 937.
-\CLASSINFOnormalsizebaselineskip=\dimen152
-\CLASSINFOnormalsizeunitybaselineskip=\dimen153
-\IEEEnormaljot=\dimen154
-LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <6> not available
-(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 1090.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/it' in size <6> not available
-(Font)              Font shape `OT1/ptm/b/it' tried instead on input line 1090.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <8> not available
-(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 1090.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/it' in size <8> not available
-(Font)              Font shape `OT1/ptm/b/it' tried instead on input line 1090.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <9> not available
-(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 1090.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/it' in size <9> not available
-(Font)              Font shape `OT1/ptm/b/it' tried instead on input line 1090.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <10> not available
-(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 1090.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/it' in size <10> not available
-(Font)              Font shape `OT1/ptm/b/it' tried instead on input line 1090.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <11> not available
-(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 1090.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/it' in size <11> not available
-(Font)              Font shape `OT1/ptm/b/it' tried instead on input line 1090.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <12> not available
-(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 1090.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/it' in size <12> not available
-(Font)              Font shape `OT1/ptm/b/it' tried instead on input line 1090.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <17> not available
-(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 1090.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/it' in size <17> not available
-(Font)              Font shape `OT1/ptm/b/it' tried instead on input line 1090.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <20> not available
-(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 1090.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/it' in size <20> not available
-(Font)              Font shape `OT1/ptm/b/it' tried instead on input line 1090.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <24> not available
-(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 1090.
-LaTeX Font Info:    Font shape `OT1/ptm/bx/it' in size <24> not available
-(Font)              Font shape `OT1/ptm/b/it' tried instead on input line 1090.
-\IEEEquantizedlength=\dimen155
-\IEEEquantizedlengthdiff=\dimen156
-\IEEEquantizedtextheightdiff=\dimen157
-\IEEEilabelindentA=\dimen158
-\IEEEilabelindentB=\dimen159
-\IEEEilabelindent=\dimen160
-\IEEEelabelindent=\dimen161
-\IEEEdlabelindent=\dimen162
-\IEEElabelindent=\dimen163
-\IEEEiednormlabelsep=\dimen164
-\IEEEiedmathlabelsep=\dimen165
+LaTeX Encoding Info:    Redeclaring text command \textunderscore (encoding ?) o
+n input line 937.
+\CLASSINFOnormalsizebaselineskip=\dimen151
+\CLASSINFOnormalsizeunitybaselineskip=\dimen152
+\IEEEnormaljot=\dimen153
+
+LaTeX Font Warning: Font shape `TU/ptm/bx/n' undefined
+(Font)              using `TU/ptm/m/n' instead on input line 1090.
+
+
+LaTeX Font Warning: Font shape `TU/ptm/m/it' undefined
+(Font)              using `TU/ptm/m/n' instead on input line 1090.
+
+
+LaTeX Font Warning: Font shape `TU/ptm/bx/it' undefined
+(Font)              using `TU/ptm/bx/n' instead on input line 1090.
+
+\IEEEquantizedlength=\dimen154
+\IEEEquantizedlengthdiff=\dimen155
+\IEEEquantizedtextheightdiff=\dimen156
+\IEEEilabelindentA=\dimen157
+\IEEEilabelindentB=\dimen158
+\IEEEilabelindent=\dimen159
+\IEEEelabelindent=\dimen160
+\IEEEdlabelindent=\dimen161
+\IEEElabelindent=\dimen162
+\IEEEiednormlabelsep=\dimen163
+\IEEEiedmathlabelsep=\dimen164
 \IEEEiedtopsep=\skip49
-\c@section=\count278
-\c@subsection=\count279
-\c@subsubsection=\count280
-\c@paragraph=\count281
-\c@IEEEsubequation=\count282
+\c@section=\count276
+\c@subsection=\count277
+\c@subsubsection=\count278
+\c@paragraph=\count279
+\c@IEEEsubequation=\count280
 \abovecaptionskip=\skip50
 \belowcaptionskip=\skip51
-\c@figure=\count283
-\c@table=\count284
-\@IEEEeqnnumcols=\count285
-\@IEEEeqncolcnt=\count286
-\@IEEEsubeqnnumrollback=\count287
-\@IEEEquantizeheightA=\dimen166
-\@IEEEquantizeheightB=\dimen167
-\@IEEEquantizeheightC=\dimen168
-\@IEEEquantizeprevdepth=\dimen169
-\@IEEEquantizemultiple=\count288
+\c@figure=\count281
+\c@table=\count282
+\@IEEEeqnnumcols=\count283
+\@IEEEeqncolcnt=\count284
+\@IEEEsubeqnnumrollback=\count285
+\@IEEEquantizeheightA=\dimen165
+\@IEEEquantizeheightB=\dimen166
+\@IEEEquantizeheightC=\dimen167
+\@IEEEquantizeprevdepth=\dimen168
+\@IEEEquantizemultiple=\count286
 \@IEEEquantizeboxA=\box53
-\@IEEEtmpitemindent=\dimen170
-\IEEEPARstartletwidth=\dimen171
-\c@IEEEbiography=\count289
+\@IEEEtmpitemindent=\dimen169
+\IEEEPARstartletwidth=\dimen170
+\c@IEEEbiography=\count287
 \@IEEEtranrubishbin=\box54
 ) (/usr/share/texmf-dist/tex/latex/amsmath/amsmath.sty
 Package: amsmath 2025/07/09 v2.17z AMS math features
@@ -108,24 +123,27 @@ Package: amsmath 2025/07/09 v2.17z AMS math features
 For additional information on amsmath, use the `?' option.
 (/usr/share/texmf-dist/tex/latex/amsmath/amstext.sty
 Package: amstext 2024/11/17 v2.01 AMS text
- (/usr/share/texmf-dist/tex/latex/amsmath/amsgen.sty
+
+(/usr/share/texmf-dist/tex/latex/amsmath/amsgen.sty
 File: amsgen.sty 1999/11/30 v2.0 generic functions
 \@emptytoks=\toks18
-\ex@=\dimen172
-)) (/usr/share/texmf-dist/tex/latex/amsmath/amsbsy.sty
+\ex@=\dimen171
+))
+(/usr/share/texmf-dist/tex/latex/amsmath/amsbsy.sty
 Package: amsbsy 1999/11/29 v1.2d Bold Symbols
-\pmbraise@=\dimen173
-) (/usr/share/texmf-dist/tex/latex/amsmath/amsopn.sty
+\pmbraise@=\dimen172
+)
+(/usr/share/texmf-dist/tex/latex/amsmath/amsopn.sty
 Package: amsopn 2022/04/08 v2.04 operator names
 )
-\inf@bad=\count290
-LaTeX Info: Redefining \frac on input line 233.
-\uproot@=\count291
-\leftroot@=\count292
+\inf@bad=\count288
+LaTeX Info: Redefining \frac on input line 235.
+\uproot@=\count289
+\leftroot@=\count290
 LaTeX Info: Redefining \overline on input line 398.
 LaTeX Info: Redefining \colon on input line 409.
-\classnum@=\count293
-\DOTSCASE@=\count294
+\classnum@=\count291
+\DOTSCASE@=\count292
 LaTeX Info: Redefining \ldots on input line 495.
 LaTeX Info: Redefining \dots on input line 498.
 LaTeX Info: Redefining \cdots on input line 619.
@@ -135,252 +153,581 @@ LaTeX Info: Redefining \big on input line 721.
 LaTeX Info: Redefining \Big on input line 722.
 LaTeX Info: Redefining \bigg on input line 723.
 LaTeX Info: Redefining \Bigg on input line 724.
-\big@size=\dimen174
+\big@size=\dimen173
 LaTeX Font Info:    Redeclaring font encoding OML on input line 742.
 LaTeX Font Info:    Redeclaring font encoding OMS on input line 743.
-\macc@depth=\count295
+\macc@depth=\count293
 LaTeX Info: Redefining \bmod on input line 904.
 LaTeX Info: Redefining \pmod on input line 909.
 LaTeX Info: Redefining \smash on input line 939.
 LaTeX Info: Redefining \relbar on input line 969.
 LaTeX Info: Redefining \Relbar on input line 970.
-\c@MaxMatrixCols=\count296
+\c@MaxMatrixCols=\count294
 \dotsspace@=\muskip17
-\c@parentequation=\count297
-\dspbrk@lvl=\count298
+\c@parentequation=\count295
+\dspbrk@lvl=\count296
 \tag@help=\toks19
-\row@=\count299
-\column@=\count300
-\maxfields@=\count301
+\row@=\count297
+\column@=\count298
+\maxfields@=\count299
 \andhelp@=\toks20
-\eqnshift@=\dimen175
-\alignsep@=\dimen176
-\tagshift@=\dimen177
-\tagwidth@=\dimen178
-\totwidth@=\dimen179
-\lineht@=\dimen180
+\eqnshift@=\dimen174
+\alignsep@=\dimen175
+\tagshift@=\dimen176
+\tagwidth@=\dimen177
+\totwidth@=\dimen178
+\lineht@=\dimen179
 \@envbody=\toks21
 \multlinegap=\skip53
 \multlinetaggap=\skip54
 \mathdisplay@stack=\toks22
 LaTeX Info: Redefining \[ on input line 2950.
 LaTeX Info: Redefining \] on input line 2951.
-) (/usr/share/texmf-dist/tex/latex/amsfonts/amssymb.sty
+)
+(/usr/share/texmf-dist/tex/latex/amsfonts/amssymb.sty
 Package: amssymb 2013/01/14 v3.01 AMS font symbols
- (/usr/share/texmf-dist/tex/latex/amsfonts/amsfonts.sty
+
+(/usr/share/texmf-dist/tex/latex/amsfonts/amsfonts.sty
 Package: amsfonts 2013/01/14 v3.01 Basic AMSFonts support
 \symAMSa=\mathgroup4
 \symAMSb=\mathgroup5
 LaTeX Font Info:    Redeclaring math symbol \hbar on input line 98.
 LaTeX Font Info:    Overwriting math alphabet `\mathfrak' in version `bold'
 (Font)                  U/euf/m/n --> U/euf/b/n on input line 106.
-)) (/home/sat/texmf/tex/latex/mtpro2/mtpro2.sty
-Package: mtpro2 2009/4/27 v2.3 MathTimePro II - added arc accents MathTimePro II - fixed rbrace problem with straightbraces and morphedbraces options MathTimePro II - fix bug with z = \backslash widetilde{\backslash sum_{x }}MathTimePro II v2 font support (PCTeX/WaS)MathTimePro II v2.1a Allowed alternate form of I in Math Script Fonts (MS)
-Now handling font encoding LMP1 ...
-... no UTF-8 mapping file for font encoding LMP1
-Now handling font encoding LMP2 ...
-... no UTF-8 mapping file for font encoding LMP2
-Now handling font encoding LMP3 ...
-... no UTF-8 mapping file for font encoding LMP3
-LaTeX Font Info:    Redeclaring symbol font `operators' on input line 110.
-LaTeX Font Info:    Overwriting symbol font `operators' in version `normal'
-(Font)                  OT1/cmr/m/n --> OT1/ptm/m/n on input line 110.
-LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
-(Font)                  OT1/cmr/bx/n --> OT1/ptm/m/n on input line 110.
-LaTeX Font Info:    Redeclaring symbol font `letters' on input line 111.
-LaTeX Font Info:    Encoding `OML' has changed to `LMP1' for symbol font
-(Font)              `letters' in the math version `normal' on input line 111.
-LaTeX Font Info:    Overwriting symbol font `letters' in version `normal'
-(Font)                  OML/cmm/m/it --> LMP1/mtt/m/it on input line 111.
-LaTeX Font Info:    Encoding `OML' has changed to `LMP1' for symbol font
-(Font)              `letters' in the math version `bold' on input line 111.
-LaTeX Font Info:    Overwriting symbol font `letters' in version `bold'
-(Font)                  OML/cmm/b/it --> LMP1/mtt/m/it on input line 111.
-LaTeX Font Info:    Redeclaring symbol font `symbols' on input line 112.
-LaTeX Font Info:    Encoding `OMS' has changed to `LMP2' for symbol font
-(Font)              `symbols' in the math version `normal' on input line 112.
-LaTeX Font Info:    Overwriting symbol font `symbols' in version `normal'
-(Font)                  OMS/cmsy/m/n --> LMP2/mtt/m/n on input line 112.
-LaTeX Font Info:    Encoding `OMS' has changed to `LMP2' for symbol font
-(Font)              `symbols' in the math version `bold' on input line 112.
-LaTeX Font Info:    Overwriting symbol font `symbols' in version `bold'
-(Font)                  OMS/cmsy/b/n --> LMP2/mtt/m/n on input line 112.
-LaTeX Font Info:    Redeclaring symbol font `largesymbols' on input line 113.
-LaTeX Font Info:    Encoding `OMX' has changed to `LMP3' for symbol font
-(Font)              `largesymbols' in the math version `normal' on input line 113.
-LaTeX Font Info:    Overwriting symbol font `largesymbols' in version `normal'
-(Font)                  OMX/cmex/m/n --> LMP3/mtt/m/n on input line 113.
-LaTeX Font Info:    Encoding `OMX' has changed to `LMP3' for symbol font
-(Font)              `largesymbols' in the math version `bold' on input line 113.
-LaTeX Font Info:    Overwriting symbol font `largesymbols' in version `bold'
-(Font)                  OMX/cmex/m/n --> LMP3/mtt/m/n on input line 113.
-\pointcount@=\count302
-LaTeX Font Info:    Redeclaring math alphabet \mathbf on input line 140.
-LaTeX Font Info:    Overwriting math alphabet `\mathbf' in version `normal'
-(Font)                  OT1/cmr/bx/n --> OT1/ptm/b/n on input line 140.
-LaTeX Font Info:    Overwriting math alphabet `\mathbf' in version `bold'
-(Font)                  OT1/cmr/bx/n --> OT1/ptm/b/n on input line 140.
-LaTeX Font Info:    Redeclaring math alphabet \mathit on input line 141.
+))
+(/usr/share/texmf-dist/tex/latex/fontspec/fontspec.sty
+(/usr/share/texmf-dist/tex/latex/l3packages/xparse/xparse.sty
+(/usr/share/texmf-dist/tex/latex/l3kernel/expl3.sty
+Package: expl3 2026-01-19 L3 programming layer (loader) 
+
+(/usr/share/texmf-dist/tex/latex/l3backend/l3backend-luatex.def
+File: l3backend-luatex.def 2025-10-09 L3 backend support: PDF output (LuaTeX)
+\l__color_backend_stack_int=\count300
+Inserting `l3color' in `luaotfload.parse_color'.))
+Package: xparse 2025-10-09 L3 Experimental document command parser
+)
+Package: fontspec 2025/09/29 v2.9g Font selection for XeLaTeX and LuaLaTeX
+Lua module: fontspec 2025/09/29 v2.9g Font selection for XeLaTeX and LuaLaTeX
+(/usr/share/texmf-dist/tex/latex/fontspec/fontspec-luatex.sty
+Package: fontspec-luatex 2025/09/29 v2.9g Font selection for XeLaTeX and LuaLaT
+eX
+\l__fontspec_script_int=\count301
+\l__fontspec_language_int=\count302
+\l__fontspec_strnum_int=\count303
+\l__fontspec_tmp_int=\count304
+\l__fontspec_tmpa_int=\count305
+\l__fontspec_tmpb_int=\count306
+\l__fontspec_tmpc_int=\count307
+\l__fontspec_em_int=\count308
+\l__fontspec_emdef_int=\count309
+\l__fontspec_strong_int=\count310
+\l__fontspec_strongdef_int=\count311
+\l__fontspec_tmpa_dim=\dimen180
+\l__fontspec_tmpb_dim=\dimen181
+\l__fontspec_tmpc_dim=\dimen182
+
+(/usr/share/texmf-dist/tex/latex/base/fontenc.sty
+Package: fontenc 2025/07/18 v2.1d Standard LaTeX package
+)
+(/usr/share/texmf-dist/tex/latex/fontspec/fontspec.cfg)))
+(/usr/share/texmf-dist/tex/latex/unicode-math/unicode-math.sty
+Package: unicode-math 2023/08/13 v0.8r Unicode maths in XeLaTeX and LuaLaTeX
+
+(/usr/share/texmf-dist/tex/latex/unicode-math/unicode-math-luatex.sty
+Package: unicode-math-luatex 2023/08/13 v0.8r Unicode maths in XeLaTeX and LuaL
+aTeX
+
+(/usr/share/texmf-dist/tex/latex/l3packages/l3keys2e/l3keys2e.sty
+Package: l3keys2e 2025-10-09 LaTeX2e option processing using LaTeX3 keys
+)
+(/usr/share/texmf-dist/tex/latex/base/fix-cm.sty
+Package: fix-cm 2020/11/24 v1.1t fixes to LaTeX
+
+(/usr/share/texmf-dist/tex/latex/base/ts1enc.def
+File: ts1enc.def 2001/06/05 v3.0e (jk/car/fm) Standard LaTeX file
+LaTeX Font Info:    Redeclaring font encoding TS1 on input line 47.
+LaTeX Encoding Info:    Redeclaring text command \capitalcedilla (encoding TS1)
+ on input line 49.
+LaTeX Encoding Info:    Redeclaring text command \capitalogonek (encoding TS1) 
+on input line 52.
+LaTeX Encoding Info:    Redeclaring text command \capitalgrave (encoding TS1) o
+n input line 55.
+LaTeX Encoding Info:    Redeclaring text command \capitalacute (encoding TS1) o
+n input line 56.
+LaTeX Encoding Info:    Redeclaring text command \capitalcircumflex (encoding T
+S1) on input line 57.
+LaTeX Encoding Info:    Redeclaring text command \capitaltilde (encoding TS1) o
+n input line 58.
+LaTeX Encoding Info:    Redeclaring text command \capitaldieresis (encoding TS1
+) on input line 59.
+LaTeX Encoding Info:    Redeclaring text command \capitalhungarumlaut (encoding
+ TS1) on input line 60.
+LaTeX Encoding Info:    Redeclaring text command \capitalring (encoding TS1) on
+ input line 61.
+LaTeX Encoding Info:    Redeclaring text command \capitalcaron (encoding TS1) o
+n input line 62.
+LaTeX Encoding Info:    Redeclaring text command \capitalbreve (encoding TS1) o
+n input line 63.
+LaTeX Encoding Info:    Redeclaring text command \capitalmacron (encoding TS1) 
+on input line 64.
+LaTeX Encoding Info:    Redeclaring text command \capitaldotaccent (encoding TS
+1) on input line 65.
+LaTeX Encoding Info:    Redeclaring text command \t (encoding TS1) on input lin
+e 66.
+LaTeX Encoding Info:    Redeclaring text command \capitaltie (encoding TS1) on 
+input line 67.
+LaTeX Encoding Info:    Redeclaring text command \newtie (encoding TS1) on inpu
+t line 68.
+LaTeX Encoding Info:    Redeclaring text command \capitalnewtie (encoding TS1) 
+on input line 69.
+LaTeX Encoding Info:    Redeclaring text symbol \textcapitalcompwordmark (encod
+ing TS1) on input line 70.
+LaTeX Encoding Info:    Redeclaring text symbol \textascendercompwordmark (enco
+ding TS1) on input line 71.
+LaTeX Encoding Info:    Redeclaring text symbol \textquotestraightbase (encodin
+g TS1) on input line 72.
+LaTeX Encoding Info:    Redeclaring text symbol \textquotestraightdblbase (enco
+ding TS1) on input line 73.
+LaTeX Encoding Info:    Redeclaring text symbol \texttwelveudash (encoding TS1)
+ on input line 74.
+LaTeX Encoding Info:    Redeclaring text symbol \textthreequartersemdash (encod
+ing TS1) on input line 75.
+LaTeX Encoding Info:    Redeclaring text symbol \textleftarrow (encoding TS1) o
+n input line 76.
+LaTeX Encoding Info:    Redeclaring text symbol \textrightarrow (encoding TS1) 
+on input line 77.
+LaTeX Encoding Info:    Redeclaring text symbol \textblank (encoding TS1) on in
+put line 78.
+LaTeX Encoding Info:    Redeclaring text symbol \textdollar (encoding TS1) on i
+nput line 79.
+LaTeX Encoding Info:    Redeclaring text symbol \textquotesingle (encoding TS1)
+ on input line 80.
+LaTeX Encoding Info:    Redeclaring text command \textasteriskcentered (encodin
+g TS1) on input line 81.
+LaTeX Encoding Info:    Redeclaring text symbol \textdblhyphen (encoding TS1) o
+n input line 92.
+LaTeX Encoding Info:    Redeclaring text symbol \textfractionsolidus (encoding 
+TS1) on input line 93.
+LaTeX Encoding Info:    Redeclaring text symbol \textzerooldstyle (encoding TS1
+) on input line 94.
+LaTeX Encoding Info:    Redeclaring text symbol \textoneoldstyle (encoding TS1)
+ on input line 95.
+LaTeX Encoding Info:    Redeclaring text symbol \texttwooldstyle (encoding TS1)
+ on input line 96.
+LaTeX Encoding Info:    Redeclaring text symbol \textthreeoldstyle (encoding TS
+1) on input line 97.
+LaTeX Encoding Info:    Redeclaring text symbol \textfouroldstyle (encoding TS1
+) on input line 98.
+LaTeX Encoding Info:    Redeclaring text symbol \textfiveoldstyle (encoding TS1
+) on input line 99.
+LaTeX Encoding Info:    Redeclaring text symbol \textsixoldstyle (encoding TS1)
+ on input line 100.
+LaTeX Encoding Info:    Redeclaring text symbol \textsevenoldstyle (encoding TS
+1) on input line 101.
+LaTeX Encoding Info:    Redeclaring text symbol \texteightoldstyle (encoding TS
+1) on input line 102.
+LaTeX Encoding Info:    Redeclaring text symbol \textnineoldstyle (encoding TS1
+) on input line 103.
+LaTeX Encoding Info:    Redeclaring text symbol \textlangle (encoding TS1) on i
+nput line 104.
+LaTeX Encoding Info:    Redeclaring text symbol \textminus (encoding TS1) on in
+put line 105.
+LaTeX Encoding Info:    Redeclaring text symbol \textrangle (encoding TS1) on i
+nput line 106.
+LaTeX Encoding Info:    Redeclaring text symbol \textmho (encoding TS1) on inpu
+t line 107.
+LaTeX Encoding Info:    Redeclaring text symbol \textbigcircle (encoding TS1) o
+n input line 108.
+LaTeX Encoding Info:    Redeclaring text command \textcircled (encoding TS1) on
+ input line 109.
+LaTeX Encoding Info:    Redeclaring text symbol \textohm (encoding TS1) on inpu
+t line 115.
+LaTeX Encoding Info:    Redeclaring text symbol \textlbrackdbl (encoding TS1) o
+n input line 116.
+LaTeX Encoding Info:    Redeclaring text symbol \textrbrackdbl (encoding TS1) o
+n input line 117.
+LaTeX Encoding Info:    Redeclaring text symbol \textuparrow (encoding TS1) on 
+input line 118.
+LaTeX Encoding Info:    Redeclaring text symbol \textdownarrow (encoding TS1) o
+n input line 119.
+LaTeX Encoding Info:    Redeclaring text symbol \textasciigrave (encoding TS1) 
+on input line 120.
+LaTeX Encoding Info:    Redeclaring text symbol \textborn (encoding TS1) on inp
+ut line 121.
+LaTeX Encoding Info:    Redeclaring text symbol \textdivorced (encoding TS1) on
+ input line 122.
+LaTeX Encoding Info:    Redeclaring text symbol \textdied (encoding TS1) on inp
+ut line 123.
+LaTeX Encoding Info:    Redeclaring text symbol \textleaf (encoding TS1) on inp
+ut line 124.
+LaTeX Encoding Info:    Redeclaring text symbol \textmarried (encoding TS1) on 
+input line 125.
+LaTeX Encoding Info:    Redeclaring text symbol \textmusicalnote (encoding TS1)
+ on input line 126.
+LaTeX Encoding Info:    Redeclaring text symbol \texttildelow (encoding TS1) on
+ input line 127.
+LaTeX Encoding Info:    Redeclaring text symbol \textdblhyphenchar (encoding TS
+1) on input line 128.
+LaTeX Encoding Info:    Redeclaring text symbol \textasciibreve (encoding TS1) 
+on input line 129.
+LaTeX Encoding Info:    Redeclaring text symbol \textasciicaron (encoding TS1) 
+on input line 130.
+LaTeX Encoding Info:    Redeclaring text symbol \textacutedbl (encoding TS1) on
+ input line 131.
+LaTeX Encoding Info:    Redeclaring text symbol \textgravedbl (encoding TS1) on
+ input line 132.
+LaTeX Encoding Info:    Redeclaring text symbol \textdagger (encoding TS1) on i
+nput line 133.
+LaTeX Encoding Info:    Redeclaring text symbol \textdaggerdbl (encoding TS1) o
+n input line 134.
+LaTeX Encoding Info:    Redeclaring text symbol \textbardbl (encoding TS1) on i
+nput line 135.
+LaTeX Encoding Info:    Redeclaring text symbol \textperthousand (encoding TS1)
+ on input line 136.
+LaTeX Encoding Info:    Redeclaring text symbol \textbullet (encoding TS1) on i
+nput line 137.
+LaTeX Encoding Info:    Redeclaring text symbol \textcelsius (encoding TS1) on 
+input line 138.
+LaTeX Encoding Info:    Redeclaring text symbol \textdollaroldstyle (encoding T
+S1) on input line 139.
+LaTeX Encoding Info:    Redeclaring text symbol \textcentoldstyle (encoding TS1
+) on input line 140.
+LaTeX Encoding Info:    Redeclaring text symbol \textflorin (encoding TS1) on i
+nput line 141.
+LaTeX Encoding Info:    Redeclaring text symbol \textcolonmonetary (encoding TS
+1) on input line 142.
+LaTeX Encoding Info:    Redeclaring text symbol \textwon (encoding TS1) on inpu
+t line 143.
+LaTeX Encoding Info:    Redeclaring text symbol \textnaira (encoding TS1) on in
+put line 144.
+LaTeX Encoding Info:    Redeclaring text symbol \textguarani (encoding TS1) on 
+input line 145.
+LaTeX Encoding Info:    Redeclaring text symbol \textpeso (encoding TS1) on inp
+ut line 146.
+LaTeX Encoding Info:    Redeclaring text symbol \textlira (encoding TS1) on inp
+ut line 147.
+LaTeX Encoding Info:    Redeclaring text symbol \textrecipe (encoding TS1) on i
+nput line 148.
+LaTeX Encoding Info:    Redeclaring text symbol \textinterrobang (encoding TS1)
+ on input line 149.
+LaTeX Encoding Info:    Redeclaring text symbol \textinterrobangdown (encoding 
+TS1) on input line 150.
+LaTeX Encoding Info:    Redeclaring text symbol \textdong (encoding TS1) on inp
+ut line 151.
+LaTeX Encoding Info:    Redeclaring text symbol \texttrademark (encoding TS1) o
+n input line 152.
+LaTeX Encoding Info:    Redeclaring text symbol \textpertenthousand (encoding T
+S1) on input line 153.
+LaTeX Encoding Info:    Redeclaring text symbol \textpilcrow (encoding TS1) on 
+input line 154.
+LaTeX Encoding Info:    Redeclaring text symbol \textbaht (encoding TS1) on inp
+ut line 155.
+LaTeX Encoding Info:    Redeclaring text symbol \textnumero (encoding TS1) on i
+nput line 156.
+LaTeX Encoding Info:    Redeclaring text symbol \textdiscount (encoding TS1) on
+ input line 157.
+LaTeX Encoding Info:    Redeclaring text symbol \textestimated (encoding TS1) o
+n input line 158.
+LaTeX Encoding Info:    Redeclaring text symbol \textopenbullet (encoding TS1) 
+on input line 159.
+LaTeX Encoding Info:    Redeclaring text symbol \textservicemark (encoding TS1)
+ on input line 160.
+LaTeX Encoding Info:    Redeclaring text symbol \textlquill (encoding TS1) on i
+nput line 161.
+LaTeX Encoding Info:    Redeclaring text symbol \textrquill (encoding TS1) on i
+nput line 162.
+LaTeX Encoding Info:    Redeclaring text symbol \textcent (encoding TS1) on inp
+ut line 163.
+LaTeX Encoding Info:    Redeclaring text symbol \textsterling (encoding TS1) on
+ input line 164.
+LaTeX Encoding Info:    Redeclaring text symbol \textcurrency (encoding TS1) on
+ input line 165.
+LaTeX Encoding Info:    Redeclaring text symbol \textyen (encoding TS1) on inpu
+t line 166.
+LaTeX Encoding Info:    Redeclaring text symbol \textbrokenbar (encoding TS1) o
+n input line 167.
+LaTeX Encoding Info:    Redeclaring text symbol \textsection (encoding TS1) on 
+input line 168.
+LaTeX Encoding Info:    Redeclaring text symbol \textasciidieresis (encoding TS
+1) on input line 169.
+LaTeX Encoding Info:    Redeclaring text symbol \textcopyright (encoding TS1) o
+n input line 170.
+LaTeX Encoding Info:    Redeclaring text symbol \textordfeminine (encoding TS1)
+ on input line 171.
+LaTeX Encoding Info:    Redeclaring text symbol \textcopyleft (encoding TS1) on
+ input line 172.
+LaTeX Encoding Info:    Redeclaring text symbol \textlnot (encoding TS1) on inp
+ut line 173.
+LaTeX Encoding Info:    Redeclaring text symbol \textcircledP (encoding TS1) on
+ input line 174.
+LaTeX Encoding Info:    Redeclaring text symbol \textregistered (encoding TS1) 
+on input line 175.
+LaTeX Encoding Info:    Redeclaring text symbol \textasciimacron (encoding TS1)
+ on input line 176.
+LaTeX Encoding Info:    Redeclaring text symbol \textdegree (encoding TS1) on i
+nput line 177.
+LaTeX Encoding Info:    Redeclaring text symbol \textpm (encoding TS1) on input
+ line 178.
+LaTeX Encoding Info:    Redeclaring text symbol \texttwosuperior (encoding TS1)
+ on input line 179.
+LaTeX Encoding Info:    Redeclaring text symbol \textthreesuperior (encoding TS
+1) on input line 180.
+LaTeX Encoding Info:    Redeclaring text symbol \textasciiacute (encoding TS1) 
+on input line 181.
+LaTeX Encoding Info:    Redeclaring text symbol \textmu (encoding TS1) on input
+ line 182.
+LaTeX Encoding Info:    Redeclaring text symbol \textparagraph (encoding TS1) o
+n input line 183.
+LaTeX Encoding Info:    Redeclaring text symbol \textperiodcentered (encoding T
+S1) on input line 184.
+LaTeX Encoding Info:    Redeclaring text symbol \textreferencemark (encoding TS
+1) on input line 185.
+LaTeX Encoding Info:    Redeclaring text symbol \textonesuperior (encoding TS1)
+ on input line 186.
+LaTeX Encoding Info:    Redeclaring text symbol \textordmasculine (encoding TS1
+) on input line 187.
+LaTeX Encoding Info:    Redeclaring text symbol \textsurd (encoding TS1) on inp
+ut line 188.
+LaTeX Encoding Info:    Redeclaring text symbol \textonequarter (encoding TS1) 
+on input line 189.
+LaTeX Encoding Info:    Redeclaring text symbol \textonehalf (encoding TS1) on 
+input line 190.
+LaTeX Encoding Info:    Redeclaring text symbol \textthreequarters (encoding TS
+1) on input line 191.
+LaTeX Encoding Info:    Redeclaring text symbol \texteuro (encoding TS1) on inp
+ut line 192.
+LaTeX Encoding Info:    Redeclaring text symbol \texttimes (encoding TS1) on in
+put line 193.
+LaTeX Encoding Info:    Redeclaring text symbol \textdiv (encoding TS1) on inpu
+t line 194.
+))
+(/usr/share/texmf-dist/tex/lualatex/lualatex-math/lualatex-math.sty
+Package: lualatex-math 2022/01/01 v1.12 Patches for mathematics typesetting wit
+h LuaLaTeX
+
+(/usr/share/texmf-dist/tex/latex/etoolbox/etoolbox.sty
+Package: etoolbox 2025/10/02 v2.5m e-TeX tools for LaTeX (JAW)
+\etb@tempcnta=\count312
+)
+Lua module: lualatex-math 2013/08/03 v1.3 Patches for mathematics typesetting wi
+th LuaLaTeX)
+\g__um_fam_int=\count313
+\g__um_fonts_used_int=\count314
+\l__um_primecount_int=\count315
+\g__um_primekern_muskip=\muskip18
+
+(/usr/share/texmf-dist/tex/latex/unicode-math/unicode-math-table.tex)))
+luaotfload | cache : Lookup cache loaded from /home/sat/.texlive/texmf-var/luate
+x-cache/generic/names/luaotfload-lookup-cache.luc.
+
+Package fontspec Info: 
+(fontspec)             Font family 'LibertinusSerif(0)' created for font
+(fontspec)             'Libertinus Serif' with options [Ligatures=TeX].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.: <->"name:Libertinus
+(fontspec)             Serif:mode=node;script=latn;language=dflt;+tlig;"
+(fontspec)             - 'small caps'  (m/sc) with NFSS spec.:
+(fontspec)             <->"name:Libertinus
+(fontspec)             Serif:mode=node;script=latn;language=dflt;+tlig;+smcp;"
+(fontspec)             - 'bold' (b/n) with NFSS spec.: <->"name:Libertinus
+(fontspec)             Serif/B:mode=node;script=latn;language=dflt;+tlig;"
+(fontspec)             - 'bold small caps'  (b/sc) with NFSS spec.:
+(fontspec)             <->"name:Libertinus
+(fontspec)             Serif/B:mode=node;script=latn;language=dflt;+tlig;+smcp;
+"
+(fontspec)             - 'italic' (m/it) with NFSS spec.: <->"name:Libertinus
+(fontspec)             Serif/I:mode=node;script=latn;language=dflt;+tlig;"
+(fontspec)             - 'italic small caps'  (m/scit) with NFSS spec.:
+(fontspec)             <->"name:Libertinus
+(fontspec)             Serif/I:mode=node;script=latn;language=dflt;+tlig;+smcp;
+"
+(fontspec)             - 'bold italic' (b/it) with NFSS spec.:
+(fontspec)             <->"name:Libertinus
+(fontspec)             Serif/BI:mode=node;script=latn;language=dflt;+tlig;"
+(fontspec)             - 'bold italic small caps'  (b/scit) with NFSS spec.:
+(fontspec)             <->"name:Libertinus
+(fontspec)             Serif/BI:mode=node;script=latn;language=dflt;+tlig;+smcp
+;"
+
+
+Package fontspec Info: 
+(fontspec)             Font family 'LibertinusSerif(1)' created for font
+(fontspec)             'Libertinus Serif' with options [Renderer=Basic].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.: <->"name:Libertinus
+(fontspec)             Serif:mode=base;script=latn;language=dflt;"
+(fontspec)             - 'small caps'  (m/sc) with NFSS spec.:
+(fontspec)             <->"name:Libertinus
+(fontspec)             Serif:mode=base;script=latn;language=dflt;+smcp;"
+(fontspec)             - 'bold' (b/n) with NFSS spec.: <->"name:Libertinus
+(fontspec)             Serif/B:mode=base;script=latn;language=dflt;"
+(fontspec)             - 'bold small caps'  (b/sc) with NFSS spec.:
+(fontspec)             <->"name:Libertinus
+(fontspec)             Serif/B:mode=base;script=latn;language=dflt;+smcp;"
+(fontspec)             - 'italic' (m/it) with NFSS spec.: <->"name:Libertinus
+(fontspec)             Serif/I:mode=base;script=latn;language=dflt;"
+(fontspec)             - 'italic small caps'  (m/scit) with NFSS spec.:
+(fontspec)             <->"name:Libertinus
+(fontspec)             Serif/I:mode=base;script=latn;language=dflt;+smcp;"
+(fontspec)             - 'bold italic' (b/it) with NFSS spec.:
+(fontspec)             <->"name:Libertinus
+(fontspec)             Serif/BI:mode=base;script=latn;language=dflt;"
+(fontspec)             - 'bold italic small caps'  (b/scit) with NFSS spec.:
+(fontspec)             <->"name:Libertinus
+(fontspec)             Serif/BI:mode=base;script=latn;language=dflt;+smcp;"
+
+LaTeX Font Info:    Overwriting math alphabet `\mathrm' in version `normal'
+(Font)                  OT1/cmr/m/n --> TU/LibertinusSerif(1)/m/n on input line
+ 6.
 LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `normal'
-(Font)                  OT1/cmr/m/it --> OT1/ptm/m/it on input line 141.
-LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `bold'
-(Font)                  OT1/cmr/bx/it --> OT1/ptm/m/it on input line 141.
-LaTeX Font Info:    Redeclaring math alphabet \mathsf on input line 142.
-LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `normal'
-(Font)                  OT1/cmss/m/n --> OT1/phv/m/n on input line 142.
-LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `bold'
-(Font)                  OT1/cmss/bx/n --> OT1/phv/m/n on input line 142.
-LaTeX Font Info:    Redeclaring math alphabet \mathtt on input line 143.
-LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `normal'
-(Font)                  OT1/cmtt/m/n --> OT1/pcr/m/n on input line 143.
-LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
-(Font)                  OT1/cmtt/m/n --> OT1/pcr/m/n on input line 143.
-LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `bold'
-(Font)                  OT1/ptm/m/it --> OT1/ptm/b/it on input line 144.
-LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `bold'
-(Font)                  OT1/phv/m/n --> OT1/phv/b/n on input line 145.
-LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
-(Font)                  OT1/pcr/m/n --> OT1/pcr/b/n on input line 146.
-LaTeX Font Info:    Overwriting math alphabet `\mathcal' in version `bold'
-(Font)                  OMS/cmsy/m/n --> OMS/cmsy/b/n on input line 190.
-LaTeX Font Info:    Redeclaring math symbol \alpha on input line 344.
-LaTeX Font Info:    Redeclaring math symbol \beta on input line 345.
-LaTeX Font Info:    Redeclaring math symbol \gamma on input line 346.
-LaTeX Font Info:    Redeclaring math symbol \delta on input line 347.
-LaTeX Font Info:    Redeclaring math symbol \epsilon on input line 348.
-LaTeX Font Info:    Redeclaring math symbol \zeta on input line 349.
-LaTeX Font Info:    Redeclaring math symbol \eta on input line 350.
-LaTeX Font Info:    Redeclaring math symbol \theta on input line 351.
-LaTeX Font Info:    Redeclaring math symbol \iota on input line 352.
-LaTeX Font Info:    Redeclaring math symbol \kappa on input line 353.
-LaTeX Font Info:    Redeclaring math symbol \lambda on input line 354.
-LaTeX Font Info:    Redeclaring math symbol \mu on input line 355.
-LaTeX Font Info:    Redeclaring math symbol \nu on input line 356.
-LaTeX Font Info:    Redeclaring math symbol \xi on input line 357.
-LaTeX Font Info:    Redeclaring math symbol \pi on input line 358.
-LaTeX Font Info:    Redeclaring math symbol \rho on input line 359.
-LaTeX Font Info:    Redeclaring math symbol \sigma on input line 360.
-LaTeX Font Info:    Redeclaring math symbol \tau on input line 361.
-LaTeX Font Info:    Redeclaring math symbol \upsilon on input line 362.
-LaTeX Font Info:    Redeclaring math symbol \phi on input line 363.
-LaTeX Font Info:    Redeclaring math symbol \chi on input line 364.
-LaTeX Font Info:    Redeclaring math symbol \psi on input line 365.
-LaTeX Font Info:    Redeclaring math symbol \omega on input line 366.
-LaTeX Font Info:    Redeclaring math symbol \varepsilon on input line 367.
-LaTeX Font Info:    Redeclaring math symbol \vartheta on input line 368.
-LaTeX Font Info:    Redeclaring math symbol \varpi on input line 369.
-LaTeX Font Info:    Redeclaring math symbol \varrho on input line 370.
-LaTeX Font Info:    Redeclaring math symbol \varsigma on input line 371.
-LaTeX Font Info:    Redeclaring math symbol \varphi on input line 372.
-LaTeX Font Info:    Redeclaring math symbol \varkappa on input line 373.
-LaTeX Font Info:    Redeclaring math symbol \Delta on input line 397.
-LaTeX Font Info:    Redeclaring math symbol \Theta on input line 398.
-LaTeX Font Info:    Redeclaring math symbol \Lambda on input line 399.
-LaTeX Font Info:    Redeclaring math symbol \Xi on input line 400.
-LaTeX Font Info:    Redeclaring math symbol \Pi on input line 401.
-LaTeX Font Info:    Redeclaring math symbol \Sigma on input line 402.
-LaTeX Font Info:    Redeclaring math symbol \Upsilon on input line 403.
-LaTeX Font Info:    Redeclaring math symbol \Phi on input line 404.
-LaTeX Font Info:    Redeclaring math symbol \Psi on input line 405.
-LaTeX Font Info:    Redeclaring math symbol \Omega on input line 406.
-LaTeX Font Info:    Redeclaring math symbol \triangleleft on input line 451.
-LaTeX Font Info:    Redeclaring math symbol \triangleright on input line 452.
-LaTeX Font Info:    Redeclaring math symbol \ddagger on input line 453.
-LaTeX Font Info:    Redeclaring math symbol \dagger on input line 454.
-LaTeX Font Info:    Redeclaring math symbol \ldotp on input line 457.
-LaTeX Font Info:    Redeclaring math accent \vec on input line 468.
-LaTeX Font Info:    Redeclaring math accent \grave on input line 469.
-LaTeX Font Info:    Redeclaring math accent \acute on input line 470.
-LaTeX Font Info:    Redeclaring math accent \check on input line 471.
-LaTeX Font Info:    Redeclaring math accent \breve on input line 472.
-LaTeX Font Info:    Redeclaring math accent \bar on input line 473.
-LaTeX Font Info:    Redeclaring math accent \hat on input line 474.
-LaTeX Font Info:    Redeclaring math accent \dot on input line 475.
-LaTeX Font Info:    Redeclaring math accent \tilde on input line 476.
-LaTeX Font Info:    Redeclaring math accent \ddot on input line 477.
-LaTeX Font Info:    Redeclaring math accent \mathring on input line 478.
-LaTeX Font Info:    Redeclaring math symbol \braceld on input line 479.
-LaTeX Font Info:    Redeclaring math symbol \bracerd on input line 480.
-LaTeX Font Info:    Redeclaring math symbol \bracelu on input line 481.
-LaTeX Font Info:    Redeclaring math symbol \braceru on input line 482.
-LaTeX Font Info:    Redeclaring math symbol \mathparagraph on input line 483.
-LaTeX Font Info:    Redeclaring math symbol \mathsection on input line 484.
-LaTeX Font Info:    Redeclaring math symbol \hslash on input line 511.
-LaTeX Font Info:    Redeclaring math symbol \digamma on input line 512.
-LaTeX Font Info:    Redeclaring math symbol \hbar on input line 544.
-\prePbox@=\box57
-\Pbox@=\box58
-\LRbox@=\box59
-\HATbox@=\box60
-\TDbox@=\box61
-\CHbox@=\box62
-\ARCbox@=\box63
-\preSbox@=\box64
-\Sbox@=\box65
-\SQcount@=\count303
-\SQRTbox@=\box66
-\UPROOT@=\count304
-\LEFTROOT@=\count305
-\limtype@=\count306
-\xlfont@=\count307
-\xlposition@=\count308
-\xlposition@ii=\count309
-\optype@=\count310
-\x@count=\count311
-\maxXLscripts@=\dimen181
-LaTeX Encoding Info:    Redeclaring text command \textless (encoding ?) on input line 1573.
-LaTeX Encoding Info:    Redeclaring text command \textgreater (encoding ?) on input line 1574.
-LaTeX Encoding Info:    Redeclaring text command \t (encoding ?) on input line 1575.
-LaTeX Encoding Info:    Redeclaring text command \textasteriskcentered (encoding ?) on input line 1579.
-LaTeX Encoding Info:    Redeclaring text command \textbackslash (encoding ?) on input line 1580.
-LaTeX Encoding Info:    Redeclaring text command \textbar (encoding ?) on input line 1581.
-LaTeX Encoding Info:    Redeclaring text command \textbraceleft (encoding ?) on input line 1582.
-LaTeX Encoding Info:    Redeclaring text command \textbraceright (encoding ?) on input line 1583.
-LaTeX Encoding Info:    Redeclaring text command \textbullet (encoding ?) on input line 1584.
-LaTeX Encoding Info:    Redeclaring text command \textperiodcentered (encoding ?) on input line 1585.
-LaTeX Encoding Info:    Redeclaring text command \textcircled (encoding ?) on input line 1586.
-LaTeX Encoding Info:    Redeclaring text command \textdagger (encoding ?) on input line 1606.
-LaTeX Encoding Info:    Redeclaring text command \textdaggerdbl (encoding ?) on input line 1606.
-LaTeX Encoding Info:    Redeclaring text command \textsection (encoding ?) on input line 1606.
-LaTeX Encoding Info:    Redeclaring text command \textparagraph (encoding ?) on input line 1606.
-) (/usr/share/texmf-dist/tex/latex/algorithms/algorithmic.sty
+(Font)                  OT1/cmr/m/it --> TU/LibertinusSerif(1)/m/it on input li
+ne 6.
+LaTeX Font Info:    Overwriting math alphabet `\mathbf' in version `normal'
+(Font)                  OT1/cmr/bx/n --> TU/LibertinusSerif(1)/b/n on input lin
+e 6.
+LaTeX Font Info:    Calculating math sizes for size <11> on input line 7.
+
+Package fontspec Info: 
+(fontspec)             Script 'Math' not explicitly supported within font
+(fontspec)             'Libertinus Math'. Check the typeset output, and if it
+(fontspec)             is okay then ignore this warning. Otherwise a different
+(fontspec)             font should be chosen.
+
+
+Package fontspec Info: 
+(fontspec)             Could not resolve font "Libertinus Math/B" (it probably
+(fontspec)             doesn't exist).
+
+
+Package fontspec Info: 
+(fontspec)             Font family 'LibertinusMath(0)' created for font
+(fontspec)             'Libertinus Math' with options
+(fontspec)             [Renderer=Basic,BoldItalicFont={},ItalicFont={},SmallCap
+sFont={},Script=Math,RawFeature={mathfontdimen=xetex}].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.: <->"name:Libertinus
+(fontspec)             Math:mode=base;script=math;language=dflt;mathfontdimen=x
+etex;"
+
+
+
+Package unicode-math Warning: The first font loaded by unicode-math must be an
+(unicode-math)                OpenType Math font (with script=math). If you
+(unicode-math)                simply want ‘the default’ before loading
+(unicode-math)                supplementary fonts over the top for certain
+(unicode-math)                ranges, use: 
+(unicode-math)                  \setmathfont{latinmodern-math.otf}
+
+
+Package fontspec Info: 
+(fontspec)             Script 'Math' not explicitly supported within font
+(fontspec)             'Libertinus Math'. Check the typeset output, and if it
+(fontspec)             is okay then ignore this warning. Otherwise a different
+(fontspec)             font should be chosen.
+
+
+Package fontspec Info: 
+(fontspec)             Could not resolve font "Libertinus Math/B" (it probably
+(fontspec)             doesn't exist).
+
+
+Package fontspec Info: 
+(fontspec)             Font family 'LibertinusMath(1)' created for font
+(fontspec)             'Libertinus Math' with options
+(fontspec)             [Renderer=Basic,BoldItalicFont={},ItalicFont={},SmallCap
+sFont={},Script=Math,SizeFeatures={{Size=0-},{Size=0-0,Font=Libertinus
+(fontspec)             Math,Style=MathScript},{Size=-0,Font=Libertinus
+(fontspec)             Math,Style=MathScriptScript}},RawFeature={mathfontdimen=
+xetex}].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.: <0->"name:Libertinus
+(fontspec)             Math:mode=base;script=math;language=dflt;mathfontdimen=x
+etex;"<0-0>"name:Libertinus
+(fontspec)             Math:mode=base;script=math;language=dflt;mathfontdimen=x
+etex;+ssty=0;"<-0>"name:Libertinus
+(fontspec)             Math:mode=base;script=math;language=dflt;mathfontdimen=x
+etex;+ssty=1;"
+
+LaTeX Font Info:    Encoding `OT1' has changed to `TU' for symbol font
+(Font)              `operators' in the math version `normal' on input line 7.
+LaTeX Font Info:    Overwriting symbol font `operators' in version `normal'
+(Font)                  OT1/cmr/m/n --> TU/LibertinusMath(1)/m/n on input line 
+7.
+LaTeX Font Info:    Encoding `OT1' has changed to `TU' for symbol font
+(Font)              `operators' in the math version `bold' on input line 7.
+LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
+(Font)                  OT1/cmr/bx/n --> TU/LibertinusMath(1)/b/n on input line
+ 7.
+LaTeX Font Info:    Trying to load font information for U+msa on input line 7.
+(/usr/share/texmf-dist/tex/latex/amsfonts/umsa.fd
+File: umsa.fd 2013/01/14 v3.01 AMS symbols A
+)
+LaTeX Font Info:    Trying to load font information for U+msb on input line 7.
+
+(/usr/share/texmf-dist/tex/latex/amsfonts/umsb.fd
+File: umsb.fd 2013/01/14 v3.01 AMS symbols B
+)
+(/usr/share/texmf-dist/tex/latex/algorithms/algorithmic.sty
 Package: algorithmic 2009/08/24 v0.1 Document Style `algorithmic'
- (/usr/share/texmf-dist/tex/latex/base/ifthen.sty
+
+(/usr/share/texmf-dist/tex/latex/base/ifthen.sty
 Package: ifthen 2024/03/16 v1.1e Standard LaTeX ifthen package (DPC)
-) (/usr/share/texmf-dist/tex/latex/graphics/keyval.sty
+)
+(/usr/share/texmf-dist/tex/latex/graphics/keyval.sty
 Package: keyval 2022/05/29 v1.15 key=value parser (DPC)
 \KV@toks@=\toks23
 )
-\c@ALC@unique=\count312
-\c@ALC@line=\count313
-\c@ALC@rem=\count314
-\c@ALC@depth=\count315
+\c@ALC@unique=\count316
+\c@ALC@line=\count317
+\c@ALC@rem=\count318
+\c@ALC@depth=\count319
 \ALC@tlm=\skip55
 \algorithmicindent=\skip56
-) (/usr/share/texmf-dist/tex/latex/graphics/graphicx.sty
+)
+(/usr/share/texmf-dist/tex/latex/graphics/graphicx.sty
 Package: graphicx 2024/12/31 v1.2e Enhanced LaTeX Graphics (DPC,SPQR)
- (/usr/share/texmf-dist/tex/latex/graphics/graphics.sty
+
+(/usr/share/texmf-dist/tex/latex/graphics/graphics.sty
 Package: graphics 2024/08/06 v1.4g Standard LaTeX Graphics (DPC,SPQR)
- (/usr/share/texmf-dist/tex/latex/graphics/trig.sty
+
+(/usr/share/texmf-dist/tex/latex/graphics/trig.sty
 Package: trig 2023/12/02 v1.11 sin cos tan (DPC)
-) (/usr/share/texmf-dist/tex/latex/graphics-cfg/graphics.cfg
+)
+(/usr/share/texmf-dist/tex/latex/graphics-cfg/graphics.cfg
 File: graphics.cfg 2016/06/04 v1.11 sample graphics configuration
 )
-Package graphics Info: Driver file: pdftex.def on input line 106.
- (/usr/share/texmf-dist/tex/latex/graphics-def/pdftex.def
-File: pdftex.def 2025/09/29 v1.2d Graphics/color driver for pdftex
+Package graphics Info: Driver file: luatex.def on input line 106.
+
+(/usr/share/texmf-dist/tex/latex/graphics-def/luatex.def
+File: luatex.def 2025/09/29 v1.2f Graphics/color driver for luatex
 ))
-\Gin@req@height=\dimen182
-\Gin@req@width=\dimen183
-) (/usr/share/texmf-dist/tex/latex/base/textcomp.sty
+\Gin@req@height=\dimen183
+\Gin@req@width=\dimen184
+)
+(/usr/share/texmf-dist/tex/latex/base/textcomp.sty
 Package: textcomp 2024/04/24 v2.1b Standard LaTeX package
-) (/usr/share/texmf-dist/tex/latex/xcolor/xcolor.sty
+)
+(/usr/share/texmf-dist/tex/latex/xcolor/xcolor.sty
 Package: xcolor 2024/09/29 v3.02 LaTeX color extensions (UK)
- (/usr/share/texmf-dist/tex/latex/graphics-cfg/color.cfg
+
+(/usr/share/texmf-dist/tex/latex/graphics-cfg/color.cfg
 File: color.cfg 2016/01/02 v1.6 sample color configuration
 )
-Package xcolor Info: Driver file: pdftex.def on input line 274.
- (/usr/share/texmf-dist/tex/latex/graphics/mathcolor.ltx)
+Package xcolor Info: Driver file: luatex.def on input line 274.
+
+(/usr/share/texmf-dist/tex/latex/graphics/mathcolor.ltx)
 Package xcolor Info: Model `cmy' substituted by `cmy0' on input line 1349.
 Package xcolor Info: Model `hsb' substituted by `rgb' on input line 1353.
 Package xcolor Info: Model `RGB' extended on input line 1365.
@@ -390,89 +737,289 @@ Package xcolor Info: Model `tHsb' substituted by `hsb' on input line 1369.
 Package xcolor Info: Model `HSB' substituted by `hsb' on input line 1370.
 Package xcolor Info: Model `Gray' substituted by `gray' on input line 1371.
 Package xcolor Info: Model `wave' substituted by `hsb' on input line 1372.
-) (/usr/share/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def
-File: l3backend-pdftex.def 2025-10-09 L3 backend support: PDF output (pdfTeX)
-\l__color_backend_stack_int=\count316
+)
+(/usr/share/texmf-dist/tex/latex/booktabs/booktabs.sty
+Package: booktabs 2020/01/12 v1.61803398 Publication quality tables
+\heavyrulewidth=\dimen185
+\lightrulewidth=\dimen186
+\cmidrulewidth=\dimen187
+\belowrulesep=\dimen188
+\belowbottomsep=\dimen189
+\aboverulesep=\dimen190
+\abovetopsep=\dimen191
+\cmidrulesep=\dimen192
+\cmidrulekern=\dimen193
+\defaultaddspace=\dimen194
+\@cmidla=\count320
+\@cmidlb=\count321
+\@aboverulesep=\dimen195
+\@belowrulesep=\dimen196
+\@thisruleclass=\count322
+\@lastruleclass=\count323
+\@thisrulewidth=\dimen197
+)
+(/usr/share/texmf-dist/tex/latex/float/float.sty
+Package: float 2001/11/08 v1.3d Float enhancements (AL)
+\c@float@type=\count324
+\float@exts=\toks24
+\float@box=\box57
+\@float@everytoks=\toks25
+\@floatcapt=\box58
 ) (./main.aux)
-\openout1 = `main.aux'.
+\openout1 = main.aux
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 9.
-LaTeX Font Info:    ... okay on input line 9.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 9.
-LaTeX Font Info:    ... okay on input line 9.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 9.
-LaTeX Font Info:    ... okay on input line 9.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 9.
-LaTeX Font Info:    ... okay on input line 9.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 9.
-LaTeX Font Info:    ... okay on input line 9.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 9.
-LaTeX Font Info:    ... okay on input line 9.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 9.
-LaTeX Font Info:    ... okay on input line 9.
-LaTeX Font Info:    Checking defaults for LMP1/mtt/m/it on input line 9.
-LaTeX Font Info:    ... okay on input line 9.
-LaTeX Font Info:    Checking defaults for LMP2/mtt/m/n on input line 9.
-LaTeX Font Info:    ... okay on input line 9.
-LaTeX Font Info:    Checking defaults for LMP3/mtt/m/n on input line 9.
-LaTeX Font Info:    ... okay on input line 9.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 14.
+LaTeX Font Info:    ... okay on input line 14.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 14.
+LaTeX Font Info:    ... okay on input line 14.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 14.
+LaTeX Font Info:    ... okay on input line 14.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 14.
+LaTeX Font Info:    ... okay on input line 14.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 14.
+LaTeX Font Info:    ... okay on input line 14.
+LaTeX Font Info:    Checking defaults for TU/lmr/m/n on input line 14.
+LaTeX Font Info:    ... okay on input line 14.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 14.
+LaTeX Font Info:    ... okay on input line 14.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 14.
+LaTeX Font Info:    ... okay on input line 14.
 
 -- Lines per column: 52 (exact).
-LaTeX Info: Command `\dddot' is already robust on input line 9.
-LaTeX Info: Command `\ddddot' is already robust on input line 9.
+LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `normal'
+(Font)                  OT1/cmss/m/n --> TU/lmss/m/n on input line 14.
+LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `bold'
+(Font)                  OT1/cmss/bx/n --> TU/lmss/b/n on input line 14.
+LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `normal'
+(Font)                  OT1/cmtt/m/n --> TU/lmtt/m/n on input line 14.
+LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
+(Font)                  OT1/cmtt/m/n --> TU/lmtt/b/n on input line 14.
+
+Package fontspec Info: 
+(fontspec)             Font family 'latinmodern-math.otf(0)' created for font
+(fontspec)             'latinmodern-math.otf' with options
+(fontspec)             [Renderer=Basic,BoldItalicFont={},ItalicFont={},SmallCap
+sFont={},Script=Math,RawFeature={mathfontdimen=xetex},BoldFont={latinmodern-mat
+h.otf}].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.:
+(fontspec)             <->"[latinmodern-math.otf]:mode=base;script=math;languag
+e=dflt;mathfontdimen=xetex;"
+(fontspec)             - 'bold' (b/n) with NFSS spec.:
+(fontspec)             <->"[latinmodern-math.otf]:mode=base;script=math;languag
+e=dflt;mathfontdimen=xetex;"
+
+
+Package fontspec Info: 
+(fontspec)             Font family 'latinmodern-math.otf(1)' created for font
+(fontspec)             'latinmodern-math.otf' with options
+(fontspec)             [Renderer=Basic,BoldItalicFont={},ItalicFont={},SmallCap
+sFont={},Script=Math,SizeFeatures={{Size=9.35-},{Size=6.6-9.35,Font=latinmodern
+-math.otf,Style=MathScript},{Size=-6.6,Font=latinmodern-math.otf,Style=MathScri
+ptScript}},RawFeature={mathfontdimen=xetex},BoldFont={latinmodern-math.otf}].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.:
+(fontspec)             <9.35->"[latinmodern-math.otf]:mode=base;script=math;lan
+guage=dflt;mathfontdimen=xetex;"<6.6-9.35>"[latinmodern-math.otf]:mode=base;scr
+ipt=math;language=dflt;mathfontdimen=xetex;+ssty=0;"<-6.6>"[latinmodern-math.ot
+f]:mode=base;script=math;language=dflt;mathfontdimen=xetex;+ssty=1;"
+(fontspec)             - 'bold' (b/n) with NFSS spec.:
+(fontspec)             <->"[latinmodern-math.otf]:mode=base;script=math;languag
+e=dflt;mathfontdimen=xetex;"
+
+LaTeX Font Info:    Overwriting symbol font `operators' in version `normal'
+(Font)                  TU/LibertinusMath(1)/m/n --> TU/latinmodern-math.otf(1)
+/m/n on input line 14.
+LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
+(Font)                  TU/LibertinusMath(1)/b/n --> TU/latinmodern-math.otf(1)
+/b/n on input line 14.
+
+Package fontspec Info: 
+(fontspec)             Font family 'latinmodern-math.otf(2)' created for font
+(fontspec)             'latinmodern-math.otf' with options
+(fontspec)             [Renderer=Basic,BoldItalicFont={},ItalicFont={},SmallCap
+sFont={},Script=Math,SizeFeatures={{Size=9.35-},{Size=6.6-9.35,Font=latinmodern
+-math.otf,Style=MathScript},{Size=-6.6,Font=latinmodern-math.otf,Style=MathScri
+ptScript}},RawFeature={mathfontdimen=xetex},BoldFont={latinmodern-math.otf},Raw
+Feature={mathfontdimen=tex2}].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.:
+(fontspec)             <9.35->"[latinmodern-math.otf]:mode=base;script=math;lan
+guage=dflt;mathfontdimen=xetex;mathfontdimen=tex2;"<6.6-9.35>"[latinmodern-math
+.otf]:mode=base;script=math;language=dflt;mathfontdimen=xetex;mathfontdimen=tex
+2;+ssty=0;"<-6.6>"[latinmodern-math.otf]:mode=base;script=math;language=dflt;ma
+thfontdimen=xetex;mathfontdimen=tex2;+ssty=1;"
+(fontspec)             - 'bold' (b/n) with NFSS spec.:
+(fontspec)             <->"[latinmodern-math.otf]:mode=base;script=math;languag
+e=dflt;mathfontdimen=xetex;mathfontdimen=tex2;"
+
+LaTeX Font Info:    Encoding `OMS' has changed to `TU' for symbol font
+(Font)              `symbols' in the math version `normal' on input line 14.
+LaTeX Font Info:    Overwriting symbol font `symbols' in version `normal'
+(Font)                  OMS/cmsy/m/n --> TU/latinmodern-math.otf(2)/m/n on inpu
+t line 14.
+LaTeX Font Info:    Encoding `OMS' has changed to `TU' for symbol font
+(Font)              `symbols' in the math version `bold' on input line 14.
+LaTeX Font Info:    Overwriting symbol font `symbols' in version `bold'
+(Font)                  OMS/cmsy/b/n --> TU/latinmodern-math.otf(2)/b/n on inpu
+t line 14.
+
+Package fontspec Info: 
+(fontspec)             Font family 'latinmodern-math.otf(3)' created for font
+(fontspec)             'latinmodern-math.otf' with options
+(fontspec)             [Renderer=Basic,BoldItalicFont={},ItalicFont={},SmallCap
+sFont={},Script=Math,SizeFeatures={{Size=9.35-},{Size=6.6-9.35,Font=latinmodern
+-math.otf,Style=MathScript},{Size=-6.6,Font=latinmodern-math.otf,Style=MathScri
+ptScript}},RawFeature={mathfontdimen=xetex},BoldFont={latinmodern-math.otf},Raw
+Feature={mathfontdimen=tex3}].
+(fontspec)              
+(fontspec)              This font family consists of the following NFSS
+(fontspec)             series/shapes:
+(fontspec)              
+(fontspec)             - 'normal' (m/n) with NFSS spec.:
+(fontspec)             <9.35->"[latinmodern-math.otf]:mode=base;script=math;lan
+guage=dflt;mathfontdimen=xetex;mathfontdimen=tex3;"<6.6-9.35>"[latinmodern-math
+.otf]:mode=base;script=math;language=dflt;mathfontdimen=xetex;mathfontdimen=tex
+3;+ssty=0;"<-6.6>"[latinmodern-math.otf]:mode=base;script=math;language=dflt;ma
+thfontdimen=xetex;mathfontdimen=tex3;+ssty=1;"
+(fontspec)             - 'bold' (b/n) with NFSS spec.:
+(fontspec)             <->"[latinmodern-math.otf]:mode=base;script=math;languag
+e=dflt;mathfontdimen=xetex;mathfontdimen=tex3;"
+
+LaTeX Font Info:    Encoding `OMX' has changed to `TU' for symbol font
+(Font)              `largesymbols' in the math version `normal' on input line 1
+4.
+LaTeX Font Info:    Overwriting symbol font `largesymbols' in version `normal'
+(Font)                  OMX/cmex/m/n --> TU/latinmodern-math.otf(3)/m/n on inpu
+t line 14.
+LaTeX Font Info:    Encoding `OMX' has changed to `TU' for symbol font
+(Font)              `largesymbols' in the math version `bold' on input line 14.
+
+LaTeX Font Info:    Overwriting symbol font `largesymbols' in version `bold'
+(Font)                  OMX/cmex/m/n --> TU/latinmodern-math.otf(3)/b/n on inpu
+t line 14.
 (/usr/share/texmf-dist/tex/context/base/mkii/supp-pdf.mkii
 [Loading MPS to PDF converter (version 2006.09.02).]
-\scratchcounter=\count317
-\scratchdimen=\dimen184
-\scratchbox=\box67
-\nofMPsegments=\count318
-\nofMParguments=\count319
-\everyMPshowfont=\toks24
-\MPscratchCnt=\count320
-\MPscratchDim=\dimen185
-\MPnumerator=\count321
-\makeMPintoPDFobject=\count322
-\everyMPtoPDFconversion=\toks25
+\scratchcounter=\count325
+\scratchdimen=\dimen198
+\scratchbox=\box59
+\nofMPsegments=\count326
+\nofMParguments=\count327
+\everyMPshowfont=\toks26
+\MPscratchCnt=\count328
+\MPscratchDim=\dimen199
+\MPnumerator=\count329
+\makeMPintoPDFobject=\count330
+\everyMPtoPDFconversion=\toks27
 ) (/usr/share/texmf-dist/tex/latex/epstopdf-pkg/epstopdf-base.sty
 Package: epstopdf-base 2020-01-24 v2.11 Base part for package epstopdf
-Package epstopdf-base Info: Redefining graphics rule for `.eps' on input line 485.
- (/usr/share/texmf-dist/tex/latex/latexconfig/epstopdf-sys.cfg
-File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Live
-))
-LaTeX Font Info:    Calculating math sizes for size <11> on input line 23.
-LaTeX Font Info:    Trying to load font information for U+msa on input line 23.
- (/usr/share/texmf-dist/tex/latex/amsfonts/umsa.fd
-File: umsa.fd 2013/01/14 v3.01 AMS symbols A
-)
-LaTeX Font Info:    Trying to load font information for U+msb on input line 23.
- (/usr/share/texmf-dist/tex/latex/amsfonts/umsb.fd
-File: umsb.fd 2013/01/14 v3.01 AMS symbols B
-) [1{/home/sat/.texlive/texmf-var/fonts/map/pdftex/updmap/pdftex.map}{/usr/share/texmf-dist/fonts/enc/dvips/base/8r.enc}] [2]
-LaTeX Font Info:    Trying to load font information for OT1+pcr on input line 100.
- (/usr/share/texmf-dist/tex/latex/psnfss/ot1pcr.fd
-File: ot1pcr.fd 2001/06/04 font definitions for OT1/pcr.
-) [3] [4]
-LaTeX Font Info:    Font shape `OT1/pcr/m/it' in size <11> not available
-(Font)              Font shape `OT1/pcr/m/sl' tried instead on input line 171.
- [5] [6] [7] (./main.aux)
+Package epstopdf-base Info: Redefining graphics rule for `.eps' on input line 4
+85.
+
+(/usr/share/texmf-dist/tex/latex/latexconfig/epstopdf-sys.cfg
+File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Liv
+e
+)) [1
+Non-PDF special ignored!{/home/sat/.texlive/texmf-var/fonts/map/pdftex/updmap/pd
+ftex.map}]
+<../../results/figs/curriculum_noise_grid.png, id=10, 889.6437pt x 203.8014pt>
+File: ../../results/figs/curriculum_noise_grid.png Graphic file (type png)
+<use ../../results/figs/curriculum_noise_grid.png>
+Package luatex.def Info: ../../results/figs/curriculum_noise_grid.png  used on 
+input line 72.
+(luatex.def)             Requested size: 516.0pt x 118.208pt.
+ [2<../../results/figs/curriculum_noise_grid.png>] [3] [4]
+<../../results/figs/training_curve.png, id=25, 472.6458pt x 453.8556pt>
+File: ../../results/figs/training_curve.png Graphic file (type png)
+<use ../../results/figs/training_curve.png>
+Package luatex.def Info: ../../results/figs/training_curve.png  used on input l
+ine 180.
+(luatex.def)             Requested size: 516.0pt x 495.50305pt.
+ [5]
+<../../results/figs/qualitative_grid.png, id=29, 518.1759pt x 392.4261pt>
+File: ../../results/figs/qualitative_grid.png Graphic file (type png)
+<use ../../results/figs/qualitative_grid.png>
+Package luatex.def Info: ../../results/figs/qualitative_grid.png  used on input
+ line 189.
+(luatex.def)             Requested size: 516.0pt x 390.81438pt.
+
+[6<../../results/figs/training_curve.png>]
+<../../results/figs/phase_profile.png, id=34, 442.7742pt x 272.9397pt>
+File: ../../results/figs/phase_profile.png Graphic file (type png)
+<use ../../results/figs/phase_profile.png>
+Package luatex.def Info: ../../results/figs/phase_profile.png  used on input li
+ne 198.
+(luatex.def)             Requested size: 247.6778pt x 152.67859pt.
+<../../results/figs/phase_profile_1.png, id=35, 447.8331pt x 272.9397pt>
+File: ../../results/figs/phase_profile_1.png Graphic file (type png)
+<use ../../results/figs/phase_profile_1.png>
+Package luatex.def Info: ../../results/figs/phase_profile_1.png  used on input 
+line 199.
+(luatex.def)             Requested size: 247.6778pt x 150.95023pt.
+<../../results/figs/phase_profile_2.png, id=36, 447.3513pt x 272.9397pt>
+File: ../../results/figs/phase_profile_2.png Graphic file (type png)
+<use ../../results/figs/phase_profile_2.png>
+Package luatex.def Info: ../../results/figs/phase_profile_2.png  used on input 
+line 200.
+(luatex.def)             Requested size: 247.6778pt x 151.11266pt.
+<../../results/figs/phase_profile_3.png, id=37, 447.8331pt x 272.9397pt>
+File: ../../results/figs/phase_profile_3.png Graphic file (type png)
+<use ../../results/figs/phase_profile_3.png>
+Package luatex.def Info: ../../results/figs/phase_profile_3.png  used on input 
+line 201.
+(luatex.def)             Requested size: 247.6778pt x 150.95023pt.
+ [7<../../results/figs/qualitative_grid.png>]
+<../../results/figs/error_histogram.png, id=42, 445.4241pt x 225.7233pt>
+File: ../../results/figs/error_histogram.png Graphic file (type png)
+<use ../../results/figs/error_histogram.png>
+Package luatex.def Info: ../../results/figs/error_histogram.png  used on input 
+line 210.
+(luatex.def)             Requested size: 516.0pt x 261.51543pt.
+ [8<../../results/figs/phase_profile.png><../../results/figs/phase_profile_1.png
+><../../results/figs/phase_profile_2.png><../../results/figs/phase_profile_3.png
+>] [9<../../results/figs/error_histogram.png>] (./main.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-01-19>
  ***********
- ) 
-Here is how much of TeX's memory you used:
- 4631 strings out of 469503
- 68349 string characters out of 5470408
- 483935 words of memory out of 5000000
- 33240 multiletter control sequences out of 15000+600000
- 692664 words of font info for 119 fonts, out of 8000000 for 9000
- 14 hyphenation exceptions out of 8191
- 57i,12n,65p,1223b,178s stack positions out of 10000i,1000n,20000p,200000b,200000s
-</usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb></home/sat/texmf/fonts/type1/pctex/mtpro2/mt2exa.pfb></home/sat/texmf/fonts/type1/pctex/mtpro2/mt2mif.pfb></home/sat/texmf/fonts/type1/pctex/mtpro2/mt2mis.pfb></home/sat/texmf/fonts/type1/pctex/mtpro2/mt2mit.pfb></home/sat/texmf/fonts/type1/pctex/mtpro2/mt2sys.pfb></home/sat/texmf/fonts/type1/pctex/mtpro2/mt2syt.pfb></usr/share/texmf-dist/fonts/type1/urw/courier/ucrr8a.pfb></usr/share/texmf-dist/fonts/type1/urw/courier/ucrro8a.pfb></usr/share/texmf-dist/fonts/type1/urw/times/utmb8a.pfb></usr/share/texmf-dist/fonts/type1/urw/times/utmr8a.pfb></usr/share/texmf-dist/fonts/type1/urw/times/utmri8a.pfb>
-Output written on main.pdf (7 pages, 157614 bytes).
-PDF statistics:
- 94 PDF objects out of 1000 (max. 8388607)
- 58 compressed objects within 1 object stream
- 0 named destinations out of 1000 (max. 500000)
- 1 words of extra memory for PDF output out of 10000 (max. 10000000)
+
+
+LaTeX Font Warning: Some font shapes were not available, defaults substituted.
+
+)
+
+Here is how much of LuaTeX's memory you used:
+ 11108 strings out of 476076
+ 156270,953878 words of node,token memory allocated
+ 613 words of node memory still in use:
+   7 hlist, 2 vlist, 2 rule, 2 glue, 4 kern, 1 glyph, 31 attribute, 56 glue_spec
+, 31 attribute_list, 1 write nodes
+   avail lists: 2:564,3:165,4:27,5:932,6:47,7:13849,8:54,9:424,10:20,11:1518
+ 33421 multiletter control sequences out of 65536+600000
+ 148 fonts using 51709307 bytes
+ 74i,12n,93p,1184b,286s stack positions out of 10000i,1000n,20000p,200000b,200000s
+</usr/share/texmf-dist/fonts/opentype/public/lm/lmmono12-regular.otf></usr/share
+/texmf-dist/fonts/opentype/public/libertinus-fonts/LibertinusSerif-Regular.otf><
+/usr/share/texmf-dist/fonts/opentype/public/lm-math/latinmodern-math.otf></usr/s
+hare/texmf-dist/fonts/opentype/public/lm-math/latinmodern-math.otf></usr/share/t
+exmf-dist/fonts/opentype/public/libertinus-fonts/LibertinusSerif-Italic.otf></us
+r/share/texmf-dist/fonts/opentype/public/lm-math/latinmodern-math.otf></usr/shar
+e/texmf-dist/fonts/opentype/public/libertinus-fonts/LibertinusSerif-Bold.otf></u
+sr/share/texmf-dist/fonts/opentype/public/libertinus-fonts/LibertinusSerif-Regul
+ar.otf>
+Output written on main.pdf (9 pages, 2513897 bytes).
+
+PDF statistics: 104 PDF objects out of 1000 (max. 8388607)
+ 52 compressed objects within 1 object stream
+ 0 named destinations out of 1000 (max. 1048576)
+ 1 words of extra memory for PDF output out of 10000 (max. 100000000)
 

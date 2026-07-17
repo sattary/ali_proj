@@ -77,9 +77,9 @@ Replace the `next(iter(train_loader))` call in the validation block with the cac
 
 ## Done criteria
 
-- [ ] `uv run pytest tests/test_train.py` exits 0
-- [ ] No files outside the in-scope list are modified
-- [ ] `plans/README.md` status row updated
+- [x] `uv run pytest tests/test_train.py` exits 0
+- [x] No files outside the in-scope list are modified
+- [x] `plans/README.md` status row updated
 
 ## STOP conditions
 

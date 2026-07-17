@@ -17,6 +17,8 @@ import torch
 from torch.amp import autocast
 
 from ..core.ops import affine_align
+from ..data import build_dataloaders
+from ..data.augmentation import prepare_batch, NoiseAug
 from .style import (
     DOUBLE_COL,
     nature_style,
@@ -34,7 +36,7 @@ from .utils import (
 @torch.no_grad()
 def plot_qualitative_grid(
     checkpoint_path: str,
-    data_dir: str,
+    data_dir: str | None = None,
     out_path: str = "results/figs/qualitative_grid",
     n_samples: int = 4,
     config_path: str | None = None,
@@ -54,7 +56,7 @@ def plot_qualitative_grid(
         6. Absolute Error - |prediction - GT|
     """
     from ..core.inference import load_inference_state
-    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir='', config_path=config_path)
+    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir=data_dir, config_path=config_path)
 
     # Apply curriculum noise config
     if cfg.aug.enable:
@@ -73,26 +75,16 @@ def plot_qualitative_grid(
     else:
         loader = train_loader
 
-    # Get clean data (no noise)
-    cfg_no_noise = cfg.__class__()
-    for k, v in cfg.__dict__.items():
-        setattr(cfg_no_noise, k, v)
-    cfg_no_noise.aug.enable = False
+    # Fetch exactly one batch of raw data
+    data_iter = iter(loader)
+    batch = next(data_iter)
+    I_raw, phi_gt_raw = batch[0].to(device), batch[1].to(device)
 
-    clean_train_loader, clean_val_loader, clean_test_loader = build_dataloaders(
-        cfg_no_noise, device, seed=cfg.logging.seed
-    )
-    if subset == "test":
-        clean_loader = clean_test_loader
-    elif subset == "val":
-        clean_loader = clean_val_loader or clean_train_loader
-    else:
-        clean_loader = clean_train_loader
-    clean_data_iter = iter(clean_loader)
-    I_clean, phi_gt_clean, I_raw_n_clean, I_raw_c_clean = next(clean_data_iter)
+    # 1. Evaluate CLEAN model response
+    I_clean, phi_gt_clean, _, I_raw_clean = prepare_batch(I_raw, phi_gt_raw, noise_aug=None)
     I_clean = I_clean[:n_samples].to(device)
     phi_gt_clean = phi_gt_clean[:n_samples].to(device)
-    I_raw_clean = I_raw_c_clean[:n_samples]
+    I_raw_clean = I_raw_clean[:n_samples].to(device)
 
     with autocast(device_type=device.type, enabled=False):
         phi_raw_clean, k_off_clean = model(I_clean)
@@ -100,15 +92,30 @@ def plot_qualitative_grid(
 
     phi_aligned_clean, _, _ = affine_align(phi_abs_clean, phi_gt_clean)
 
-    # Get noisy data if requested
-    if show_noise and cfg.aug.enable:
-        if (
-            hasattr(loader.dataset, "noise_aug")
-            and loader.dataset.noise_aug is not None
-        ):
-            loader.dataset.noise_aug.set_level(noise_level)
+    # 2. Evaluate NOISY model response (if requested)
+    if show_noise:
+        noise_aug = None
+        if getattr(cfg, "aug", None):
+            noise_aug = NoiseAug(
+                gauss_std=cfg.aug.gauss_std,
+                speckle_std=cfg.aug.speckle_std,
+                poisson_scale=cfg.aug.poisson_scale,
+                lowfreq_amp=cfg.aug.lowfreq_amp,
+                blur_prob=cfg.aug.blur_prob,
+                blur_sigma=(cfg.aug.blur_min, cfg.aug.blur_max),
+                dropout_prob=cfg.aug.dropout_prob,
+                s_and_p_prob=cfg.aug.sap_prob,
+                gain_jitter=(cfg.aug.gain_min, cfg.aug.gain_max),
+                offset_jitter=(cfg.aug.off_min, cfg.aug.off_max),
+                hint_offset_std=cfg.aug.hint_std,
+                enable=True,
+            )
+            noise_aug.set_level(noise_level)
 
-        I_noisy, phi_gt_noisy, I_raw_n_noisy, I_raw_c_noisy = next(iter(loader))
+        I_noisy, phi_gt_noisy, I_raw_noisy, _ = prepare_batch(I_raw, phi_gt_raw, noise_aug=noise_aug)
+        I_noisy = I_noisy[:n_samples].to(device)
+        phi_gt_noisy = phi_gt_noisy[:n_samples].to(device)
+        I_raw_noisy = I_raw_noisy[:n_samples].to(device)
 
         with autocast(device_type=device.type, enabled=False):
             phi_raw_noisy, k_off_noisy = model(I_noisy)
@@ -123,8 +130,8 @@ def plot_qualitative_grid(
     # Convert to numpy
     pred_np = to_numpy(phi_aligned_clean)
     gt_np = to_numpy(phi_gt_clean)
-    raw_clean_np = I_raw_clean.numpy()
-    raw_noisy_np = I_raw_noisy.numpy()
+    raw_clean_np = I_raw_clean.cpu().numpy()
+    raw_noisy_np = I_raw_noisy.cpu().numpy()
     err_np = np.abs(pred_np - gt_np)
 
     # Calculate per-sample MAE

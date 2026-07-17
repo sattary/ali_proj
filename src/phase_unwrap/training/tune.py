@@ -21,7 +21,7 @@ from tqdm.auto import tqdm
 
 from ..core.config import TrainConfig, config_to_yaml
 from ..core.losses import MAEGradLoss
-from ..core.ops import curvature_loss
+
 from ..core.utils import ensure_dir, pick_device, set_seed
 from ..data import build_dataloaders
 from ..data.augmentation import NoiseAug, NoiseScheduler, prepare_batch
@@ -84,8 +84,9 @@ def _create_objective(
         loss_fn = MAEGradLoss(
             w_mae=cfg.loss.w_mae,
             w_grad=cfg.loss.w_grad,
+            w_curv=cfg.loss.w_curv,
             intensity_weighted=cfg.loss.int_wgrad,
-        )
+        ).to(device)
 
         opt = torch.optim.AdamW(
             model.parameters(), lr=cfg.optim.lr, weight_decay=cfg.optim.weight_decay
@@ -171,16 +172,13 @@ def _create_objective(
 
                     if isinstance(phi_raw, list):
                         phi_abs = [p + k_off for p in phi_raw]
-                        phi_abs_fine = phi_abs[-1]
                     else:
                         phi_abs = phi_raw + k_off
-                        phi_abs_fine = phi_abs
 
                     L_phase, _ = loss_fn(
                         phi_abs, phi_gt, I_raw_n if cfg.loss.int_wgrad else None
                     )
-                    L_curv = cfg.loss.w_curv * curvature_loss(phi_abs_fine)
-                    loss = cfg.loss.w_data * L_phase + L_curv
+                    loss = cfg.loss.w_data * L_phase
 
                 if not torch.isfinite(loss):
                     _log(f"  Trial {trial.number}: NaN/Inf at epoch {epoch}")

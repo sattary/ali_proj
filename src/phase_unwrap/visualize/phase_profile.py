@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
+from ..data import build_dataloaders
+from ..data.augmentation import prepare_batch
 from torch.amp import autocast
 
 from ..core.ops import affine_align
@@ -26,7 +28,7 @@ from .style import (
 @torch.no_grad()
 def plot_phase_profile(
     checkpoint_path: str,
-    data_dir: str,
+    data_dir: str | None = None,
     out_path: str = "results/figs/phase_profile",
     sample_idx: int = 0,
     config_path: str | None = None,
@@ -43,7 +45,7 @@ def plot_phase_profile(
         config_path: Optional config override
     """
     from ..core.inference import load_inference_state
-    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir='', config_path=config_path)
+    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir=data_dir, config_path=config_path)
 
     train_loader, val_loader, test_loader = build_dataloaders(
         cfg, device, seed=cfg.logging.seed
@@ -57,13 +59,38 @@ def plot_phase_profile(
     else:
         loader = train_loader
 
-    I_input, phi_gt, _, _ = next(iter(loader))
+    batch = next(iter(loader))
+    I_raw, phi_gt_raw = batch[0].to(device), batch[1].to(device)
+    
+    noise_aug = None
+    if getattr(cfg, "aug", None) and cfg.aug.enable:
+        from ..data.augmentation import NoiseAug
+        noise_aug = NoiseAug(
+            gauss_std=cfg.aug.gauss_std,
+            speckle_std=cfg.aug.speckle_std,
+            poisson_scale=cfg.aug.poisson_scale,
+            lowfreq_amp=cfg.aug.lowfreq_amp,
+            blur_prob=cfg.aug.blur_prob,
+            blur_sigma=(cfg.aug.blur_min, cfg.aug.blur_max),
+            dropout_prob=cfg.aug.dropout_prob,
+            s_and_p_prob=cfg.aug.sap_prob,
+            gain_jitter=(cfg.aug.gain_min, cfg.aug.gain_max),
+            offset_jitter=(cfg.aug.off_min, cfg.aug.off_max),
+            hint_offset_std=cfg.aug.hint_std,
+            enable=True,
+        )
+        noise_aug.set_level(1.0)
+        
+    I_input, phi_gt, _, _ = prepare_batch(I_raw, phi_gt_raw, noise_aug=noise_aug)
     I_in = I_input[sample_idx : sample_idx + 1].to(device)
     gt = phi_gt[sample_idx : sample_idx + 1].to(device)
 
     with autocast(device_type=device.type, enabled=False):
         phi_raw, k_off = model(I_in)
-        phi_abs = phi_raw + k_off
+        if isinstance(phi_raw, list):
+            phi_abs = phi_raw[-1] + k_off
+        else:
+            phi_abs = phi_raw + k_off
 
     aligned, _, _ = affine_align(phi_abs, gt)
 

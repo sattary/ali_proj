@@ -16,6 +16,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
+from ..data import build_dataloaders
+from ..data.augmentation import prepare_batch
 from torch.amp import autocast
 from tqdm.auto import tqdm
 
@@ -31,7 +33,7 @@ from .style import (
 @torch.no_grad()
 def plot_error_histogram(
     checkpoint_path: str,
-    data_dir: str,
+    data_dir: str | None = None,
     out_path: str = "results/figs/error_histogram",
     config_path: str | None = None,
     compare_tta: bool = False,
@@ -49,7 +51,7 @@ def plot_error_histogram(
         subset: Dataset subset to use
     """
     from ..core.inference import load_inference_state
-    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir='', config_path=config_path)
+    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir=data_dir, config_path=config_path)
 
     train_loader, val_loader, test_loader = build_dataloaders(
         cfg, device, seed=cfg.logging.seed
@@ -65,7 +67,29 @@ def plot_error_histogram(
 
     sample_maes: list[float] = []
 
-    for I_input, phi_gt, _, _ in tqdm(loader, desc="Evaluating Dataset (CPU)", mininterval=2.0):
+    noise_aug = None
+    if getattr(cfg, "aug", None) and cfg.aug.enable:
+        from ..data.augmentation import NoiseAug
+        noise_aug = NoiseAug(
+            gauss_std=cfg.aug.gauss_std,
+            speckle_std=cfg.aug.speckle_std,
+            poisson_scale=cfg.aug.poisson_scale,
+            lowfreq_amp=cfg.aug.lowfreq_amp,
+            blur_prob=cfg.aug.blur_prob,
+            blur_sigma=(cfg.aug.blur_min, cfg.aug.blur_max),
+            dropout_prob=cfg.aug.dropout_prob,
+            s_and_p_prob=cfg.aug.sap_prob,
+            gain_jitter=(cfg.aug.gain_min, cfg.aug.gain_max),
+            offset_jitter=(cfg.aug.off_min, cfg.aug.off_max),
+            hint_offset_std=cfg.aug.hint_std,
+            enable=True,
+        )
+        noise_aug.set_level(1.0)  # Evaluate at max noise to prove resilience
+
+    for batch in tqdm(loader, desc=f"Evaluating Dataset ({device.type.upper()})", mininterval=2.0):
+        I_raw, phi_gt_raw = batch[0], batch[1]
+        I_raw, phi_gt_raw = I_raw.to(device), phi_gt_raw.to(device)
+        I_input, phi_gt, _, _ = prepare_batch(I_raw, phi_gt_raw, noise_aug=noise_aug)
         I_input = I_input.to(device)
         phi_gt = phi_gt.to(device)
 

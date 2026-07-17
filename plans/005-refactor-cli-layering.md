@@ -67,10 +67,10 @@ Rewrite `src/phase_unwrap/cli.py` to simply import these Typer sub-apps and atta
 
 ## Done criteria
 
-- [ ] `uv run phase-unwrap --help` exits 0
-- [ ] `uv run pytest tests/` exits 0
-- [ ] `src/phase_unwrap/cli.py` is under 200 lines
-- [ ] `plans/README.md` status row updated
+- [x] `uv run phase-unwrap --help` exits 0
+- [x] `uv run pytest tests/` exits 0
+- [x] `src/phase_unwrap/cli.py` is under 200 lines
+- [x] `plans/README.md` status row updated
 
 ## STOP conditions
 

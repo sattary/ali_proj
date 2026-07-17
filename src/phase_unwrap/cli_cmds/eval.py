@@ -91,7 +91,7 @@ def eval_benchmark_cmd(
     checkpoint: str = typer.Option(
         ..., "--checkpoint", help="Trained model checkpoint."
     ),
-    data_dir: Optional[str] = typer.Option(None, "--data-dir", help="Override dataset directory."),
+
     device: str = typer.Option("cpu", "--device", help="Device for benchmarking."),
     batch_size: int = typer.Option(1, "--batch-size", help="Batch size for inference."),
     n_runs: int = typer.Option(100, "--n-runs", help="Number of inference runs."),

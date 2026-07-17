@@ -62,9 +62,9 @@ Then return the item from the cached block: `cached_I[local_idx - block_start]`.
 
 ## Done criteria
 
-- [ ] `uv run pytest tests/test_dataset.py` exits 0
-- [ ] No files outside the in-scope list are modified
-- [ ] `plans/README.md` status row updated
+- [x] `uv run pytest tests/test_dataset.py` exits 0
+- [x] No files outside the in-scope list are modified
+- [x] `plans/README.md` status row updated
 
 ## STOP conditions
 

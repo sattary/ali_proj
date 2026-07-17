@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
+from ..data import build_dataloaders
+from ..data.augmentation import prepare_batch
 from torch.amp import autocast
 
 from ..core.ops import affine_align
@@ -29,7 +31,7 @@ from .style import (
 @torch.no_grad()
 def plot_tta_benefit(
     checkpoint_path: str,
-    data_dir: str,
+    data_dir: str | None = None,
     out_path: str = "results/figs/tta_benefit",
     config_path: str | None = None,
     n_augments: int = 8,
@@ -49,7 +51,7 @@ def plot_tta_benefit(
         max_samples: Maximum samples to evaluate
     """
     from ..core.inference import load_inference_state
-    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir='', config_path=config_path)
+    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir=data_dir, config_path=config_path)
 
     train_loader, val_loader, test_loader = build_dataloaders(
         cfg, device, seed=cfg.logging.seed

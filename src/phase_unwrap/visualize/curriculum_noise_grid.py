@@ -8,13 +8,13 @@ import matplotlib.pyplot as plt
 import torch
 
 from ..core.config import load_train_config
-from ..data.augmentation import NoiseAug, NoiseScheduler
+from ..data.augmentation import prepare_batch, NoiseAug, NoiseScheduler
 from ..data.dataset import H5ShardDataset, discover_h5_shards
 from .style import nature_style, save_figure
 
 
 def plot_curriculum_noise(
-    data_dir: str,
+    data_dir: str | None = None,
     out_path: str = "results/figs/curriculum_noise_grid.png",
     sample_idx: int = 0,
     config_path: str | None = None,
@@ -28,11 +28,11 @@ def plot_curriculum_noise(
         raise ValueError(f"No HDF5 data found in {cfg.data.data_dir}")
 
     with H5ShardDataset(
-        paths, I_key=cfg.data.I_key, phi_key=cfg.data.phi_key, noise_aug=None
+        paths, I_key=cfg.data.I_key, phi_key=cfg.data.phi_key
     ) as ds:
-        _, _, I_raw, _ = ds[sample_idx]
+        I_raw_t, phi_gt_t = ds[sample_idx]
 
-    I_raw = I_raw.unsqueeze(0)  # [1, 1, H, W]
+    I_raw = I_raw_t.unsqueeze(0)  # [1, 1, H, W]
 
     epochs_to_plot = [0, 5, 10, 20, 35]
     n_cols = len(epochs_to_plot)
@@ -70,14 +70,10 @@ def plot_curriculum_noise(
             level = noise_sched.level(epoch)
             noise_aug.set_level(level)
 
-            mean = I_raw.mean(dim=(2, 3), keepdim=True)
-            std = I_raw.std(dim=(2, 3), keepdim=True).clamp_min(1e-6)
-            I_norm = (I_raw - mean) / std
+            # Pass the 4D tensor [1, 1, H, W] into __call__ as expected
+            img_raw_noisy, img_norm_noisy, _, _ = noise_aug(I_raw, phi_hint=None)
 
-            # Pass the 3D tensor [1, H, W] into __call__ as expected
-            img, _, _ = noise_aug(I_raw[0], I_norm[0], None)
-
-            img_np = img[0].cpu().numpy()
+            img_np = img_raw_noisy[0, 0].cpu().numpy()
 
             ax = axes[i]
             ax.imshow(img_np, cmap="gray", origin="lower", aspect="equal")

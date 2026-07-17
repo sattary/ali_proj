@@ -219,14 +219,7 @@ def build_dataloaders(
 ) -> Tuple[DataLoader, DataLoader | None, DataLoader | None]:
     """Construct training, validation, and test DataLoaders."""
 
-    # Python 3.12+ explicitly deprecates fork() in multithreaded (PyTorch) environments.
-    # Force 'spawn' to prevent hard deadlocks on process boundary.
-    import multiprocessing as mp
 
-    try:
-        mp.set_start_method("spawn", force=True)
-    except RuntimeError:
-        pass
 
     paths = discover_h5_shards(cfg.data)
     if not paths:

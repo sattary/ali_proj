@@ -28,7 +28,7 @@ class TestComputeMetrics:
 
 class TestMAEGradLoss:
     def test_zero_on_perfect(self):
-        loss_fn = MAEGradLoss(w_mae=1.0, w_grad=1.0)
+        loss_fn = MAEGradLoss(w_mae=1.0, w_grad=1.0, w_curv=0.0)
         phi = torch.randn(2, 1, 32, 32)
         total, parts = loss_fn(phi, phi)
         assert total.item() == pytest.approx(0.0, abs=1e-5)

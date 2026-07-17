@@ -33,18 +33,18 @@ Option A = `plans/015-option-a-reference-guided-fallback.md` only if B fails abs
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001  | Write integration tests for core training loop | P1 | M | — | TODO |
+| 001  | Write integration tests for core training loop | P1 | M | — | DONE |
 | 002  | Fix EMA update inside optimizer step check | P1 | S | 001 | DONE |
-| 003  | Prefetch validation visualization batch | P2 | S | 001 | TODO |
-| 004  | Optimize HDF5 DataLoader chunk reads | P2 | L | 001 | TODO |
-| 005  | Refactor CLI into submodule layering | P2 | M | 014 recommended first | TODO |
-| 006  | Allow zero-length validation and test splits | P3 | S | 001 | TODO |
+| 003  | Prefetch validation visualization batch | P2 | S | 001 | DONE |
+| 004  | Optimize HDF5 DataLoader chunk reads | P2 | L | 001 | DONE |
+| 005  | Refactor CLI into submodule layering | P2 | M | 014 recommended first | DONE |
+| 006  | Allow zero-length validation and test splits | P3 | S | 001 | DONE |
 | 007  | Affine scale leakage → piston_align metrics | P0 | M | 013 recommended | DONE |
-| 008  | Reproducibility / determinism / CI baseline | P1 | M | — | TODO |
+| 008  | Reproducibility / determinism / CI baseline | P1 | M | — | DONE |
 | 009  | `phi_hint` GT leakage / hint_mode (Option B) | P0 | M | 013 soft | DONE |
 | 010  | Selection + HPO + test reporting metric | P0 | S | **007** | DONE |
 | 011  | Doc drift and dead artifacts | P1 | M | B wording | DONE |
-| 012  | OOM recovery reproducibility | P2 | M | 001 recommended | TODO |
+| 012  | OOM recovery reproducibility | P2 | M | 001 recommended | DONE |
 | 013  | Disable val/test geometric augmentation | P0 | S | — | DONE |
 | 014  | Fix dead analysis CLI entrypoints | P1 | S | — | DONE |
 | 015  | Option A reference-guided fallback (future) | P3 | M–L | B first | TODO |

@@ -75,10 +75,10 @@ This plan *is* the test plan. You are implementing the tests.
 
 ## Done criteria
 
-- [ ] `uv run pytest tests/test_dataset.py` exits 0; new tests pass
-- [ ] `uv run pytest tests/test_train.py` exits 0; new tests pass
-- [ ] No files outside the in-scope list are modified (`git status`)
-- [ ] `plans/README.md` status row updated
+- [x] `uv run pytest tests/test_dataset.py` exits 0; new tests pass
+- [x] `uv run pytest tests/test_train.py` exits 0; new tests pass
+- [x] No files outside the in-scope list are modified (`git status`)
+- [x] `plans/README.md` status row updated
 
 ## STOP conditions
 

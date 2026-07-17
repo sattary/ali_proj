@@ -13,6 +13,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from ..data import build_dataloaders
+from ..data.augmentation import prepare_batch
 from torch.amp import autocast
 from tqdm.auto import tqdm
 
@@ -99,7 +101,7 @@ def _evaluate_loss(
 
 def plot_loss_landscape(
     checkpoint_path: str,
-    data_dir: str,
+    data_dir: str | None = None,
     out_path: str = "results/figs/loss_landscape.png",
     grid_size: int = 31,
     alpha_range: float = 1.0,
@@ -120,9 +122,13 @@ def plot_loss_landscape(
         config_path:     Optional config override.
     """
     from ..core.inference import load_inference_state
-    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir='', config_path=config_path)
+    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir=data_dir, config_path=config_path)
 
-    loss_fn = MAEGradLoss(w_mae=cfg.loss.w_mae, w_grad=cfg.loss.w_grad)
+    loss_fn = MAEGradLoss(
+        w_mae=cfg.loss.w_mae,
+        w_grad=cfg.loss.w_grad,
+        w_curv=cfg.loss.w_curv,
+    ).to(device)
 
     train_loader, val_loader, test_loader = build_dataloaders(
         cfg, device, seed=cfg.logging.seed

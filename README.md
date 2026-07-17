@@ -22,7 +22,7 @@ Supervised deep learning for 2D phase reconstruction from synthetic interferogra
 - TTA, GradCAM, noise sweeps, ONNX / TorchScript export
 - Nature-style figure helpers
 
-CLI is **flat** (not nested): `phase-unwrap generate|train|tune|…`.
+CLI provides top-level commands for core tasks (`generate`, `train`, `tune`) and nested commands for tools (`eval`, `export`, `plot`).
 
 ---
 

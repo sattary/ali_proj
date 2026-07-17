@@ -18,6 +18,8 @@ from .style import (
     nature_style,
     save_figure,
 )
+from ..data import build_dataloaders
+from ..data.augmentation import prepare_batch
 from .utils import (
     to_numpy,
     draw_error_panel,
@@ -28,7 +30,7 @@ from .utils import (
 @torch.no_grad()
 def plot_noise_comparison_grid(
     checkpoint_path: str,
-    data_dir: str,
+    data_dir: str | None = None,
     out_path: str = "results/figs/noise_comparison",
     n_samples: int = 4,
     noise_level: float = 1.0,
@@ -43,7 +45,7 @@ def plot_noise_comparison_grid(
         3. Difference (Noisy - Clean)
     """
     from ..core.inference import load_inference_state
-    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir='', config_path=config_path)
+    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir=data_dir, config_path=config_path)
 
     # Build clean dataloader (no noise)
     cfg_clean = cfg.__class__()

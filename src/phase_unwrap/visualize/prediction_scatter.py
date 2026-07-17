@@ -26,13 +26,15 @@ from .style import (
     nature_style,
     save_figure,
 )
+from ..data import build_dataloaders
+from ..data.augmentation import prepare_batch
 from .utils import to_numpy
 
 
 @torch.no_grad()
 def plot_prediction_scatter(
     checkpoint_path: str,
-    data_dir: str,
+    data_dir: str | None = None,
     out_path: str = "results/figs/prediction_scatter",
     config_path: str | None = None,
     max_samples: int = 1000,
@@ -44,7 +46,7 @@ def plot_prediction_scatter(
     Create prediction vs GT scatter with hexbin and Bland-Altman.
     """
     from ..core.inference import load_inference_state
-    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir='', config_path=config_path)
+    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir=data_dir, config_path=config_path)
 
     # Datalaoder
     train_loader, val_loader, test_loader = build_dataloaders(
