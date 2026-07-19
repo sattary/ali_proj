@@ -16,7 +16,6 @@ import torch
 from torch.amp import autocast
 
 from ..core.ops import piston_align
-from ..data.generate import _build_grid, generate_sample
 from ..visualize.style import (
     DOUBLE_COL,
     create_nature_palette,
@@ -39,6 +38,7 @@ def _add_gaussian_noise(interferogram: np.ndarray, snr_db: float) -> np.ndarray:
 @torch.no_grad()
 def noise_robustness_sweep(
     checkpoint_path: str,
+    data_dir: str,
     out_path: str = "results/figs/noise_robustness",
     snr_range: tuple[float, float] = (5.0, 40.0),
     n_snr_steps: int = 8,
@@ -56,9 +56,27 @@ def noise_robustness_sweep(
     - Statistical trend analysis
     """
     from ..core.inference import load_inference_state
-    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir='', config_path=config_path)
 
-    x, y, r2 = _build_grid()
+    model, cfg, loader, device = load_inference_state(
+        checkpoint_path, data_dir=data_dir, subset="test", config_path=config_path
+    )
+
+    # Collect n_samples from the held-out test split (once, reused across SNR levels)
+    test_samples: list[tuple[np.ndarray, np.ndarray]] = []
+    for I_raw_batch, phi_gt_batch in loader:
+        for i in range(I_raw_batch.size(0)):
+            if len(test_samples) >= n_samples:
+                break
+            I_clean = I_raw_batch[i, 0].numpy()
+            dphi = phi_gt_batch[i, 0].numpy()
+            test_samples.append((I_clean, dphi))
+        if len(test_samples) >= n_samples:
+            break
+
+    if not test_samples:
+        raise ValueError(
+            f"Test split is empty. Check data_dir={data_dir!r} and test_frac in config."
+        )
 
     snr_levels = np.linspace(snr_range[0], snr_range[1], n_snr_steps)
     snr_eval = list(snr_levels) + [float("inf")]
@@ -69,10 +87,8 @@ def noise_robustness_sweep(
 
     for snr_db in snr_eval:
         maes: list[float] = []
-        test_rng = np.random.default_rng(seed)
 
-        for _ in range(n_samples):
-            I_clean, dphi = generate_sample(x, y, r2, test_rng)
+        for I_clean, dphi in test_samples:
 
             I_noisy = (
                 I_clean if math.isinf(snr_db) else _add_gaussian_noise(I_clean, snr_db)

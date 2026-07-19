@@ -77,6 +77,7 @@ def eval_noise_cmd(
 
     noise_robustness_sweep(
         checkpoint,
+        data_dir=data_dir,
         out_path=out,
         snr_range=(snr_min, snr_max),
         n_snr_steps=n_steps,
