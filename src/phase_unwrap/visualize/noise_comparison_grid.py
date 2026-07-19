@@ -19,7 +19,6 @@ from .style import (
     save_figure,
 )
 from ..data import build_dataloaders
-from ..data.augmentation import prepare_batch
 from .utils import (
     to_numpy,
     draw_error_panel,

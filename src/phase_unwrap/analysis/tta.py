@@ -4,7 +4,6 @@ Test-time augmentation (TTA) for phase prediction.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Sequence
 
 import torch

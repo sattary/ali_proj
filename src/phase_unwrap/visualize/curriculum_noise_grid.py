@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import torch
 
 from ..core.config import load_train_config
-from ..data.augmentation import prepare_batch, NoiseAug, NoiseScheduler
+from ..data.augmentation import NoiseAug, NoiseScheduler
 from ..data.dataset import H5ShardDataset, discover_h5_shards
 from .style import nature_style, save_figure
 

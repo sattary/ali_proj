@@ -14,7 +14,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from ..data import build_dataloaders
-from ..data.augmentation import prepare_batch
 from torch.amp import autocast
 from tqdm.auto import tqdm
 

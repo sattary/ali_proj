@@ -5,7 +5,6 @@ Loads arbitrary size inputs, pads dynamically, and runs inference.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Optional
 
@@ -130,6 +129,6 @@ def run_inference(
     plt.savefig(png_out, dpi=150, bbox_inches="tight")
     plt.close()
 
-    print(f"Inference complete.")
+    print("Inference complete.")
     print(f" -> Raw Phase Matrix: {npy_out}")
     print(f" -> Visualization:    {png_out}")

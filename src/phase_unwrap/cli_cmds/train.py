@@ -51,7 +51,6 @@ def train_cmd(
     epochs: EpochsOpt = None,
 ) -> None:
     """Train the UNetRes2 absolute phase reconstruction model."""
-    import torch
     from .training.train import train as run_train
 
     cfg: TrainConfig = load_train_config(config)
@@ -126,7 +125,6 @@ def multiseed_cmd(
     epochs: EpochsOpt = None,
 ) -> None:
     """Run N training runs with different seeds, aggregate results."""
-    import torch
     from .training.multiseed import run_multiseed
 
     import random as _rnd
@@ -165,7 +163,6 @@ def ablation_cmd(
     epochs: EpochsOpt = None,
 ) -> None:
     """Run ablation study and produce LaTeX comparison table."""
-    import torch
     from .training.ablation import run_ablation
 
     import random as _rnd

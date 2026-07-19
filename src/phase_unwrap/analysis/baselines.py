@@ -4,13 +4,11 @@ Classical phase unwrapping baselines.
 
 from __future__ import annotations
 
-from pathlib import Path
 
 import numpy as np
 import torch
 
 from ..core.ops import piston_align
-from ..data.generate import _build_grid, generate_sample
 
 
 def _unwrap_skimage(interferogram: np.ndarray) -> np.ndarray:

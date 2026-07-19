@@ -1,5 +1,4 @@
 import typer
-from typing import Optional
 
 DataApp = typer.Typer(help="Data commands.")
 

@@ -26,7 +26,6 @@ if _HEADLESS:
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from ..data.augmentation import prepare_batch
 
 from ..core.utils import ensure_dir
 from .utils import (
