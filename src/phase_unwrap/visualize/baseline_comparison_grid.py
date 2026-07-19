@@ -11,11 +11,10 @@ import numpy as np
 import seaborn as sns
 import torch
 from ..data import build_dataloaders
-from ..data.augmentation import prepare_batch
 from torch.amp import autocast
 
 from ..analysis.baselines import _unwrap_itoh, _unwrap_skimage
-from ..core.ops import affine_align
+from ..core.ops import piston_align
 from .style import (
     CMAP_INTENSITY,
     DOUBLE_COL,
@@ -50,11 +49,9 @@ def plot_baseline_comparison(
             raise ValueError("Test set requested but test_frac=0 in config.")
         loader = test_loader
     elif subset == "val":
-        loader = (
-            val_loader
-            if (val_loader is not None and len(val_loader) > 0)
-            else train_loader
-        )
+        if val_loader is None or len(val_loader) == 0:
+            raise ValueError("Validation set requested but val_frac=0 in config.")
+        loader = val_loader
     else:
         loader = train_loader
 
@@ -71,7 +68,7 @@ def plot_baseline_comparison(
         else:
             phi_abs = phi_raw + k_off
 
-    phi_aligned, _, _ = affine_align(phi_abs, phi_gt)
+    phi_aligned, _ = piston_align(phi_abs, phi_gt)
     unet_np = phi_aligned.cpu().numpy()
 
     with nature_style():
@@ -104,7 +101,7 @@ def plot_baseline_comparison(
                 itoh_pred = _unwrap_itoh(I_img)
                 itoh_t = torch.from_numpy(itoh_pred).unsqueeze(0).unsqueeze(0)
                 gt_t = torch.from_numpy(gt_img).unsqueeze(0).unsqueeze(0)
-                itoh_aligned, _, _ = affine_align(itoh_t, gt_t)
+                itoh_aligned, _ = piston_align(itoh_t, gt_t)
                 itoh_img = itoh_aligned.numpy()[0, 0]
             except Exception:
                 itoh_img = np.zeros_like(gt_img)
@@ -112,7 +109,7 @@ def plot_baseline_comparison(
             try:
                 lsq_pred = _unwrap_skimage(I_img)
                 lsq_t = torch.from_numpy(lsq_pred).unsqueeze(0).unsqueeze(0)
-                lsq_aligned, _, _ = affine_align(lsq_t, gt_t)
+                lsq_aligned, _ = piston_align(lsq_t, gt_t)
                 lsq_img = lsq_aligned.numpy()[0, 0]
             except Exception:
                 lsq_img = np.zeros_like(gt_img)

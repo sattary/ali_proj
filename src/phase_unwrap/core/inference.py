@@ -59,7 +59,9 @@ def load_inference_state(
             raise ValueError("Test set requested but test_frac=0 in config.")
         loader = test_loader
     elif subset == "val":
-        loader = val_loader if (val_loader is not None and len(val_loader) > 0) else train_loader
+        if val_loader is None or len(val_loader) == 0:
+            raise ValueError("Validation set requested but val_frac=0 in config.")
+        loader = val_loader
     else:
         loader = train_loader
 
