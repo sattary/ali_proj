@@ -114,9 +114,14 @@ def _generate_shard_worker(args: Tuple[int, int, int, Path]) -> int:
         phi_buf[local, 0] = dphi_sample
 
     shard_name = out_path / f"train_shard_{shard_idx:03d}.h5"
+    # Rationale (perf): chunk on the 128-sample block boundary used by
+    # H5ShardDataset._cache_size and switch gzip-4 -> lzf. A block-cache miss
+    # now costs one lzf decompress (~10x faster than gzip) instead of 128
+    # independent 1-sample gzip decompresses, which was starving the GPU.
+    chunk_n = min(128, n_in_shard)
     with h5py.File(shard_name, "w") as f:
-        f.create_dataset("I", data=I_buf, chunks=(1, 1, NY, NX), compression="gzip", compression_opts=4)
-        f.create_dataset("phi", data=phi_buf, chunks=(1, 1, NY, NX), compression="gzip", compression_opts=4)
+        f.create_dataset("I", data=I_buf, chunks=(chunk_n, 1, NY, NX), compression="lzf")
+        f.create_dataset("phi", data=phi_buf, chunks=(chunk_n, 1, NY, NX), compression="lzf")
 
     return n_in_shard
 

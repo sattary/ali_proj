@@ -13,6 +13,7 @@ Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` | `REJECTED`
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
 | **015** | Option A reference-guided fallback (**future only**) | P3 | M–L | B stable + lab protocol | TODO |
+| **019** | Fix gzip codec + dataloader throughput (GPU starvation) | P1 | S | none | DONE |
 
 **Owner science lock (2026-07-15):** primary path = **Option B** (no GT / no lab reference channel).  
 Option A = `plans/015-option-a-reference-guided-fallback.md` only if B fails absolute metrology needs.

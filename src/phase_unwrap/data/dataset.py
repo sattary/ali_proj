@@ -274,6 +274,11 @@ def build_dataloaders(
     )
     if safe_workers > 0 and getattr(cfg.data, "persistent_workers", False):
         dl_kwargs["persistent_workers"] = True
+    if safe_workers > 0:
+        # Rationale (perf): each worker prefetches this many batches ahead so
+        # lzf-decompressed blocks are ready before the GPU asks, keeping the
+        # tiny UNet from stalling on I/O between iterations.
+        dl_kwargs["prefetch_factor"] = getattr(cfg.data, "prefetch_factor", 4)
 
     train_sampler = HDF5BlockSampler(train_ds, generator=g)
     train_loader = DataLoader(train_ds, sampler=train_sampler, **dl_kwargs)

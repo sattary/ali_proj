@@ -31,6 +31,7 @@ class DataConfig:
     test_frac: float = 0.1
     workers: int = 4
     persistent_workers: bool = False
+    prefetch_factor: int = 4
     augment: bool = True
 
 
