@@ -21,7 +21,7 @@ def data_generate(
     seed: int = typer.Option(1337, "--seed", help="Random seed for reproducibility."),
 ) -> None:
     """Generate synthetic interferogram data to HDF5 shards."""
-    from .data.generate import generate_to_h5
+    from phase_unwrap.data.generate import generate_to_h5
 
     generate_to_h5(
         out_dir=out_dir,

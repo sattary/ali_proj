@@ -25,7 +25,7 @@ def eval_baselines_cmd(
     ),
 ) -> None:
     """Evaluate classical unwrapping baselines (optionally with DL model)."""
-    from .analysis.baselines import evaluate_baselines, evaluate_dl_baseline
+    from phase_unwrap.analysis.baselines import evaluate_baselines, evaluate_dl_baseline
 
     typer.echo("Classical baselines:")
     evaluate_baselines(data_dir=data_dir, n_samples=n_samples)
@@ -49,7 +49,7 @@ def eval_tta_cmd(
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Evaluate with test-time augmentation (TTA)."""
-    from .analysis.tta import evaluate_tta
+    from phase_unwrap.analysis.tta import evaluate_tta
 
     evaluate_tta(checkpoint, data_dir, n_augments=n_augments, config_path=config)
 
@@ -73,7 +73,7 @@ def eval_noise_cmd(
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Evaluate model robustness across SNR levels."""
-    from .analysis.noise_sweep import noise_robustness_sweep
+    from phase_unwrap.analysis.noise_sweep import noise_robustness_sweep
 
     noise_robustness_sweep(
         checkpoint,
@@ -99,7 +99,7 @@ def eval_benchmark_cmd(
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Benchmark inference latency and throughput."""
-    from .analysis.export import benchmark_inference
+    from phase_unwrap.analysis.export import benchmark_inference
 
     benchmark_inference(
         checkpoint,

@@ -8,65 +8,22 @@ Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` | `REJECTED`
 
 ---
 
-## Q1-critical path (execute first)
-
-Do these before more training or paper number freezes. Order is dependency-aware.
+## Active Plans
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| **013** | Disable geometric aug on val/test; honor `DataConfig.augment` | P0 | S | — | DONE |
-| **007** | Offset-only (piston) metrics; stop GT scale fit in `run_eval` | P0 | M | 013 recommended | DONE |
-| **010** | Select/HPO on honest metric; persist held-out test metrics | P0 | S | **007** hard | DONE |
-| **009** | Unify `phi_hint`; **Option B locked** (`hint_mode=zero`) | P0 | M | 013 soft | DONE |
-| **014** | Repair dead GradCAM / TTA / TorchScript / benchmark CLI | P1 | S | — | DONE |
-| **011** | Fix doc drift (README CLI, proposal claims, dead git_automation text) | P1 | M | B wording | DONE |
 | **015** | Option A reference-guided fallback (**future only**) | P3 | M–L | B stable + lab protocol | TODO |
-| **017** | Evaluate noise sweep on held-out test split, not fresh synthetic data | P1 | M | — | DONE |
-| **018** | Remove silent `train_loader` fallback + GT-scale MAE in figures | P2 | S | — | DONE |
-
-After 007+009+010+013 land: **retrain from scratch under B**, then multiseed, real-lab smoke, proposal tables.
 
 **Owner science lock (2026-07-15):** primary path = **Option B** (no GT / no lab reference channel).  
 Option A = `plans/015-option-a-reference-guided-fallback.md` only if B fails absolute metrology needs.
 
 ---
 
-## Full index (all plans)
+## Archive
 
-| Plan | Title | Priority | Effort | Depends on | Status |
-|------|-------|----------|--------|------------|--------|
-| 001  | Write integration tests for core training loop | P1 | M | — | DONE |
-| 002  | Fix EMA update inside optimizer step check | P1 | S | 001 | DONE |
-| 003  | Prefetch validation visualization batch | P2 | S | 001 | DONE |
-| 004  | Optimize HDF5 DataLoader chunk reads | P2 | L | 001 | DONE |
-| 005  | Refactor CLI into submodule layering | P2 | M | 014 recommended first | DONE |
-| 006  | Allow zero-length validation and test splits | P3 | S | 001 | DONE |
-| 007  | Affine scale leakage → piston_align metrics | P0 | M | 013 recommended | DONE |
-| 008  | Reproducibility / determinism / CI baseline | P1 | M | — | DONE |
-| 009  | `phi_hint` GT leakage / hint_mode (Option B) | P0 | M | 013 soft | DONE |
-| 010  | Selection + HPO + test reporting metric | P0 | S | **007** | DONE |
-| 011  | Doc drift and dead artifacts | P1 | M | B wording | DONE |
-| 012  | OOM recovery reproducibility | P2 | M | 001 recommended | DONE |
-| 013  | Disable val/test geometric augmentation | P0 | S | — | DONE |
-| 014  | Fix dead analysis CLI entrypoints | P1 | S | — | DONE |
-| 015  | Option A reference-guided fallback (future) | P3 | M–L | B first | TODO |
-| 016  | Deep audit findings index | — | — | — | DONE (findings folded into 007–015) |
-| 017  | Noise sweep on held-out test split | P1 | M | — | DONE |
-| 018  | Remove train_loader fallback + affine MAE in figures | P2 | S | — | DONE |
+Plans 001–014, 016, 017, and 018 were successfully executed and moved to the `archive/` directory. These plans addressed test stability, data loader optimization, CLI restructuring, ground-truth leakage, and strict methodology adherence for metric evaluations.
 
----
-
-## Dependency notes
-
-- **013 before 007/010 re-eval**: val metrics were randomly D4-augmented; honest numbers need fixed orientation.
-- **007 before 010**: selection must use the metric 007 defines (prefer raw `AbsMAE`).
-- **009 = Option B locked**: default `hint_mode=zero`; train/val/test/infer match lab (no GT channel). `gt_center` ablation only. Invalid: intensity-as-wrapped-phase.
-- **015 = Option A later**: lab-measurable reference only; never GT center as product default.
-- **001 before 002/003/004/006/012** when touching train loop heavily — characterization first.
-- **014 before 005**: stop shipping broken entrypoints before a large CLI restructure.
-- **011**: proposal must claim reference-free continuous phase (B), not GT-anchored absolute magic.
-- **017 and 018 are independent**: can be executed in parallel or in either order. Both address leakage/validity issues found in the 2026-07-18 re-audit that survived the first round of fixes (007–014).
-- **018 folds in Finding E** (`affine_align` public export): removing it from `core/__init__.py` is part of plan 018, not a separate plan.
+See `archive/` for historical plan documents.
 
 ---
 
@@ -80,37 +37,9 @@ Option A = `plans/015-option-a-reference-guided-fallback.md` only if B fails abs
 
 ---
 
-## Findings considered and rejected
-
-- **Restore cloud git_automation / multi-GPU as default work**: deferred — product choice. Scrub docs (011) unless owner requests restore.
-- **Force Mish as default activation**: not a bug; primary run and defaults are SiLU; Mish remains optional in model code.
-- **Move curriculum noise to DataLoader workers (perf)**: real, secondary to metric honesty; re-audit later.
-- **Full visualize predict-layer refactor**: defer until hint + metric policy freeze.
-- **Intensity `angle(exp(1j*I))` as valid wrapped hint**: rejected as a scientific mode (see 009 refresh).
-
-### 2026-07-18 leakage re-audit — rejected
-
-- **GT phase leakage via `phi_hint`**: `hint_mode="zero"` locked end-to-end; verified in `augmentation.py:269`, `prepare_batch:308-313`, `tests/test_hint.py`. Plan 009 genuinely landed.
-- **GT scale fit in checkpoint selection**: `run_eval` uses raw `AbsMAE`; `piston_align` (offset-only) is the only alignment for `TopoMAE`. Plan 007 genuinely landed.
-- **Val/test geometric augmentation**: `build_dataloaders` passes `augment=False` to val/test. Plan 013 genuinely landed.
-- **`weights_only=False` in `torch.load`**: all five callsites use `weights_only=True`. SEC-02 from plan 016 resolved.
-- **`baselines.py` on fresh synthetic data**: fixed by commit `c9a978c`. DIR-03 from plan 016 resolved.
-- **N+1 I/O amplification in dataloader**: addressed by `HDF5BlockSampler` + LRU cache. PERF-01 from plan 016 resolved.
-- **Kaggle JWT leak in notebook**: cleared by commit `c6d2a1d`. SECURITY-01 from plan 016 resolved.
-- **HPO and training share val split seed** (Finding D): methodology concern, not a code bug. Deferred to paper-prep phase; fix would require a separate val split for HPO or nested CV, touching the split contract everywhere.
-- **`vis_batch` sourced from `train_loader`** (Finding C): no selection impact (val_loader drives `AbsMAE`); labeling concern only. Folded into plan 018's scope if desired, but not blocking.
-
----
-
 ## Executor quick start
 
 ```bash
 # Verify suite before/after each plan
 uv run pytest tests/ -q
-
-# Next plans to execute (2026-07-18 leakage re-audit)
-# open plans/017-noise-sweep-on-test-split.md
-# open plans/018-remove-train-fallback-and-affine-mae.md
 ```
-
-Do not implement plans from this chat without reading the plan file — each plan is self-contained for a cold executor.

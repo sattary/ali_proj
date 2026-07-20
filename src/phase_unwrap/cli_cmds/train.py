@@ -51,7 +51,7 @@ def train_cmd(
     epochs: EpochsOpt = None,
 ) -> None:
     """Train the UNetRes2 absolute phase reconstruction model."""
-    from .training.train import train as run_train
+    from phase_unwrap.training.train import train as run_train
 
     cfg: TrainConfig = load_train_config(config)
 
@@ -85,7 +85,7 @@ def tune_cmd(
 ) -> None:
     """Run Optuna hyperparameter search (TPE + MedianPruner)."""
     import torch
-    from .training.tune import run_tuning
+    from phase_unwrap.training.tune import run_tuning
 
     cfg: TrainConfig = load_train_config(config)
 
@@ -125,7 +125,7 @@ def multiseed_cmd(
     epochs: EpochsOpt = None,
 ) -> None:
     """Run N training runs with different seeds, aggregate results."""
-    from .training.multiseed import run_multiseed
+    from phase_unwrap.training.multiseed import run_multiseed
 
     import random as _rnd
 
@@ -163,7 +163,7 @@ def ablation_cmd(
     epochs: EpochsOpt = None,
 ) -> None:
     """Run ablation study and produce LaTeX comparison table."""
-    from .training.ablation import run_ablation
+    from phase_unwrap.training.ablation import run_ablation
 
     import random as _rnd
 

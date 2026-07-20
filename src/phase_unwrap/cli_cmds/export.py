@@ -21,7 +21,7 @@ def export_onnx_cmd(
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Export model to ONNX format."""
-    from .analysis.export import export_onnx
+    from phase_unwrap.analysis.export import export_onnx
 
     export_onnx(checkpoint, out_path=out, opset=opset, config_path=config)
 
@@ -38,7 +38,7 @@ def export_torchscript_cmd(
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Export model to TorchScript (traced) format."""
-    from .analysis.export import export_torchscript
+    from phase_unwrap.analysis.export import export_torchscript
 
     export_torchscript(checkpoint, out_path=out, config_path=config)
 
@@ -54,7 +54,7 @@ def export_table_cmd(
     epoch: int = typer.Option(-1, "--epoch", help="Which epoch (-1 = last)."),
 ) -> None:
     """Export training metrics to a LaTeX booktabs table."""
-    from .analysis.export_latex import metrics_to_latex
+    from phase_unwrap.analysis.export_latex import metrics_to_latex
 
     table = metrics_to_latex(run_dir, out_path=out, epoch=epoch)
     typer.echo(table)

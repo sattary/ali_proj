@@ -24,7 +24,7 @@ def run_infer_cmd(
     config: Optional[str] = typer.Option(None, "--config", help="Path to config.yaml."),
 ) -> None:
     """Run real-world inference on an arbitrary interferogram."""
-    from .analysis.inference import run_inference
+    from phase_unwrap.analysis.inference import run_inference
 
     run_inference(
         input_path=input_path,
