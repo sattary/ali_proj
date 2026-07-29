@@ -4,8 +4,10 @@ Tests for losses and ops.
 
 from __future__ import annotations
 
+import math
 import torch
 import pytest
+
 
 from phase_unwrap.core.losses import MAEGradLoss, compute_metrics
 from phase_unwrap.core.ops import FixedSobel, affine_align, curvature_loss, piston_align
@@ -139,24 +141,25 @@ class TestPCLCNOperators:
         assert gx.min() >= -math.pi - 1e-5 and gx.max() <= math.pi + 1e-5
 
     def test_differentiable_poisson_solver(self):
-        import math
         from phase_unwrap.core.ops import DifferentiablePoissonSolver
         solver = DifferentiablePoissonSolver(128, 128)
         
-        # Test on smooth synthetic gradient field (gradient of a paraboloid)
+        # Test on Neumann-compliant synthetic field cos(pi*x)*cos(pi*y)
         y = torch.linspace(-1, 1, 128).view(1, 1, 128, 1)
         x = torch.linspace(-1, 1, 128).view(1, 1, 1, 128)
-        phi_gt = x**2 + y**2
+        phi_gt = torch.cos(math.pi * x) * torch.cos(math.pi * y)
         gx = torch.diff(phi_gt, dim=-1, prepend=phi_gt[..., :1])
         gy = torch.diff(phi_gt, dim=-2, prepend=phi_gt[..., :1, :])
         
         phi_rec = solver(gx, gy)
         assert phi_rec.shape == (1, 1, 128, 128)
         
-        # Should reconstruct phase up to piston offset
+        # Reconstruct phase up to piston offset
         phi_gt_zero = phi_gt - phi_gt.mean()
         phi_rec_zero = phi_rec - phi_rec.mean()
         torch.testing.assert_close(phi_rec_zero, phi_gt_zero, atol=0.05, rtol=0.05)
+
+
 
     def test_masked_zernike_projection(self):
         from phase_unwrap.core.ops import MaskedZernikeProjection
@@ -165,4 +168,37 @@ class TestPCLCNOperators:
         c, phi_z = proj(phi)
         assert c.shape == (2, 15)
         assert phi_z.shape == (2, 1, 128, 128)
+
+
+class TestPCLCNLosses:
+    def test_complex_domain_loss(self):
+        from phase_unwrap.core.losses import ComplexDomainLoss
+        loss_fn = ComplexDomainLoss()
+        phi = torch.randn(2, 1, 32, 32)
+        l = loss_fn(phi, phi)
+        assert l.item() == pytest.approx(0.0, abs=1e-6)
+
+    def test_gradient_curl_loss(self):
+        from phase_unwrap.core.losses import GradientCurlLoss
+        loss_fn = GradientCurlLoss()
+        # Conservative field has zero curl
+        gx = torch.ones(2, 1, 32, 32)
+        gy = torch.ones(2, 1, 32, 32)
+        l = loss_fn(gx, gy)
+        assert l.item() == pytest.approx(0.0, abs=1e-6)
+
+    def test_pclcn_loss_forward(self):
+        from phase_unwrap.core.losses import PCLCNLoss
+        loss_fn = PCLCNLoss()
+        pred = torch.randn(2, 1, 32, 32, requires_grad=True)
+        gt = torch.randn(2, 1, 32, 32)
+        gx = torch.randn(2, 1, 32, 32)
+        gy = torch.randn(2, 1, 32, 32)
+        
+        total, metrics = loss_fn(pred, gt, gx, gy)
+        total.backward()
+        assert pred.grad is not None
+        assert "mae" in metrics
+        assert "curl" in metrics
+
 

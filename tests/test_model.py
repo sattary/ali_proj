@@ -72,3 +72,34 @@ class TestEMA:
         # EMA should be different from model
         for p_ema, p in zip(ema.m.parameters(), model.parameters()):
             assert not torch.allclose(p_ema, p, atol=1e-6)
+
+
+class TestPCLCNModel:
+    def test_pclcn_model_forward(self):
+        from phase_unwrap.model.unet import PCLCNModel
+        model = PCLCNModel(height=128, width=128, base=16)
+        I_raw = torch.rand(2, 1, 128, 128)
+        grad_phi2 = torch.randn(2, 2, 128, 128)
+
+        phi_final, gx_tilde, gy_tilde, c_zernike, phi_zernike = model(I_raw, grad_phi2)
+
+        assert phi_final.shape == (2, 1, 128, 128)
+        assert gx_tilde.shape == (2, 1, 128, 128)
+        assert gy_tilde.shape == (2, 1, 128, 128)
+        assert c_zernike.shape == (2, 15)
+        assert phi_zernike.shape == (2, 1, 128, 128)
+
+    def test_pclcn_backward(self):
+        from phase_unwrap.model.unet import PCLCNModel
+        model = PCLCNModel(height=128, width=128, base=16)
+        I_raw = torch.rand(2, 1, 128, 128)
+        grad_phi2 = torch.randn(2, 2, 128, 128)
+
+        phi_final, gx_tilde, gy_tilde, _, _ = model(I_raw, grad_phi2)
+        loss = phi_final.mean() + gx_tilde.mean() + gy_tilde.mean()
+        loss.backward()
+
+        for name, p in model.named_parameters():
+            if p.requires_grad:
+                assert p.grad is not None, f"No gradient for {name}"
+
