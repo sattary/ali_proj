@@ -109,20 +109,35 @@ class H5ShardDataset(Dataset):
         I_raw_t = torch.from_numpy(np.ascontiguousarray(I_np)).float()
         phi_gt_t = torch.from_numpy(np.ascontiguousarray(phi_np)).float()
 
+        if "grad_phi2" in f:
+            grad_block = f["grad_phi2"][block_start:block_end]
+            grad_np = grad_block[idx_in_block]
+            grad_phi2_t = torch.from_numpy(np.ascontiguousarray(grad_np)).float()
+        else:
+            # Fallback zero reference gradient if loading older shards
+            grad_phi2_t = torch.zeros((2, I_raw_t.shape[-2], I_raw_t.shape[-1]), dtype=torch.float32)
+
+
         # Geometric aug is train-only; val/test must be orientation-stable for metrics.
         if self.augment:
             if random.random() > 0.5:
                 I_raw_t = I_raw_t.flip(-1)
                 phi_gt_t = phi_gt_t.flip(-1)
+                grad_phi2_t = grad_phi2_t.flip(-1)
+                grad_phi2_t[0] *= -1.0  # Flip gx direction
             if random.random() > 0.5:
                 I_raw_t = I_raw_t.flip(-2)
                 phi_gt_t = phi_gt_t.flip(-2)
+                grad_phi2_t = grad_phi2_t.flip(-2)
+                grad_phi2_t[1] *= -1.0  # Flip gy direction
             k = random.randint(0, 3)
             if k > 0:
                 I_raw_t = torch.rot90(I_raw_t, k, dims=(-2, -1))
                 phi_gt_t = torch.rot90(phi_gt_t, k, dims=(-2, -1))
+                grad_phi2_t = torch.rot90(grad_phi2_t, k, dims=(-2, -1))
 
-        return I_raw_t, phi_gt_t
+        return I_raw_t, phi_gt_t, grad_phi2_t
+
 
     def close(self) -> None:
         """Close all open HDF5 file handles."""

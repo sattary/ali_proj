@@ -10,9 +10,11 @@ Contains:
 
 from __future__ import annotations
 
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 
 
 class FixedSobel(nn.Module):
@@ -221,10 +223,12 @@ class DifferentiablePoissonSolver(nn.Module):
         Returns:
             phi_base: [B, 1, H, W] integrated phase map (least-squares solution).
         """
-        # Compute divergence div(g) = d(gx)/dx + d(gy)/dy
-        div_x = torch.diff(gx, dim=-1, append=gx[..., -1:])
-        div_y = torch.diff(gy, dim=-2, append=gy[..., -1:, :])
+        # Compute discrete divergence div(g) = div_x(gx) + div_y(gy)
+        # Adjoint of forward difference is backward difference with zero boundary
+        div_x = gx - F.pad(gx[..., :-1], (1, 0))
+        div_y = gy - F.pad(gy[..., :-1, :], (0, 0, 1, 0))
         rho = div_x + div_y
+
 
         # 2D DCT-II: C_h @ rho @ C_w^T
         rho_dct = torch.matmul(torch.matmul(self.C_h, rho), self.C_w.t())

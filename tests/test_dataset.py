@@ -21,17 +21,20 @@ def test_h5shard_dataset(tmp_path):
     assert len(ds) == 5
     
     # Assert __getitem__
-    I_t, phi_t = ds[0]
+    I_t, phi_t, grad_phi2_t = ds[0]
     assert isinstance(I_t, torch.Tensor)
     assert isinstance(phi_t, torch.Tensor)
+    assert isinstance(grad_phi2_t, torch.Tensor)
     assert I_t.shape == (1, 16, 16)
     assert phi_t.shape == (1, 16, 16)
+    assert grad_phi2_t.shape == (2, 16, 16)
     
     # Fetch last item
-    I_t, phi_t = ds[4]
+    I_t, phi_t, grad_phi2_t = ds[4]
     assert I_t.shape == (1, 16, 16)
 
     ds.close()
+
 
 def test_smart_split_zero():
     paths = ["a.h5", "b.h5", "c.h5", "d.h5", "e.h5"]

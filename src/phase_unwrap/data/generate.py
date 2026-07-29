@@ -50,21 +50,31 @@ def _build_grid() -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     return x, y, r2
 
 
+def compute_reference_gradient(
+    x: np.ndarray, y: np.ndarray, r2: np.ndarray, alpha: float
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Compute analytical gradient of spherical reference beam (grad_phi2_x, grad_phi2_y)."""
+    grad_x = (K * alpha * x) / r2
+    grad_y = (K * alpha * y) / r2
+    return grad_x.astype(np.float32), grad_y.astype(np.float32)
+
+
 def generate_sample(
     x: np.ndarray,
     y: np.ndarray,
     r2: np.ndarray,
     rng: np.random.Generator,
-) -> Tuple[np.ndarray, np.ndarray]:
+    speckle_noise: float = 0.0,
+) -> Tuple[np.ndarray, np.ndarray, Tuple[np.ndarray, np.ndarray]]:
     """
-    Generate a single (interferogram, dphi) pair.
+    Generate a single (interferogram, dphi, grad_phi2) tuple.
 
     Returns:
-        interferogram:    float32 array of shape (128, 128) -- interferogram intensity.
-        dphi: float32 array of shape (128, 128) -- unwrapped phase (min = 0).
+        interferogram: float32 array of shape (128, 128) -- interferogram intensity.
+        dphi:          float32 array of shape (128, 128) -- unwrapped phase (min = 0).
+        grad_phi2:     (grad_x, grad_y) analytical reference beam gradients.
     """
     # ---- phi1: randomized wavefront ----
-    # MATLAB: r1 = sqrt(rand(1)*80 + x/50*(rand(1)-.5) + y/50*(rand(1)-.5))
     r1 = np.sqrt(
         rng.random() * 80.0
         + x / 50.0 * (rng.random() - 0.5)
@@ -73,31 +83,35 @@ def generate_sample(
     phi1 = K * r1
 
     # ---- low-order aberration via imresize ----
-    # MATLAB: deviation = rand(1, randi(3)) * 20
-    n_dev = rng.integers(1, 4)  # 1, 2, or 3 (matches randi(3))
+    n_dev = rng.integers(1, 4)  # 1, 2, or 3
     deviation = rng.random(n_dev) * 20.0
 
-    # MATLAB imresize(deviation, size(phi1)) uses bicubic interpolation (default).
-    # deviation has shape (1, n_dev); resize to (NY, NX).
-    scale_y = NY  # from 1 row to NY rows
-    scale_x = NX / n_dev  # from n_dev cols to NX cols
+    scale_y = NY
+    scale_x = NX / n_dev
     dev_2d = zoom(deviation.reshape(1, n_dev), (scale_y, scale_x), order=3)
     phi1 = phi1 + dev_2d
 
     # ---- phi2: reference beam ----
-    # MATLAB: phi2 = k*r2*(rand(1)-.5)
-    phi2 = K * r2 * (rng.random() - 0.5)
+    alpha = float(rng.random() - 0.5)
+    phi2 = K * r2 * alpha
+    grad_phi2_x, grad_phi2_y = compute_reference_gradient(x, y, r2, alpha)
 
     # ---- interference ----
     E1 = E0 * np.exp(1j * phi1)
     E2 = E0 * np.exp(1j * phi2)
     interferogram = np.abs(E1 + E2) ** 2
 
+    # Add optional multiplicative laser speckle
+    if speckle_noise > 0.0:
+        speckle = rng.gamma(shape=1.0 / speckle_noise, scale=speckle_noise, size=interferogram.shape)
+        interferogram = interferogram * speckle
+
     # ---- ground truth unwrapped phase ----
     dp = phi1 - phi2
     dphi = dp - dp.min()
 
-    return interferogram.astype(np.float32), dphi.astype(np.float32)
+    return interferogram.astype(np.float32), dphi.astype(np.float32), (grad_phi2_x, grad_phi2_y)
+
 
 
 def _generate_shard_worker(args: Tuple[int, int, int, Path]) -> int:
@@ -107,23 +121,24 @@ def _generate_shard_worker(args: Tuple[int, int, int, Path]) -> int:
 
     I_buf = np.empty((n_in_shard, 1, NY, NX), dtype=np.float32)
     phi_buf = np.empty((n_in_shard, 1, NY, NX), dtype=np.float32)
+    grad_buf = np.empty((n_in_shard, 2, NY, NX), dtype=np.float32)
 
     for local in range(n_in_shard):
-        I_sample, dphi_sample = generate_sample(x, y, r2, rng)
+        I_sample, dphi_sample, (g2x, g2y) = generate_sample(x, y, r2, rng)
         I_buf[local, 0] = I_sample
         phi_buf[local, 0] = dphi_sample
+        grad_buf[local, 0] = g2x
+        grad_buf[local, 1] = g2y
 
     shard_name = out_path / f"train_shard_{shard_idx:03d}.h5"
-    # Rationale (perf): chunk on the 128-sample block boundary used by
-    # H5ShardDataset._cache_size and switch gzip-4 -> lzf. A block-cache miss
-    # now costs one lzf decompress (~10x faster than gzip) instead of 128
-    # independent 1-sample gzip decompresses, which was starving the GPU.
     chunk_n = min(128, n_in_shard)
     with h5py.File(shard_name, "w") as f:
         f.create_dataset("I", data=I_buf, chunks=(chunk_n, 1, NY, NX), compression="lzf")
         f.create_dataset("phi", data=phi_buf, chunks=(chunk_n, 1, NY, NX), compression="lzf")
+        f.create_dataset("grad_phi2", data=grad_buf, chunks=(chunk_n, 2, NY, NX), compression="lzf")
 
     return n_in_shard
+
 
 
 def generate_to_h5(
