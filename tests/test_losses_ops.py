@@ -117,3 +117,52 @@ class TestCurvatureLoss:
         x = torch.linspace(0, 1, 32).view(1, 1, 1, 32).expand(1, 1, 32, 32)
         loss = curvature_loss(x)
         assert loss.item() < 0.01  # approximately zero
+
+
+class TestPCLCNOperators:
+    def test_analytic_signal_stem(self):
+        from phase_unwrap.core.ops import AnalyticSignalStem
+        stem = AnalyticSignalStem()
+        I_off = torch.rand(2, 1, 128, 128)
+        w_phase, amp = stem(I_off)
+        assert w_phase.shape == (2, 1, 128, 128)
+        assert amp.shape == (2, 1, 128, 128)
+        assert w_phase.min() >= -math.pi - 1e-5 and w_phase.max() <= math.pi + 1e-5
+
+    def test_wrapped_gradient_operator(self):
+        from phase_unwrap.core.ops import WrappedGradientOperator
+        op = WrappedGradientOperator()
+        w_phase = torch.randn(2, 1, 128, 128)
+        gx, gy = op(w_phase)
+        assert gx.shape == (2, 1, 128, 128)
+        assert gy.shape == (2, 1, 128, 128)
+        assert gx.min() >= -math.pi - 1e-5 and gx.max() <= math.pi + 1e-5
+
+    def test_differentiable_poisson_solver(self):
+        import math
+        from phase_unwrap.core.ops import DifferentiablePoissonSolver
+        solver = DifferentiablePoissonSolver(128, 128)
+        
+        # Test on smooth synthetic gradient field (gradient of a paraboloid)
+        y = torch.linspace(-1, 1, 128).view(1, 1, 128, 1)
+        x = torch.linspace(-1, 1, 128).view(1, 1, 1, 128)
+        phi_gt = x**2 + y**2
+        gx = torch.diff(phi_gt, dim=-1, prepend=phi_gt[..., :1])
+        gy = torch.diff(phi_gt, dim=-2, prepend=phi_gt[..., :1, :])
+        
+        phi_rec = solver(gx, gy)
+        assert phi_rec.shape == (1, 1, 128, 128)
+        
+        # Should reconstruct phase up to piston offset
+        phi_gt_zero = phi_gt - phi_gt.mean()
+        phi_rec_zero = phi_rec - phi_rec.mean()
+        torch.testing.assert_close(phi_rec_zero, phi_gt_zero, atol=0.05, rtol=0.05)
+
+    def test_masked_zernike_projection(self):
+        from phase_unwrap.core.ops import MaskedZernikeProjection
+        proj = MaskedZernikeProjection(128, 128, num_modes=15)
+        phi = torch.randn(2, 1, 128, 128)
+        c, phi_z = proj(phi)
+        assert c.shape == (2, 15)
+        assert phi_z.shape == (2, 1, 128, 128)
+
