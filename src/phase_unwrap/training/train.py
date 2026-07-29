@@ -62,9 +62,11 @@ def run_eval(
     n = 0
 
     pbar = tqdm(loader, desc="Validating", leave=False, dynamic_ncols=True)
-    for I_raw, phi_gt in pbar:
+    for batch in pbar:
+        I_raw, phi_gt = batch[0], batch[1]
         I_raw = I_raw.to(device, non_blocking=True)
         phi_gt = phi_gt.to(device, non_blocking=True)
+
 
         I_input, phi_gt, _, _ = prepare_batch(
             I_raw, phi_gt, noise_aug=None, hint_mode=hint_mode
@@ -290,9 +292,11 @@ def train(
         cnt = 0
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{cfg.optim.epochs}", leave=False)
-        for I_raw, phi_gt in pbar:
+        for batch in pbar:
+            I_raw, phi_gt = batch[0], batch[1]
             I_raw = I_raw.to(device, non_blocking=True)
             phi_gt = phi_gt.to(device, non_blocking=True)
+
             
             I_input, phi_gt, I_raw_n, I_raw_c = prepare_batch(
                 I_raw, phi_gt, noise_aug=train_aug, hint_mode=cfg.aug.hint_mode
