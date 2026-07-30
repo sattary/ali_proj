@@ -280,6 +280,8 @@ class MaskedZernikeProjection(nn.Module):
 
     def __init__(self, height: int = 128, width: int = 128, num_modes: int = 15) -> None:
         super().__init__()
+        self.height = height
+        self.width = width
         self.num_modes = num_modes
 
         y = torch.linspace(-1.0, 1.0, height)
