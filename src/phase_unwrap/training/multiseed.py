@@ -1,33 +1,29 @@
 """
 Multi-seed training runner.
+Executes PCLCN training across multiple initialization seeds and aggregates raw CSV metrics.
 """
 
 from __future__ import annotations
 
 import csv
-import os
 from copy import deepcopy
+from pathlib import Path
 from typing import List
 
 import numpy as np
 
 from ..core.config import TrainConfig
-from ..core.utils import ensure_dir
 from .train import CSV_COLUMNS, train
 
 
-def _read_metrics_csv(path: str) -> list[dict[str, str]]:
-    with open(path, "r") as f:
-        return list(csv.DictReader(f))
-
-
-def _aggregate(run_dirs: List[str], out_path: str) -> None:
+def _aggregate(run_dirs: List[str], out_path: Path) -> None:
     """Read metrics.csv from each run, compute mean+/-std per epoch."""
     all_data: list[list[dict[str, str]]] = []
     for rd in run_dirs:
-        csv_path = os.path.join(rd, "metrics.csv")
-        if os.path.exists(csv_path):
-            all_data.append(_read_metrics_csv(csv_path))
+        csv_path = Path(rd) / "metrics.csv"
+        if csv_path.exists():
+            with csv_path.open("r", encoding="utf-8") as f:
+                all_data.append(list(csv.DictReader(f)))
 
     if not all_data:
         print("No metrics.csv files found to aggregate.")
@@ -40,7 +36,7 @@ def _aggregate(run_dirs: List[str], out_path: str) -> None:
     for c in numeric_cols:
         agg_header.extend([f"{c}_mean", f"{c}_std"])
 
-    with open(out_path, "w", newline="") as f:
+    with out_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(agg_header)
 
@@ -73,13 +69,11 @@ def run_multiseed(
     use_amp: bool = False,
 ) -> None:
     """
-    Rationale: Sequentially executes identical training configurations across diverse 
-    initialization seeds to rigorously measure statistical variance. Hardware flags 
-    (use_amp) are explicitly cascaded to bypass redundant auto-detection 
-    overhead in the inner loops, ensuring deterministic compute allocation.
+    Executes identical training configurations across multiple initialization seeds
+    to measure statistical variance and output aggregated raw metrics.
     """
-    base_dir = os.path.join(cfg.logging.runs_root, base_run_name)
-    ensure_dir(base_dir)
+    base_dir = Path(cfg.logging.runs_root) / base_run_name
+    base_dir.mkdir(parents=True, exist_ok=True)
 
     run_dirs: list[str] = []
 
@@ -98,7 +92,7 @@ def run_multiseed(
         train(seed_cfg)
         run_dirs.append(seed_cfg.logging.run_dir)
 
-    agg_path = os.path.join(base_dir, "aggregate.csv")
+    agg_path = base_dir / "aggregate.csv"
     _aggregate(run_dirs, agg_path)
 
     print(f"\nAll {len(seeds)} seed runs complete.")

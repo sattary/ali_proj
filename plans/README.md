@@ -22,8 +22,8 @@ Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` | `REJECTED`
 | **025** | Fix Undefined `subset` Variable in Noise Comparison Grid | P2 | S | none | DONE |
 | **026** | Add PCLCN End-to-End Integration Tests | P1 | S | 023, 024 | DONE |
 | **027** | Refactor `src/` Over-Engineering & Simplify Utilities (Ponytail Audit) | P2 | S | none | DONE |
-| **028** | Purge Legacy `UNetRes2` Models & Oracle Data Leaks from `src/` | P1 | M | none | TODO |
-| **029** | Modernize PCLCN Ablation & Multi-Seed Framework (Fast Core Matrix) | P1 | M | 028 | TODO |
+| **028** | Purge Legacy `UNetRes2` Models & Oracle Data Leaks from `src/` | P1 | M | none | DONE |
+| **029** | Modernize PCLCN Ablation & Multi-Seed Framework (Fast Core Matrix) | P1 | M | 028 | DONE |
 
 ---
 

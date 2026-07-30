@@ -321,6 +321,41 @@ class MaskedZernikeProjection(nn.Module):
         self.register_buffer("mask_flat", mask_flat)
         self.register_buffer("A_pinv", A_pinv)
 
+    def _build_zernike_basis(
+        self, height: int, width: int, device: torch.device, dtype: torch.dtype
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        y = torch.linspace(-1.0, 1.0, height, device=device, dtype=dtype)
+        x = torch.linspace(-1.0, 1.0, width, device=device, dtype=dtype)
+        yy, xx = torch.meshgrid(y, x, indexing="ij")
+        rho = torch.sqrt(xx**2 + yy**2)
+        theta = torch.atan2(yy, xx)
+        mask = (rho <= 1.0)
+
+        Z = torch.zeros((self.num_modes, height, width), dtype=dtype, device=device)
+        Z[0] = 1.0
+        Z[1] = 2.0 * rho * torch.cos(theta)
+        Z[2] = 2.0 * rho * torch.sin(theta)
+        Z[3] = math.sqrt(3.0) * (2.0 * rho**2 - 1.0)
+        Z[4] = math.sqrt(6.0) * rho**2 * torch.sin(2.0 * theta)
+        Z[5] = math.sqrt(6.0) * rho**2 * torch.cos(2.0 * theta)
+        Z[6] = math.sqrt(8.0) * (3.0 * rho**3 - 2.0 * rho) * torch.sin(theta)
+        Z[7] = math.sqrt(8.0) * (3.0 * rho**3 - 2.0 * rho) * torch.cos(theta)
+        Z[8] = math.sqrt(8.0) * rho**3 * torch.sin(3.0 * theta)
+        Z[9] = math.sqrt(8.0) * rho**3 * torch.cos(3.0 * theta)
+        Z[10] = math.sqrt(5.0) * (6.0 * rho**4 - 6.0 * rho**2 + 1.0)
+        Z[11] = math.sqrt(10.0) * (4.0 * rho**4 - 3.0 * rho**2) * torch.cos(2.0 * theta)
+        Z[12] = math.sqrt(10.0) * (4.0 * rho**4 - 3.0 * rho**2) * torch.sin(2.0 * theta)
+        Z[13] = math.sqrt(10.0) * rho**4 * torch.cos(4.0 * theta)
+        Z[14] = math.sqrt(10.0) * rho**4 * torch.sin(4.0 * theta)
+
+        for i in range(self.num_modes):
+            Z[i] *= mask.to(dtype)
+
+        mask_flat = mask.view(-1)
+        A = Z.view(self.num_modes, -1)[:, mask_flat].t()
+        A_pinv = torch.linalg.pinv(A)
+        return mask_flat, A_pinv, Z.view(1, self.num_modes, height, width)
+
     def forward(self, phi: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
@@ -330,11 +365,16 @@ class MaskedZernikeProjection(nn.Module):
             coefficients: [B, num_modes] Zernike coefficients.
             phi_zernike: [B, 1, H, W] reconstructed Zernike surface.
         """
-        B = phi.shape[0]
-        phi_masked_flat = phi.view(B, -1)[:, self.mask_flat].t()  # [N_mask, B]
-        c = torch.matmul(self.A_pinv, phi_masked_flat).t()  # [B, num_modes]
+        B, C, H, W = phi.shape
+        if H == self.height and W == self.width:
+            mask_flat, A_pinv, Z_basis = self.mask_flat, self.A_pinv, self.Z_basis
+        else:
+            mask_flat, A_pinv, Z_basis = self._build_zernike_basis(H, W, phi.device, phi.dtype)
+
+        phi_masked_flat = phi.view(B, -1)[:, mask_flat].t()
+        c = torch.matmul(A_pinv, phi_masked_flat).t()
 
         # Reconstruct surface: sum_j c_j * Z_j
-        phi_zernike = torch.sum(c.view(B, self.num_modes, 1, 1) * self.Z_basis, dim=1, keepdim=True)
+        phi_zernike = torch.sum(c.view(B, self.num_modes, 1, 1) * Z_basis, dim=1, keepdim=True)
         return c, phi_zernike
 

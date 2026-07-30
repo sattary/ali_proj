@@ -1,15 +1,16 @@
 """
-Automated ablation study runner.
+Modernized PCLCN ablation study runner.
+Saves raw JSON/CSV metrics for offline visualization and analysis.
 """
 
 from __future__ import annotations
 
-import os
+import json
 from copy import deepcopy
-from typing import Any, Dict, Optional, Sequence
+from pathlib import Path
+from typing import Any, Dict, Sequence
 
 from ..core.config import TrainConfig
-from ..core.utils import ensure_dir
 from .multiseed import run_multiseed
 
 
@@ -17,7 +18,7 @@ def _apply_overrides(cfg: TrainConfig, overrides: Dict[str, Any]) -> TrainConfig
     """
     Apply flat key=value overrides to a config using dot notation.
 
-    Example: 'loss.w_grad' -> cfg.loss.w_grad = value
+    Example: 'loss.w_curl' -> cfg.loss.w_curl = value
     """
     for key, val in overrides.items():
         parts = key.split(".")
@@ -31,28 +32,22 @@ def _apply_overrides(cfg: TrainConfig, overrides: Dict[str, Any]) -> TrainConfig
 def run_ablation(
     base_cfg: TrainConfig,
     ablations: Dict[str, Dict[str, Any]],
-    base_name: str = "ablation",
+    base_name: str = "pclcn_ablation",
     seeds: Sequence[int] = (42, 1337, 7),
-    metrics: Optional[Sequence[str]] = None,
-    out_table: str = "results/tables/ablation.tex",
     use_amp: bool = False,
-) -> str:
+) -> Path:
     """
-    Rationale: Automates the systematic removal of architectural features to mathematically 
-    quantify their independent structural contributions. Defers all hardware allocation 
-    and seed iteration to the underlying multiseed module to preserve strict 
-    single-responsibility execution boundaries.
+    Automates multi-seed ablation runs across PCLCN components.
+    Exports raw numerical JSON summary for offline post-processing.
     """
-    from ..analysis.export_latex import comparison_to_latex
+    out_dir = Path(base_cfg.logging.runs_root) / base_name
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    ablation_dir = os.path.join(base_cfg.logging.runs_root, base_name)
-    ensure_dir(ablation_dir)
-
-    run_dirs: Dict[str, str] = {}
+    summary: Dict[str, Any] = {}
 
     for label, overrides in ablations.items():
         print(f"\n{'=' * 60}")
-        print(f"Ablation: {label}")
+        print(f"PCLCN Ablation: {label}")
         print(f"  Overrides: {overrides}")
         print(f"{'=' * 60}\n")
 
@@ -61,17 +56,14 @@ def run_ablation(
 
         group_name = f"{base_name}/{label}"
         run_multiseed(cfg, base_run_name=group_name, seeds=list(seeds), use_amp=use_amp)
-        run_dirs[label] = os.path.join(cfg.logging.runs_root, group_name)
 
-    table = comparison_to_latex(
-        run_dirs=run_dirs,
-        out_path=out_table,
-        epoch=-1,
-        metrics=metrics,
-        caption=f"Ablation study results (mean over {len(seeds)} seeds).",
-        label="tab:ablation",
-        bold_best=True,
-    )
+        summary[label] = {
+            "overrides": overrides,
+            "run_dir": str(Path(cfg.logging.runs_root) / group_name),
+            "aggregate_csv": str(Path(cfg.logging.runs_root) / group_name / "aggregate.csv"),
+        }
 
-    print(f"\nAblation complete. Table: {out_table}")
-    return table
+    summary_path = out_dir / "ablation_summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    print(f"\nPCLCN ablation complete. Raw summary saved to: {summary_path}")
+    return summary_path

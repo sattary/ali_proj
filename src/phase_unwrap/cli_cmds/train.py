@@ -176,10 +176,9 @@ def ablation_cmd(
         seed_list = [_rnd.randint(0, 2**31) for _ in range(num_seeds)]
 
     ablations = {
-        "no_grad_loss": {"loss.w_grad": 0.0},
-        "no_curv_loss": {"loss.w_curv": 0.0},
-        "no_coordconv": {"model.use_coordconv": False},
-        "no_ema": {"model.ema_decay": 0.0},
+        "no_reference_prior": {"model.zero_reference_prior": True},
+        "no_curl_loss": {"loss.w_curl": 0.0},
+        "unmasked_zernike": {"model.unmasked_zernike": True},
     }
 
     _apply_cli_overrides(
@@ -190,14 +189,11 @@ def ablation_cmd(
         epochs=epochs,
     )
 
-
-
     run_ablation(
         base_cfg=cfg,
         ablations=ablations,
         base_name=run_name,
         seeds=seed_list,
-        out_table=out_table,
         use_amp=use_amp,
     )
 
