@@ -57,7 +57,7 @@ def plot_f3_noise_sweep(
     df = pd.DataFrame({"SNR": plot_data_snr, "MAE": plot_data_mae})
 
     sns.violinplot(
-        data=df, x="SNR", y="MAE", ax=ax1, palette="Blues", inner="box", linewidth=1
+        data=df, x="SNR", y="MAE", hue="SNR", ax=ax1, palette="Blues", inner="box", linewidth=1, legend=False
     )
 
     sns.pointplot(
@@ -67,9 +67,8 @@ def plot_f3_noise_sweep(
         ax=ax1,
         color="red",
         markers="D",
-        scale=0.8,
         linestyles="",
-        ci=None,
+        errorbar=None,
     )
 
     ax1.set_xlabel("SNR Level", fontsize=9)
