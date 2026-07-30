@@ -39,7 +39,7 @@ class DataConfig:
 class ModelConfig:
     """Model and runtime configuration."""
 
-    arch: str = "unetres2"  # "unetres2" or "pclcn"
+    arch: str = "pclcn"  # "pclcn" primary architecture
     base: int = 32
     activation: str = "silu"  # "relu" or "silu"
     final_dropout: float = 0.3
@@ -47,6 +47,8 @@ class ModelConfig:
     device: str = "auto"  # "auto", "cuda", "cpu"
     use_amp: bool = False
     use_coordconv: bool = True
+    zero_reference_prior: bool = False
+    unmasked_zernike: bool = False
 
 
 @dataclass
@@ -119,9 +121,7 @@ class AugmentationConfig:
     off_min: float = -0.05
     off_max: float = 0.05
     hint_std: float = 0.2
-    # Option B (default): zero second channel — train/deploy match lab (no GT).
-    # "gt_center" is ablation-only (GT absolute leak). Option A = plan 015 later.
-    hint_mode: str = "zero"  # "zero" | "gt_center"
+    hint_mode: str = "zero"
 
 
 @dataclass

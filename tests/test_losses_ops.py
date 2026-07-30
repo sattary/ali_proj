@@ -125,6 +125,7 @@ class TestPCLCNOperators:
     def test_analytic_signal_stem(self):
         from phase_unwrap.core.ops import AnalyticSignalStem
         stem = AnalyticSignalStem()
+        assert "mask" in dict(stem.named_buffers())
         I_off = torch.rand(2, 1, 128, 128)
         w_phase, amp = stem(I_off)
         assert w_phase.shape == (2, 1, 128, 128)

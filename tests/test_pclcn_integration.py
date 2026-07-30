@@ -11,8 +11,7 @@ import pytest
 import torch
 
 from phase_unwrap.core.config import TrainConfig
-from phase_unwrap.model import build_model
-from phase_unwrap.model.unet import PCLCNModel
+from phase_unwrap.model import PCLCNModel, build_model
 from phase_unwrap.training.train import train
 
 

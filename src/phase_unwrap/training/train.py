@@ -74,18 +74,9 @@ def run_eval(
         bs = I_raw.size(0)
 
         with autocast(device_type=device.type, enabled=use_amp):
-            if hasattr(model, "corrector"):
-                if grad_phi2 is None:
-                    grad_phi2 = torch.zeros(bs, 2, I_raw.shape[2], I_raw.shape[3], device=device)
-                phi_abs, _, _, _, _ = model(I_raw, grad_phi2)
-            else:
-                I_input, phi_gt, _, _ = prepare_batch(
-                    I_raw, phi_gt, noise_aug=None, hint_mode=hint_mode
-                )
-                I_input = I_input.contiguous(memory_format=torch.channels_last)
-                phi_gt = phi_gt.contiguous(memory_format=torch.channels_last)
-                phi_raw, k_off = model(I_input)
-                phi_abs = phi_raw + k_off
+            if grad_phi2 is None:
+                grad_phi2 = torch.zeros(bs, 2, I_raw.shape[2], I_raw.shape[3], device=device)
+            phi_abs, _, _, _, _ = model(I_raw, grad_phi2)
 
         # TopoMAE key retained for CSV compat; now offset-only (piston) aligned.
         phi_aligned, _ = piston_align(phi_abs, phi_gt)
@@ -186,18 +177,10 @@ def train(
     )
 
     model = build_model(cfg.model).to(device=device)
-
-    if getattr(cfg.model, "arch", "unetres2").lower() == "pclcn":
-        loss_fn = PCLCNLoss(
-            w_phase=getattr(cfg.loss, "w_complex", 1.0),
-            w_curl=getattr(cfg.loss, "w_curl", 0.1),
-        )
-    else:
-        loss_fn = MAEGradLoss(
-            w_mae=cfg.loss.w_mae,
-            w_grad=cfg.loss.w_grad,
-            intensity_weighted=cfg.loss.int_wgrad,
-        )
+    loss_fn = PCLCNLoss(
+        w_phase=getattr(cfg.loss, "w_complex", 1.0),
+        w_curl=getattr(cfg.loss, "w_curl", 0.1),
+    )
     eval_sobel = FixedSobel().to(device)
 
     opt = torch.optim.AdamW(
@@ -310,28 +293,11 @@ def train(
 
             try:
                 with autocast(device_type=device.type, enabled=use_amp):
-                    if hasattr(model, "corrector"):
-                        if grad_phi2 is None:
-                            grad_phi2 = torch.zeros(I_raw.size(0), 2, I_raw.shape[2], I_raw.shape[3], device=device)
-                        phi_final, gx_tilde, gy_tilde, c_zernike, phi_zernike = model(I_raw, grad_phi2)
-                        L_phase, parts = loss_fn(phi_final, phi_gt, gx_tilde, gy_tilde)
-                        phi_abs = phi_final
-                    else:
-                        I_input, phi_gt, I_raw_n, I_raw_c = prepare_batch(
-                            I_raw, phi_gt, noise_aug=train_aug, hint_mode=cfg.aug.hint_mode
-                        )
-                        I_input = I_input.contiguous(memory_format=torch.channels_last)
-                        phi_gt = phi_gt.contiguous(memory_format=torch.channels_last)
-                        phi_raw, k_off = model(I_input)
-                        if isinstance(phi_raw, list):
-                            phi_abs = [p + k_off for p in phi_raw]
-                        else:
-                            phi_abs = phi_raw + k_off
-                        L_phase, parts = loss_fn(
-                            phi_abs,
-                            phi_gt,
-                            I_raw_n if cfg.loss.int_wgrad else None,
-                        )
+                    if grad_phi2 is None:
+                        grad_phi2 = torch.zeros(I_raw.size(0), 2, I_raw.shape[2], I_raw.shape[3], device=device)
+                    phi_final, gx_tilde, gy_tilde, c_zernike, phi_zernike = model(I_raw, grad_phi2)
+                    L_phase, parts = loss_fn(phi_final, phi_gt, gx_tilde, gy_tilde)
+                    phi_abs = phi_final
                     loss = cfg.loss.w_data * L_phase
 
                 scaler.scale(loss).backward()

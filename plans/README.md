@@ -21,6 +21,9 @@ Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` | `REJECTED`
 | **024** | Unpack `grad_phi2` Batch Tuple in Training & Evaluation Loops | P1 | S | 023 | DONE |
 | **025** | Fix Undefined `subset` Variable in Noise Comparison Grid | P2 | S | none | DONE |
 | **026** | Add PCLCN End-to-End Integration Tests | P1 | S | 023, 024 | DONE |
+| **027** | Refactor `src/` Over-Engineering & Simplify Utilities (Ponytail Audit) | P2 | S | none | DONE |
+| **028** | Purge Legacy `UNetRes2` Models & Oracle Data Leaks from `src/` | P1 | M | none | TODO |
+| **029** | Modernize PCLCN Ablation & Multi-Seed Framework (Fast Core Matrix) | P1 | M | 028 | TODO |
 
 ---
 
@@ -30,6 +33,9 @@ Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` | `REJECTED`
 - **024** depends on **023** because `grad_phi2` must be forwarded into `PCLCNModel`.
 - **026** depends on **023** and **024** to execute end-to-end integration tests on the completed PCLCN pipeline.
 - **025** is an independent visualization bug fix.
+- **027** is an independent refactoring plan derived from the ponytail audit.
+- **028** purges legacy baseline code (`UNetRes2`, `gt_center`) so `src/` contains PCLCN exclusively.
+- **029** depends on **028** to modernize `ablation.py` and `multiseed.py` for Option 1 Fast Core PCLCN Matrix.
 
 ---
 

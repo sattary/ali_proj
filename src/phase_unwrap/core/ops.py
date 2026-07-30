@@ -129,10 +129,22 @@ class AnalyticSignalStem(nn.Module):
     Extracts wrapped phase and amplitude from raw off-axis intensity.
     """
 
-    def __init__(self, f0: tuple[float, float] = (0.125, 0.125), bw: float = 0.08) -> None:
+    def __init__(
+        self,
+        height: int = 128,
+        width: int = 128,
+        f0: tuple[float, float] = (0.125, 0.125),
+        bw: float = 0.08,
+    ) -> None:
         super().__init__()
         self.f0 = f0
         self.bw = bw
+
+        fy = torch.fft.fftfreq(height, d=1.0).view(1, 1, height, 1)
+        fx = torch.fft.fftfreq(width, d=1.0).view(1, 1, 1, width)
+        dist = torch.sqrt((fx - f0[1]) ** 2 + (fy - f0[0]) ** 2)
+        mask = (dist <= bw).to(torch.float32)
+        self.register_buffer("mask", mask)
 
     def forward(self, I_off: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -144,21 +156,22 @@ class AnalyticSignalStem(nn.Module):
             amplitude: [B, 1, H, W] normalized.
         """
         B, C, H, W = I_off.shape
-        fy = torch.fft.fftfreq(H, d=1.0).view(1, 1, H, 1).to(I_off.device)
-        fx = torch.fft.fftfreq(W, d=1.0).view(1, 1, 1, W).to(I_off.device)
-        
-        # Distance from spatial carrier frequency f0
-        dist = torch.sqrt((fx - self.f0[1]) ** 2 + (fy - self.f0[0]) ** 2)
-        mask = (dist <= self.bw).to(I_off.dtype)
+        if H == self.mask.shape[2] and W == self.mask.shape[3]:
+            mask = self.mask.to(dtype=I_off.dtype)
+        else:
+            fy = torch.fft.fftfreq(H, d=1.0).view(1, 1, H, 1).to(I_off.device)
+            fx = torch.fft.fftfreq(W, d=1.0).view(1, 1, 1, W).to(I_off.device)
+            dist = torch.sqrt((fx - self.f0[1]) ** 2 + (fy - self.f0[0]) ** 2)
+            mask = (dist <= self.bw).to(I_off.dtype)
 
         F_I = torch.fft.fft2(I_off)
         F_filtered = F_I * mask
-        
+
         # Inverse FFT to get baseband analytic signal
         analytic = torch.fft.ifft2(F_filtered)
         wrapped_phase = torch.atan2(analytic.imag, analytic.real)
         amplitude = analytic.abs()
-        
+
         # Normalize amplitude per image
         amp_max = amplitude.view(B, -1).max(dim=1, keepdim=True)[0].view(B, 1, 1, 1) + 1e-6
         amplitude_norm = amplitude / amp_max
@@ -223,22 +236,39 @@ class DifferentiablePoissonSolver(nn.Module):
         Returns:
             phi_base: [B, 1, H, W] integrated phase map (least-squares solution).
         """
-        # Compute discrete divergence div(g) = div_x(gx) + div_y(gy)
-        # Adjoint of forward difference is backward difference with zero boundary
+        B, C, H, W = gx.shape
         div_x = gx - F.pad(gx[..., :-1], (1, 0))
         div_y = gy - F.pad(gy[..., :-1, :], (0, 0, 1, 0))
         rho = div_x + div_y
 
+        if H == self.height and W == self.width:
+            C_h, C_w, denom = self.C_h.to(gx.dtype), self.C_w.to(gx.dtype), self.denom.to(gx.dtype)
+        else:
+            n_h = torch.arange(H, dtype=gx.dtype, device=gx.device)
+            k_h = torch.arange(H, dtype=gx.dtype, device=gx.device).unsqueeze(1)
+            C_h = math.sqrt(2.0 / H) * torch.cos(math.pi * k_h * (2.0 * n_h + 1.0) / (2.0 * H))
+            C_h[0, :] /= math.sqrt(2.0)
+
+            n_w = torch.arange(W, dtype=gx.dtype, device=gx.device)
+            k_w = torch.arange(W, dtype=gx.dtype, device=gx.device).unsqueeze(1)
+            C_w = math.sqrt(2.0 / W) * torch.cos(math.pi * k_w * (2.0 * n_w + 1.0) / (2.0 * W))
+            C_w[0, :] /= math.sqrt(2.0)
+
+            k_grid = torch.arange(H, dtype=gx.dtype, device=gx.device).view(H, 1)
+            l_grid = torch.arange(W, dtype=gx.dtype, device=gx.device).view(1, W)
+            denom = 2.0 * torch.cos(math.pi * k_grid / H) + 2.0 * torch.cos(math.pi * l_grid / W) - 4.0
+            denom[0, 0] = 1.0
+            denom = denom.view(1, 1, H, W)
 
         # 2D DCT-II: C_h @ rho @ C_w^T
-        rho_dct = torch.matmul(torch.matmul(self.C_h, rho), self.C_w.t())
+        rho_dct = torch.matmul(torch.matmul(C_h, rho), C_w.t())
 
         # Solve in spectral domain
-        phi_dct = rho_dct / self.denom
+        phi_dct = rho_dct / denom
         phi_dct[:, :, 0, 0] = 0.0  # Set DC / piston to zero
 
         # 2D IDCT-II: C_h^T @ phi_dct @ C_w
-        phi_base = torch.matmul(torch.matmul(self.C_h.t(), phi_dct), self.C_w)
+        phi_base = torch.matmul(torch.matmul(C_h.t(), phi_dct), C_w)
         return phi_base
 
 

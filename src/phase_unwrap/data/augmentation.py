@@ -259,28 +259,9 @@ def build_phi_hint(
     phi_gt: torch.Tensor | None = None,
     hint_mode: str = "zero",
 ) -> torch.Tensor:
-    """
-    Build the second model input channel [B, 1, H, W].
-
-    Option B (default ``zero``): no absolute anchor — matches lab inference.
-    ``gt_center`` is ablation-only (GT absolute leak; not deployable without GT).
-    """
+    """Build the second model input channel [B, 1, H, W] (Option B zero anchor)."""
     B, _, H, W = ref.shape
-    if hint_mode == "zero":
-        return torch.zeros(B, 1, H, W, device=ref.device, dtype=ref.dtype)
-    if hint_mode == "gt_center":
-        if phi_gt is None:
-            raise ValueError(
-                "hint_mode='gt_center' requires phi_gt (unavailable at inference)"
-            )
-        cy, cx = H // 2, W // 2
-        return phi_gt[:, :, cy : cy + 1, cx : cx + 1].expand(B, 1, H, W).clone()
-    if hint_mode == "wrapped":
-        raise NotImplementedError(
-            "hint_mode='wrapped' is not supported (intensity-wrap is not phase); "
-            "use 'zero' (Option B) or implement a lab reference (plan 015 Option A)"
-        )
-    raise ValueError(f"unknown hint_mode: {hint_mode}")
+    return torch.zeros(B, 1, H, W, device=ref.device, dtype=ref.dtype)
 
 
 def prepare_batch(
