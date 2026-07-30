@@ -73,18 +73,19 @@ def eval_noise_cmd(
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Evaluate model robustness across SNR levels."""
-    from phase_unwrap.analysis.noise_sweep import noise_robustness_sweep
+    from phase_unwrap.analysis.noise_sweep import compute_noise_robustness
+    from phase_unwrap.plots.noise_sweep import plot_noise_sweep
 
-    noise_robustness_sweep(
+    results, all_maes_by_snr = compute_noise_robustness(
         checkpoint,
         data_dir=data_dir,
-        out_path=out,
         snr_range=(snr_min, snr_max),
         n_snr_steps=n_steps,
         n_samples=n_samples,
         device_str=device,
         config_path=config,
     )
+    plot_noise_sweep(results, all_maes_by_snr, out_path=out)
 
 
 @EvalApp.command("benchmark")

@@ -15,7 +15,7 @@ def plot_training_curve_cmd(
     no_lr: bool = typer.Option(False, "--no-lr", help="Omit learning rate subplot."),
 ) -> None:
     """Plot dual-axis training loss + validation MAE (supports multi-seed)."""
-    from phase_unwrap.visualize import plot_training_curve
+    from phase_unwrap.plots import plot_training_curve
 
     plot_training_curve(run_dir, out_path=out, show_lr=not no_lr)
 
@@ -26,7 +26,7 @@ def plot_convergence_cmd(
     out: Optional[str] = typer.Option(None, "--out", help="Output file path."),
 ) -> None:
     """Plot loss components and learning rate schedule."""
-    from phase_unwrap.visualize import plot_convergence
+    from phase_unwrap.plots import plot_convergence
 
     plot_convergence(run_dir, out_path=out)
 
@@ -53,7 +53,7 @@ def plot_qualitative_cmd(
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot Clean | Noisy | GT | Wrapped | Pred | Error grid."""
-    from phase_unwrap.visualize import plot_qualitative_grid
+    from phase_unwrap.plots import plot_qualitative_grid
 
     plot_qualitative_grid(
         checkpoint,
@@ -83,7 +83,7 @@ def plot_phase_profile_cmd(
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot 1D cross-section through center row/column."""
-    from phase_unwrap.visualize import plot_phase_profile
+    from phase_unwrap.plots import plot_phase_profile
 
     plot_phase_profile(
         checkpoint,
@@ -110,7 +110,7 @@ def plot_error_hist_cmd(
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot per-sample MAE histogram + CDF with percentiles."""
-    from phase_unwrap.visualize import plot_error_histogram
+    from phase_unwrap.plots import plot_error_histogram
 
     plot_error_histogram(
         checkpoint, data_dir, out_path=out, config_path=config, subset=subset
@@ -137,7 +137,7 @@ def plot_loss_landscape_cmd(
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot 2D loss surface contour (Li et al., 2018 filter-normalized)."""
-    from phase_unwrap.visualize import plot_loss_landscape
+    from phase_unwrap.plots import plot_loss_landscape
 
     plot_loss_landscape(
         checkpoint,
@@ -170,7 +170,7 @@ def plot_gradcam_cmd(
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot GradCAM attention overlay on interferograms."""
-    from phase_unwrap.analysis.gradcam import plot_gradcam
+    from phase_unwrap.plots.gradcam_overlay import plot_gradcam
 
     plot_gradcam(
         checkpoint,
@@ -201,7 +201,7 @@ def plot_baseline_comparison_cmd(
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot baseline superiority matrix."""
-    from phase_unwrap.visualize.baseline_comparison_grid import plot_baseline_comparison
+    from phase_unwrap.plots.baseline_comparison_grid import plot_baseline_comparison
 
     plot_baseline_comparison(
         checkpoint,
@@ -234,7 +234,7 @@ def plot_noise_comparison_cmd(
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot clean vs noisy inference comparison grid."""
-    from phase_unwrap.visualize import plot_noise_comparison_grid
+    from phase_unwrap.plots import plot_noise_comparison_grid
 
     plot_noise_comparison_grid(
         checkpoint,
@@ -263,7 +263,7 @@ def plot_noise_degradation_cmd(
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot iterative noise degradation evaluation."""
-    from phase_unwrap.visualize.noise_degradation_grid import plot_noise_degradation
+    from phase_unwrap.plots.noise_degradation_grid import plot_noise_degradation
 
     plot_noise_degradation(
         checkpoint,
@@ -285,7 +285,7 @@ def plot_curriculum_noise_cmd(
     config: Optional[str] = typer.Option(None, "--config", help="Config file."),
 ) -> None:
     """Plot dynamic curriculum noise progression over epochs."""
-    from phase_unwrap.visualize.curriculum_noise_grid import plot_curriculum_noise
+    from phase_unwrap.plots.curriculum_noise_grid import plot_curriculum_noise
 
     plot_curriculum_noise(
         data_dir, out_path=out, sample_idx=sample_idx, config_path=config
@@ -307,7 +307,7 @@ def plot_method_comparison_cmd(
     ),
 ) -> None:
     """Plot method comparison with statistical significance."""
-    from phase_unwrap.visualize import plot_method_comparison
+    from phase_unwrap.plots import plot_method_comparison
 
     metric_list = [m.strip() for m in metrics.split(",")]
     results_dict: dict[str, dict[str, float]] = {}
@@ -331,7 +331,7 @@ def plot_multiseed_comparison_cmd(
     ),
 ) -> None:
     """Plot multi-seed comparison with confidence intervals."""
-    from phase_unwrap.visualize import plot_multiseed_comparison
+    from phase_unwrap.plots import plot_multiseed_comparison
 
     run_dir_dict: dict[str, str] = {}
     for pair in run_dirs.split(","):
@@ -368,7 +368,7 @@ def plot_prediction_scatter_cmd(
     ),
 ) -> None:
     """Plot GT vs prediction scatter with regression line."""
-    from phase_unwrap.visualize import plot_prediction_scatter
+    from phase_unwrap.plots import plot_prediction_scatter
 
     plot_prediction_scatter(
         checkpoint,
@@ -406,7 +406,7 @@ def plot_residual_analysis_cmd(
     ),
 ) -> None:
     """Plot residual analysis with spatial heatmaps."""
-    from phase_unwrap.visualize import plot_residual_analysis
+    from phase_unwrap.plots import plot_residual_analysis
 
     plot_residual_analysis(
         checkpoint,
@@ -441,7 +441,7 @@ def plot_tta_benefit_cmd(
     ),
 ) -> None:
     """Plot TTA benefit analysis."""
-    from phase_unwrap.visualize import plot_tta_benefit
+    from phase_unwrap.plots import plot_tta_benefit
 
     plot_tta_benefit(
         checkpoint,

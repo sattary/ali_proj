@@ -7,7 +7,7 @@ Sub-package layout:
     model/     - UNetRes2 architecture, EMA
     training/  - training loop, multi-seed, HPO, ablation
     analysis/  - baselines, noise sweep, GradCAM, TTA, export, LaTeX tables
-    visualize/ - publication figures
+    plots/ - publication figures
 """
 
 import os

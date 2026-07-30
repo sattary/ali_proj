@@ -6,7 +6,7 @@ import h5py
 import numpy as np
 import pytest
 
-from phase_unwrap.analysis.noise_sweep import noise_robustness_sweep
+from phase_unwrap.analysis.noise_sweep import compute_noise_robustness
 
 
 def test_noise_sweep_uses_test_split(tmp_path):
@@ -22,13 +22,8 @@ def test_noise_sweep_uses_test_split(tmp_path):
             f.create_dataset("I", data=I_arr)
             f.create_dataset("phi", data=phi)
 
-    # We can't run the full sweep without a trained checkpoint, but we can
-    # verify that the function attempts to load from data_dir (not generate).
-    # If it tries generate_sample, it won't touch data_dir at all.
-    # A missing checkpoint will raise, but the error should be about the
-    # checkpoint, not about data loading.
     with pytest.raises((FileNotFoundError, ValueError, RuntimeError)):
-        noise_robustness_sweep(
+        compute_noise_robustness(
             checkpoint_path=str(tmp_path / "nonexistent.pth"),
             data_dir=str(data_dir),
             n_samples=2,

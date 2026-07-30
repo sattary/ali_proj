@@ -11,7 +11,7 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
+import imageio.v3 as iio
 
 from ..core.config import load_train_config
 from ..core.utils import pick_device
@@ -22,10 +22,9 @@ from ..model import EMA, build_model
 def run_inference(
     input_path: str,
     checkpoint_path: str,
-    out_prefix: str,
     device_str: str = "auto",
     config_path: Optional[str] = None,
-) -> None:
+) -> tuple[np.ndarray, int, int]:
     # 1. Load Data
     input_path_obj = Path(input_path)
     if not input_path_obj.exists():
@@ -35,7 +34,7 @@ def run_inference(
     if input_path_obj.suffix.lower() == ".npy":
         I_raw = np.load(input_path_obj).astype(np.float32)
     else:
-        I_raw = plt.imread(str(input_path_obj)).astype(np.float32)
+        I_raw = iio.imread(str(input_path_obj)).astype(np.float32)
         if I_raw.ndim == 3:
             I_raw = I_raw.mean(axis=-1)  # Grayscale
 
@@ -111,24 +110,4 @@ def run_inference(
     slice_w = slice(pad_left, pad_left + W) if W > 0 else slice(None)
     phi_pred = phi_pred_padded[slice_h, slice_w].numpy()
 
-    # 6. Save Outputs
-    out_dir = Path(out_prefix).parent
-    if str(out_dir) != "" and str(out_dir) != ".":
-        out_dir.mkdir(parents=True, exist_ok=True)
-
-    npy_out = f"{out_prefix}.npy"
-    png_out = f"{out_prefix}.png"
-
-    np.save(npy_out, phi_pred)
-
-    plt.figure(figsize=(10, 8))
-    plt.imshow(phi_pred, cmap="viridis")
-    plt.colorbar(label="Absolute Phase (rad)")
-    plt.title(f"Unwrapped Phase (H={H}, W={W})")
-    plt.tight_layout()
-    plt.savefig(png_out, dpi=150, bbox_inches="tight")
-    plt.close()
-
-    print("Inference complete.")
-    print(f" -> Raw Phase Matrix: {npy_out}")
-    print(f" -> Visualization:    {png_out}")
+    return phi_pred, H, W

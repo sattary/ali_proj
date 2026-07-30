@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional, List
 
 import torch
 
-from ..visualize import save_epoch_visuals
+from ..plots import save_epoch_visuals
 
 class CSVLogger:
     """Handles appending metrics to a CSV file safely."""

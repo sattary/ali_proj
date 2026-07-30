@@ -25,14 +25,15 @@ def run_infer_cmd(
 ) -> None:
     """Run real-world inference on an arbitrary interferogram."""
     from phase_unwrap.analysis.inference import run_inference
+    from phase_unwrap.plots.inference_output import plot_inference_result
 
-    run_inference(
+    phi_pred, H, W = run_inference(
         input_path=input_path,
         checkpoint_path=checkpoint,
-        out_prefix=out,
         device_str=device,
         config_path=config,
     )
+    plot_inference_result(phi_pred, H, W, out_prefix=out)
 
 
 
