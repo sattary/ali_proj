@@ -1,9 +1,9 @@
 # Project Handoff & Research History: PCLCN Pipeline
 
 > **Branch:** `pclcn-pipeline`  
-> **Date:** 2026-07-29  
+> **Date:** 2026-07-30  
 > **Role:** Senior Principal Researcher  
-> **Status:** All 57 Unit Tests Passing (100%) | Code Refactored & Committed  
+> **Status:** All 52 Unit Tests Passing (100%) | Code Refactored & Committed  
 > **Target Journal:** *Optics Express* (Optica Publishing Group)
 
 ---
@@ -12,16 +12,18 @@
 
 This handoff document details the complete research, mathematical diagnostic, and engineering history of the `ali_proj` phase unwrapping pipeline. 
 
-Over the course of multiple design iterations (Plan 020 $\to$ Plan 021 $\to$ Plan 022), we transformed an initial ad-hoc deep learning model into a scientifically rigorous, optics-native architecture: the **Physics-Constrained Latent Corrector Network (PCLCN)**.
+Over the course of design iterations (Plan 020 $\to$ Plan 021 $\to$ Plan 022 $\to$ Plan 027 $\to$ Plan 028 $\to$ Plan 029), we transformed an initial ad-hoc deep learning model into a scientifically rigorous, optics-native architecture: the **Physics-Constrained Latent Corrector Network (PCLCN)**.
 
-All core modules have been refactored, fully unit-tested, and committed across 4 atomic commits on the `pclcn-pipeline` branch.
+All legacy models (`UNetRes2`), obsolete data hints (`gt_center`), and unused facade shims have been purged from `src/`. The codebase strictly exposes PCLCN and provides a high-throughput, raw-data ablation and multi-seed framework designed for Kaggle GPU execution.
+
+All unit tests are passing (52/52 tests, 100%).
 
 ---
 
 ## 2. EVOLUTION OF PLANS & RESEARCH METHODOLOGY
 
 ### Phase 1: Plan 020 (Physics-Informed UNet & Failure Diagnosis)
-* **Optical Forward Model Mapping:** Line-by-line extraction of physical constants from the professor's MATLAB script (`scripts/image_generation.m` $\to$ `generate.py`).
+* **Optical Forward Model Mapping:** Line-by-line extraction of physical constants from the MATLAB script (`scripts/image_generation.m` $\to$ `generate.py`).
   - HeNe Laser ($\lambda = 632.8\text{ nm}$).
   - $128 \times 128$ sensor grid, $2\text{mm} \times 2\text{mm}$ area, pixel pitch $\Delta x \approx 15.75\,\mu\text{m}$ ($f_{\text{Nyquist}} \approx 31.7\text{ lp/mm}$).
   - Diverging spherical reference wave $\phi_2 \propto \sqrt{x^2+y^2+z_2^2}$ ($z_2 = 0.5\text{ m}$) with variable tilt $\alpha$.
@@ -43,52 +45,49 @@ All core modules have been refactored, fully unit-tested, and committed across 4
   - **De-Marketing Prior Art:** Positioned `AnalyticSignalStem` as adopting established best practices (FIN network, *Light: Sci. Appl.* 2022) rather than claiming it as a new invention.
   - **Core Novelty Established:** Differentiated our gradient corrector by **conditioning CNN 1 explicitly on the analytically known reference beam gradient $\nabla \phi_2(x,y)$**, injecting known optical curvature as a physical prior.
 
+### Phase 4: Plan 027 (Ponytail Audit Refactoring)
+* Replaced custom binary search while-loop in `dataset.py` with stdlib `bisect.bisect_right`.
+* Converted `AddCoords` to native `torch.meshgrid(..., indexing="ij")`.
+* Streamlined `_load_mapping` in `config.py`.
+
+### Phase 5: Plan 028 (Purge Legacy `UNetRes2` & Oracle Leaks)
+* Deleted `UNetRes2_AbsPhase`, `unetres2.py`, `unet.py` facade, `UpBlockRes2`, and `gt_center` oracle data leak options.
+* Updated `build_model()` to directly construct `PCLCNModel`.
+
+### Phase 6: Plan 029 (Modernize PCLCN Ablation & Multi-Seed Framework)
+* Configured Option 1 Fast Core PCLCN Ablation Matrix (`no_reference_prior`, `no_curl_loss`, `unmasked_zernike`).
+* Removed online LaTeX/plot compilation overhead during training runs, outputting raw numerical `ablation_summary.json` and `aggregate.csv` for Kaggle GPU speed.
+* Added dynamic spatial resolution handling in `MaskedZernikeProjection` and `DifferentiablePoissonSolver`.
+
 ---
 
-## 3. EMPIRICAL DIAGNOSTICS LOG
-
-We executed `scratch/diagnostics.py` on $1,000$ synthetic samples from the optical forward model:
-
-1. **Carrier Bandwidth Overlap (CRITICAL FINDING):**
-   - **Result:** Max object spatial frequency reached up to $0.63\text{ cyc/px}$ (with $1.5 \times f_{\max} = 0.9455\text{ cyc/px} \gg f_0 = 0.125\text{ cyc/px}$).
-   - **Implication:** A fixed-width Fourier bandpass filter **clips high-frequency object details** in high-curvature samples.
-   - **Fix:** PCLCN retains `I_raw` as an explicit input channel to CNN 1 to preserve high-frequency features.
-
-2. **Modal Representability:**
-   - **Result:** Zernike modes 1–15 fit $99.99\%$ of phase variance on average for our simulator.
-   - **Fix:** To prevent non-orthogonal boundary leakage across the square $128 \times 128$ grid, we masked the projection inner product strictly to the inscribed unit disk $\mathcal{D} = \{(x,y) \mid x^2+y^2 \le 1\}$.
-
----
-
-## 4. CODEBASE IMPLEMENTATION SUMMARY
+## 3. CODEBASE IMPLEMENTATION SUMMARY
 
 ### Core Operators (`src/phase_unwrap/core/ops.py`)
 - `AnalyticSignalStem`: Differentiable 2D FFT demodulation.
 - `WrappedGradientOperator`: Computes wrapped finite-difference gradients $g_x, g_y \in [-\pi, \pi]$.
-- `DifferentiablePoissonSolver`: 2D DCT-II Neumann Poisson integrator operating directly on continuous vector gradient fields $(\tilde{g}_x, \tilde{g}_y)$ via exact matrix transformations (`C_h @ rho @ C_w^T`).
-- `MaskedZernikeProjection`: Disk-masked pseudoinverse projection onto 15 Zernike modes.
+- `DifferentiablePoissonSolver`: 2D DCT-II Neumann Poisson integrator with dynamic grid size support.
+- `MaskedZernikeProjection`: Disk-masked pseudoinverse projection onto 15 Zernike modes with dynamic grid size support.
 
-### Neural Network Models (`src/phase_unwrap/model/unet.py`)
+### Neural Network Models (`src/phase_unwrap/model/pclcn.py`)
 - `ReferenceConditionedGradientCorrector` (CNN 1): 7-channel input (`I_raw`, `wrapped_phase`, `amplitude`, $g_x, g_y$, and $\nabla \phi_2$). Predicts gradient corrections $(\delta g_x, \delta g_y)$ to restore integrability ($\nabla \times \tilde{\mathbf{g}} = 0$).
 - `OrthogonalResidualCNN` (CNN 2): Predicts non-Zernike orthogonal residual phase $r(x,y)$.
-- `PCLCNModel`: Integrated 6-stage forward model pipeline.
+- `PCLCNModel`: Integrated 6-stage forward model pipeline with `zero_reference_prior` and `unmasked_zernike` ablation flags.
 
 ### Loss Topology (`src/phase_unwrap/core/losses.py`)
 - `ComplexDomainLoss`: $\mathcal{L}_{\text{phase}} = \|\sin\hat{\phi} - \sin\phi_{\text{gt}}\|_1 + \|\cos\hat{\phi} - \cos\phi_{\text{gt}}\|_1$.
-- `GradientCurlLoss`: $\mathcal{L}_{\text{curl}} = \|\nabla \times \tilde{\mathbf{g}}\|_1 = \left|\frac{\partial \tilde{g}_y}{\partial x} - \frac{\partial \tilde{g}_x}{\partial y}\right|$.
-- `CurvatureWeightedGradLoss`: Grad loss weighted by local fringe density $(1 + |\nabla \phi_{\text{gt}}|^2 / \pi^2)^{-1}$.
-- `PCLCNLoss`: Combined loss manager supporting Option A (supervised) and Option B (unsupervised).
-
-### Data Generator & Loader (`generate.py`, `dataset.py`, `train.py`)
-- `generate.py`: Added `compute_reference_gradient` ($\nabla \phi_2$) and optional multiplicative laser speckle noise.
-- `dataset.py`: Updated `H5ShardDataset` to load `grad_phi2` from HDF5 shards.
-- `train.py`: Updated batch unpacking for 3-tuple loader compatibility.
+- `GradientCurlLoss`: $\mathcal{L}_{\text{curl}} = \|\nabla \times \tilde{\mathbf{g}}\|_1$.
+- `PCLCNLoss`: Combined physics-constrained loss manager.
 
 ---
 
-## 5. GIT COMMIT LOG (Branch: `pclcn-pipeline`)
+## 4. GIT COMMIT LOG (Branch: `pclcn-pipeline`)
 
 ```
+* 12c9289 - Fix MaskedZernikeProjection height and width attribute initialization
+* 6acae11 - Modernize PCLCN ablation and multiseed framework for Fast Core Matrix (Plan 029)
+* dd2bdba - Purge legacy UNetRes2 architecture and gt_center oracle leak (Plan 028)
+* c4259d8 - Refactor src over-engineering and simplify utilities (Plan 027)
 * cd43ff4 - Update training loop batch unpacking for 3-tuple datasets
 * 069badf - Add reference beam gradients and speckle noise support
 * 09d8782 - Add PCLCN network architecture and loss functions
@@ -97,11 +96,11 @@ We executed `scratch/diagnostics.py` on $1,000$ synthetic samples from the optic
 
 ---
 
-## 6. INSTRUCTIONS FOR NEXT AGENT / RESEARCHER
+## 5. INSTRUCTIONS FOR NEXT AGENT / RESEARCHER
 
 1. **Verify Unit Tests:**
-   Run `uv run pytest tests/ -q` (all 57 tests should pass).
+   Run `uv run pytest tests/ -q` (all 52 tests should pass).
 2. **Train PCLCN Model:**
-   Execute `phase-unwrap train` using `PCLCNModel` and `PCLCNLoss`.
+   Execute `phase-unwrap train` or launch Kaggle ablation matrix via `phase-unwrap ablation`.
 3. **Manuscript Benchmark:**
    Evaluate un-cheated `AbsMAE` on the test split using `piston_align` (mean offset removal only). Record performance in comparative tables against classical solvers (Itoh, 2D Least-Squares).
