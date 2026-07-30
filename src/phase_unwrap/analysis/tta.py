@@ -1,5 +1,5 @@
 """
-Test-time augmentation (TTA) for phase prediction.
+Test-time augmentation (TTA) for PCLCN phase prediction.
 """
 
 from __future__ import annotations
@@ -7,7 +7,6 @@ from __future__ import annotations
 from typing import Sequence
 
 import torch
-from torch.amp import autocast
 
 from ..core.ops import piston_align
 
@@ -27,7 +26,8 @@ def _hflip(x: torch.Tensor) -> torch.Tensor:
 @torch.no_grad()
 def predict_tta(
     model: torch.nn.Module,
-    I_input: torch.Tensor,
+    I_raw: torch.Tensor,
+    grad_phi2: torch.Tensor,
     device: torch.device,
     augments: Sequence[str] = (
         "rot0",
@@ -41,27 +41,24 @@ def predict_tta(
     ),
 ) -> torch.Tensor:
     """
-    TTA: average predictions over 4 rotations x 2 flips (D4 group).
-
-    Returns phi_abs: [B, 1, H, W].
+    TTA: average PCLCN predictions over D4 symmetry group.
     """
     model.eval()
-    I_input = I_input.to(device)
+    I_raw = I_raw.to(device)
+    grad_phi2 = grad_phi2.to(device)
     preds: list[torch.Tensor] = []
 
     for aug in augments:
         flip = aug.startswith("hflip")
         k = int(aug[-1])
 
-        x = _hflip(I_input) if flip else I_input
-        x = _rotate90(x, k)
+        x_i = _hflip(I_raw) if flip else I_raw
+        x_i = _rotate90(x_i, k)
 
-        with autocast(device_type=device.type, enabled=False):
-            phi_raw, k_off = model(x)
-            if isinstance(phi_raw, list):
-                phi_abs = phi_raw[-1] + k_off
-            else:
-                phi_abs = phi_raw + k_off
+        x_g = _hflip(grad_phi2) if flip else grad_phi2
+        x_g = _rotate90(x_g, k)
+
+        phi_abs, _, _, _, _ = model(x_i, x_g)
 
         phi_abs = _unrotate90(phi_abs, k)
         if flip:
@@ -82,12 +79,9 @@ def evaluate_tta(
     all_data: bool = False,
 ) -> dict[str, float]:
     """
-    Compare model MAE with and without TTA on the validation set.
-
-    Returns dict with 'mae_noaug', 'mae_tta', 'improvement_pct'.
+    Compare PCLCN model MAE with and without TTA on validation set.
     """
     from ..core.inference import load_inference_state
-    from ..data.augmentation import prepare_batch
 
     model, cfg, loader, device = load_inference_state(
         checkpoint_path,
@@ -96,7 +90,6 @@ def evaluate_tta(
         subset=subset,
         all_data=all_data,
     )
-    hint_mode = getattr(cfg.aug, "hint_mode", "zero")
 
     ALL_AUGS = (
         "rot0",
@@ -114,31 +107,22 @@ def evaluate_tta(
     total_tta = 0.0
     n = 0
 
-    for I_raw, phi_gt in loader:
-        I_raw = I_raw.to(device)
-        phi_gt = phi_gt.to(device)
-        I_input, phi_gt, _, _ = prepare_batch(
-            I_raw, phi_gt, noise_aug=None, hint_mode=hint_mode
-        )
+    for batch in loader:
+        I_raw, phi_gt, grad_phi2 = batch[0].to(device), batch[1].to(device), batch[2].to(device)
 
-        with autocast(device_type=device.type, enabled=False):
-            phi_raw, k_off = model(I_input)
-            if isinstance(phi_raw, list):
-                phi_noaug = phi_raw[-1] + k_off
-            else:
-                phi_noaug = phi_raw + k_off
+        phi_noaug, _, _, _, _ = model(I_raw, grad_phi2)
         aligned_noaug, _ = piston_align(phi_noaug, phi_gt)
-        total_noaug += float((aligned_noaug - phi_gt).abs().mean()) * I_input.size(0)
+        total_noaug += float((aligned_noaug - phi_gt).abs().mean()) * I_raw.size(0)
 
-        phi_tta = predict_tta(model, I_input, device, augments=augs)
+        phi_tta = predict_tta(model, I_raw, grad_phi2, device, augments=augs)
         aligned_tta, _ = piston_align(phi_tta, phi_gt)
-        total_tta += float((aligned_tta - phi_gt).abs().mean()) * I_input.size(0)
+        total_tta += float((aligned_tta - phi_gt).abs().mean()) * I_raw.size(0)
 
-        n += I_input.size(0)
+        n += I_raw.size(0)
 
     mae_noaug = total_noaug / max(1, n)
     mae_tta = total_tta / max(1, n)
-    improvement = (mae_noaug - mae_tta) / mae_noaug * 100
+    improvement = (mae_noaug - mae_tta) / max(mae_noaug, 1e-8) * 100
 
     print(f"MAE without TTA: {mae_noaug:.4f}")
     print(f"MAE with TTA ({n_augments} augs): {mae_tta:.4f}")

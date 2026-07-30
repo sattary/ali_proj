@@ -1,16 +1,17 @@
 """
-GradCAM visualization core logic for UNetRes2.
+GradCAM visualization core logic for PCLCNModel.
 """
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
 
+
 class GradCAM:
-    """GradCAM with forward/backward hooks on any target layer."""
+    """GradCAM with forward/backward hooks for PCLCNModel target layers."""
 
     def __init__(self, model: torch.nn.Module, target_layer: torch.nn.Module):
         self.model = model
@@ -26,13 +27,9 @@ class GradCAM:
     def _bwd_hook(self, module, grad_in, grad_out):
         self.gradients = grad_out[0].detach()
 
-    def __call__(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    def __call__(self, I_raw: torch.Tensor, grad_phi2: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         self.model.zero_grad()
-        phi_raw, k_off = self.model(x)
-        if isinstance(phi_raw, list):
-            phi_abs = phi_raw[-1] + k_off
-        else:
-            phi_abs = phi_raw + k_off
+        phi_abs, _, _, _, _ = self.model(I_raw, grad_phi2)
 
         target = phi_abs.mean()
         target.backward()
@@ -49,6 +46,6 @@ class GradCAM:
         cam = (cam - cam_min) / (cam_max - cam_min + 1e-8)
 
         cam = F.interpolate(
-            cam, size=x.shape[-2:], mode="bilinear", align_corners=False
+            cam, size=I_raw.shape[-2:], mode="bilinear", align_corners=False
         )
         return cam.detach(), phi_abs.detach()
