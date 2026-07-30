@@ -291,8 +291,10 @@ class EMA:
             b_ema.data.copy_(b.data)
 
 
-def build_model(cfg: ModelConfig) -> UNetRes2_AbsPhase:
+def build_model(cfg: ModelConfig) -> nn.Module:
     """Construct the model from configuration."""
+    if getattr(cfg, "arch", "unetres2").lower() == "pclcn":
+        return PCLCNModel(base=cfg.base)
     return UNetRes2_AbsPhase(
         in_ch=2,
         base=cfg.base,

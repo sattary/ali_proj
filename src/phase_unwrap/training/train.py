@@ -19,7 +19,7 @@ from torchmetrics.functional.image import structural_similarity_index_measure as
 from tqdm.auto import tqdm
 
 from ..core.config import TrainConfig, config_to_yaml
-from ..core.losses import MAEGradLoss, compute_metrics
+from ..core.losses import MAEGradLoss, PCLCNLoss, compute_metrics
 from ..core.ops import FixedSobel, piston_align
 from ..core.utils import ensure_dir, pick_device, set_seed
 from ..data import build_dataloaders
@@ -31,6 +31,13 @@ from ..model import EMA, build_model
 # Metrics CSV
 # ---------------------------------------------------------------------------
 from .callbacks import CSV_COLUMNS, CSVLogger, CheckpointManager, VisualizationDispatcher
+
+def _unpack_batch(batch: tuple, device: torch.device):
+    I_raw = batch[0].to(device, non_blocking=True)
+    phi_gt = batch[1].to(device, non_blocking=True)
+    grad_phi2 = batch[2].to(device, non_blocking=True) if len(batch) > 2 else None
+    return I_raw, phi_gt, grad_phi2
+
 
 # ---------------------------------------------------------------------------
 # Extended evaluation
@@ -63,22 +70,22 @@ def run_eval(
 
     pbar = tqdm(loader, desc="Validating", leave=False, dynamic_ncols=True)
     for batch in pbar:
-        I_raw, phi_gt = batch[0], batch[1]
-        I_raw = I_raw.to(device, non_blocking=True)
-        phi_gt = phi_gt.to(device, non_blocking=True)
-
-
-        I_input, phi_gt, _, _ = prepare_batch(
-            I_raw, phi_gt, noise_aug=None, hint_mode=hint_mode
-        )
-
-        I_input = I_input.contiguous(memory_format=torch.channels_last)
-        phi_gt = phi_gt.contiguous(memory_format=torch.channels_last)
-        bs = I_input.size(0)
+        I_raw, phi_gt, grad_phi2 = _unpack_batch(batch, device)
+        bs = I_raw.size(0)
 
         with autocast(device_type=device.type, enabled=use_amp):
-            phi_raw, k_off = model(I_input)
-            phi_abs = phi_raw + k_off
+            if hasattr(model, "corrector"):
+                if grad_phi2 is None:
+                    grad_phi2 = torch.zeros(bs, 2, I_raw.shape[2], I_raw.shape[3], device=device)
+                phi_abs, _, _, _, _ = model(I_raw, grad_phi2)
+            else:
+                I_input, phi_gt, _, _ = prepare_batch(
+                    I_raw, phi_gt, noise_aug=None, hint_mode=hint_mode
+                )
+                I_input = I_input.contiguous(memory_format=torch.channels_last)
+                phi_gt = phi_gt.contiguous(memory_format=torch.channels_last)
+                phi_raw, k_off = model(I_input)
+                phi_abs = phi_raw + k_off
 
         # TopoMAE key retained for CSV compat; now offset-only (piston) aligned.
         phi_aligned, _ = piston_align(phi_abs, phi_gt)
@@ -178,14 +185,19 @@ def train(
         f"test={len(test_loader.dataset) if test_loader is not None else 0}"
     )
 
-    model = build_model(cfg.model).to(device=device, memory_format=torch.channels_last)
+    model = build_model(cfg.model).to(device=device)
 
-
-    loss_fn = MAEGradLoss(
-        w_mae=cfg.loss.w_mae,
-        w_grad=cfg.loss.w_grad,
-        intensity_weighted=cfg.loss.int_wgrad,
-    )
+    if getattr(cfg.model, "arch", "unetres2").lower() == "pclcn":
+        loss_fn = PCLCNLoss(
+            w_phase=getattr(cfg.loss, "w_complex", 1.0),
+            w_curl=getattr(cfg.loss, "w_curl", 0.1),
+        )
+    else:
+        loss_fn = MAEGradLoss(
+            w_mae=cfg.loss.w_mae,
+            w_grad=cfg.loss.w_grad,
+            intensity_weighted=cfg.loss.int_wgrad,
+        )
     eval_sobel = FixedSobel().to(device)
 
     opt = torch.optim.AdamW(
@@ -293,35 +305,33 @@ def train(
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{cfg.optim.epochs}", leave=False)
         for batch in pbar:
-            I_raw, phi_gt = batch[0], batch[1]
-            I_raw = I_raw.to(device, non_blocking=True)
-            phi_gt = phi_gt.to(device, non_blocking=True)
-
-            
-            I_input, phi_gt, I_raw_n, I_raw_c = prepare_batch(
-                I_raw, phi_gt, noise_aug=train_aug, hint_mode=cfg.aug.hint_mode
-            )
-            
-            I_input = I_input.contiguous(memory_format=torch.channels_last)
-            phi_gt = phi_gt.contiguous(memory_format=torch.channels_last)
-            I_raw_n = I_raw_n.contiguous(memory_format=torch.channels_last)
-
+            I_raw, phi_gt, grad_phi2 = _unpack_batch(batch, device)
             opt.zero_grad(set_to_none=True)
 
             try:
                 with autocast(device_type=device.type, enabled=use_amp):
-                    phi_raw, k_off = model(I_input)
-
-                    if isinstance(phi_raw, list):
-                        phi_abs = [p + k_off for p in phi_raw]
+                    if hasattr(model, "corrector"):
+                        if grad_phi2 is None:
+                            grad_phi2 = torch.zeros(I_raw.size(0), 2, I_raw.shape[2], I_raw.shape[3], device=device)
+                        phi_final, gx_tilde, gy_tilde, c_zernike, phi_zernike = model(I_raw, grad_phi2)
+                        L_phase, parts = loss_fn(phi_final, phi_gt, gx_tilde, gy_tilde)
+                        phi_abs = phi_final
                     else:
-                        phi_abs = phi_raw + k_off
-
-                    L_phase, parts = loss_fn(
-                        phi_abs,
-                        phi_gt,
-                        I_raw_n if cfg.loss.int_wgrad else None,
-                    )
+                        I_input, phi_gt, I_raw_n, I_raw_c = prepare_batch(
+                            I_raw, phi_gt, noise_aug=train_aug, hint_mode=cfg.aug.hint_mode
+                        )
+                        I_input = I_input.contiguous(memory_format=torch.channels_last)
+                        phi_gt = phi_gt.contiguous(memory_format=torch.channels_last)
+                        phi_raw, k_off = model(I_input)
+                        if isinstance(phi_raw, list):
+                            phi_abs = [p + k_off for p in phi_raw]
+                        else:
+                            phi_abs = phi_raw + k_off
+                        L_phase, parts = loss_fn(
+                            phi_abs,
+                            phi_gt,
+                            I_raw_n if cfg.loss.int_wgrad else None,
+                        )
                     loss = cfg.loss.w_data * L_phase
 
                 scaler.scale(loss).backward()
@@ -417,18 +427,21 @@ def train(
                     break
                 raise
 
-            bs = I_input.size(0)
+            bs = I_raw.size(0)
             run_loss += float(loss.item()) * bs
-            run_mae += float(parts["mae"].item()) * bs
-            run_grad += float(parts["grad"].item()) * bs
-            run_curv += float(parts["curv"].item()) * cfg.loss.w_curv * bs
+            mae_val = float(parts.get("mae", parts.get("phase_complex", 0.0)))
+            grad_val = float(parts.get("grad", parts.get("curl", 0.0)))
+            curv_val = float(parts.get("curv", 0.0))
+            run_mae += mae_val * bs
+            run_grad += grad_val * bs
+            run_curv += curv_val * cfg.loss.w_curv * bs
             cnt += bs
 
             pbar.set_postfix(
                 {
                     "tot": f"{float(loss.item()):.4f}",
-                    "mae": f"{float(parts['mae']):.4f}",
-                    "grad": f"{float(parts['grad']):.4f}",
+                    "mae": f"{mae_val:.4f}",
+                    "grad": f"{grad_val:.4f}",
                 }
             )
 

@@ -39,6 +39,7 @@ class DataConfig:
 class ModelConfig:
     """Model and runtime configuration."""
 
+    arch: str = "unetres2"  # "unetres2" or "pclcn"
     base: int = 32
     activation: str = "silu"  # "relu" or "silu"
     final_dropout: float = 0.3
@@ -71,6 +72,8 @@ class LossConfig:
     int_wgrad: bool = False
     w_curv: float = 0.01
     w_data: float = 1.0
+    w_curl: float = 0.1
+    w_complex: float = 1.0
 
 
 @dataclass

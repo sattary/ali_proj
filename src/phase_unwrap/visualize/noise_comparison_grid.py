@@ -33,6 +33,7 @@ def plot_noise_comparison_grid(
     out_path: str = "results/figs/noise_comparison",
     n_samples: int = 4,
     noise_level: float = 1.0,
+    subset: str = "val",
     config_path: str | None = None,
 ) -> None:
     """
