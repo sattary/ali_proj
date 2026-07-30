@@ -3,7 +3,7 @@
 > **Branch:** `pclcn-pipeline`  
 > **Date:** 2026-07-30  
 > **Role:** Senior Principal Researcher  
-> **Status:** All 52 Unit Tests Passing (100%) | Code Refactored & Committed  
+> **Status:** All 51 Unit Tests Passing (100%) | Code Refactored & Committed  
 > **Target Journal:** *Optics Express* (Optica Publishing Group)
 
 ---
@@ -12,11 +12,11 @@
 
 This handoff document details the complete research, mathematical diagnostic, and engineering history of the `ali_proj` phase unwrapping pipeline. 
 
-Over the course of design iterations (Plan 020 $\to$ Plan 021 $\to$ Plan 022 $\to$ Plan 027 $\to$ Plan 028 $\to$ Plan 029), we transformed an initial ad-hoc deep learning model into a scientifically rigorous, optics-native architecture: the **Physics-Constrained Latent Corrector Network (PCLCN)**.
+Over the course of design iterations (Plan 020 $\to$ Plan 021 $\to$ Plan 022 $\to$ Plan 027 $\to$ Plan 028 $\to$ Plan 029 $\to$ Plan 030), we transformed an initial ad-hoc deep learning model into a scientifically rigorous, optics-native architecture: the **Physics-Constrained Latent Corrector Network (PCLCN)**.
 
-All legacy models (`UNetRes2`), obsolete data hints (`gt_center`), and unused facade shims have been purged from `src/`. The codebase strictly exposes PCLCN and provides a high-throughput, raw-data ablation and multi-seed framework designed for Kaggle GPU execution.
+All legacy models (`UNetRes2`), obsolete data hints (`gt_center`), unneeded CLI sub-app boilerplate, and 12+ redundant pre-PCLCN plot scripts have been purged. The codebase strictly exposes PCLCN with a flat CLI structure and a publication-ready 6-figure paper suite designed for *Optics Express*.
 
-All unit tests are passing (52/52 tests, 100%).
+All unit tests are passing (51/51 tests, 100%).
 
 ---
 
@@ -59,6 +59,17 @@ All unit tests are passing (52/52 tests, 100%).
 * Removed online LaTeX/plot compilation overhead during training runs, outputting raw numerical `ablation_summary.json` and `aggregate.csv` for Kaggle GPU speed.
 * Added dynamic spatial resolution handling in `MaskedZernikeProjection` and `DifferentiablePoissonSolver`.
 
+### Phase 7: Plan 030 (CLI Modernization & 6-Figure Paper Suite - Ponytail)
+* Flattened CLI to direct top-level commands: `generate`, `train`, `ablation`, `multiseed`, `eval`, `export`, `infer`, `plot`.
+* Purged 12 redundant pre-PCLCN plot generation scripts.
+* Built publication-ready 6-Figure Paper Suite for *Optics Express*:
+  1. `fig1_architecture.py`: Optical Forward Model & PCLCN Inference Pipeline Grid.
+  2. `fig2_baseline_comparison.py`: Visual & Quantitative Superiority Matrix (PCLCN vs Itoh 1D / 2D DCT Least-Squares).
+  3. `fig3_noise_robustness.py`: Noise Degradation Curves & Error Shift Grids under speckle/Gaussian noise.
+  4. `fig4_ablation.py`: PCLCN Fast Core Matrix Ablation (Boxen plots & Radar charts).
+  5. `fig5_diagnostics.py`: Model Fidelity & Error Residual Diagnostics (Scatter Plot, Residual Map, Histogram, 1D Center Line Cut).
+  6. `fig6_physics_zernike.py`: Physics Vector Curl ($\nabla \times \mathbf{g}$ vs $\nabla \times \tilde{\mathbf{g}}$) & Zernike Modal Spectrum ($c_1 \dots c_{15}$ & Radial Error $\epsilon(r)$).
+
 ---
 
 ## 3. CODEBASE IMPLEMENTATION SUMMARY
@@ -74,16 +85,12 @@ All unit tests are passing (52/52 tests, 100%).
 - `OrthogonalResidualCNN` (CNN 2): Predicts non-Zernike orthogonal residual phase $r(x,y)$.
 - `PCLCNModel`: Integrated 6-stage forward model pipeline with `zero_reference_prior` and `unmasked_zernike` ablation flags.
 
-### Loss Topology (`src/phase_unwrap/core/losses.py`)
-- `ComplexDomainLoss`: $\mathcal{L}_{\text{phase}} = \|\sin\hat{\phi} - \sin\phi_{\text{gt}}\|_1 + \|\cos\hat{\phi} - \cos\phi_{\text{gt}}\|_1$.
-- `GradientCurlLoss`: $\mathcal{L}_{\text{curl}} = \|\nabla \times \tilde{\mathbf{g}}\|_1$.
-- `PCLCNLoss`: Combined physics-constrained loss manager.
-
 ---
 
 ## 4. GIT COMMIT LOG (Branch: `pclcn-pipeline`)
 
 ```
+* 03cf5b9 - Modernize CLI flat architecture and expand paper figure suite to 6 figures (Plan 030)
 * 12c9289 - Fix MaskedZernikeProjection height and width attribute initialization
 * 6acae11 - Modernize PCLCN ablation and multiseed framework for Fast Core Matrix (Plan 029)
 * dd2bdba - Purge legacy UNetRes2 architecture and gt_center oracle leak (Plan 028)
@@ -99,8 +106,8 @@ All unit tests are passing (52/52 tests, 100%).
 ## 5. INSTRUCTIONS FOR NEXT AGENT / RESEARCHER
 
 1. **Verify Unit Tests:**
-   Run `uv run pytest tests/ -q` (all 52 tests should pass).
-2. **Train PCLCN Model:**
+   Run `uv run python -m pytest tests/ -q` (all 51 tests should pass).
+2. **Train & Evaluate PCLCN:**
    Execute `phase-unwrap train` or launch Kaggle ablation matrix via `phase-unwrap ablation`.
-3. **Manuscript Benchmark:**
-   Evaluate un-cheated `AbsMAE` on the test split using `piston_align` (mean offset removal only). Record performance in comparative tables against classical solvers (Itoh, 2D Least-Squares).
+3. **Generate Paper Figures:**
+   Run `phase-unwrap plot --fig all` to render all 6 publication-ready figures to `results/paper_figures`.
