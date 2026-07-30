@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [project.scripts]
-phase-unwrap = "phase_unwrap.cli:main"
+phun = "phase_unwrap.cli:main"
 
 [build-system]
 requires = ["hatchling"]

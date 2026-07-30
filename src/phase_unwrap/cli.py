@@ -14,7 +14,7 @@ from .cli_cmds.plot import PlotApp
 from .cli_cmds.train import TrainApp
 
 app = typer.Typer(
-    name="phase-unwrap",
+    name="phun",
     help="Physics-Constrained Latent Corrector Network (PCLCN) CLI.",
     add_completion=False,
 )

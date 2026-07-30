@@ -240,3 +240,33 @@ def create_nature_palette(n_colors: int = 6) -> list[str]:
     """Generate Nature-compliant color palette with n colors."""
     base_colors = list(NATURE_PALETTE.values())[:n_colors]
     return base_colors
+
+
+import functools
+
+def publication_plot(func):
+    """Decorator to apply nature_style and optionally save the figure."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        filepath = kwargs.get("filepath", None)
+        with nature_style():
+            fig = func(*args, **kwargs)
+            if filepath:
+                save_figure(fig, filepath)
+            return fig
+    return wrapper
+
+def label_panels(axes: list[plt.Axes] | np.ndarray, labels: list[str] = None, **kwargs) -> None:
+    """Add a, b, c labels to panels for publication figures."""
+    import string
+    
+    if labels is None:
+        labels = list(string.ascii_lowercase)
+        
+    flat_axes = axes.flatten() if isinstance(axes, np.ndarray) else axes
+    
+    for ax, label in zip(flat_axes, labels):
+        ax.text(
+            -0.1, 1.15, label, transform=ax.transAxes,
+            fontsize=10, fontweight='bold', va='top', ha='right', **kwargs
+        )

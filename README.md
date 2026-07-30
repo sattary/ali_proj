@@ -89,7 +89,7 @@ uv sync
 ### 0. Generate data
 
 ```bash
-uv run phase-unwrap generate \
+uv run phun generate \
     --num-samples 180000 \
     --shard-size 1000 \
     --out-dir data/full
@@ -98,7 +98,7 @@ uv run phase-unwrap generate \
 ### 1. Hyperparameter search (optional)
 
 ```bash
-uv run phase-unwrap tune \
+uv run phun tune \
     --data-dir data/full \
     --n-trials 50 \
     --tune-epochs 15
@@ -109,7 +109,7 @@ Writes `runs/optuna/best_config.yaml` when configured by the tune path.
 ### 2. Train (Option B defaults)
 
 ```bash
-uv run phase-unwrap train \
+uv run phun train \
     --data-dir data/full \
     --config runs/optuna/best_config.yaml \
     --run-name exp_option_b
@@ -118,7 +118,7 @@ uv run phase-unwrap train \
 Resume:
 
 ```bash
-uv run phase-unwrap train \
+uv run phun train \
     --data-dir data/full \
     --config runs/optuna/best_config.yaml \
     --run-name exp_option_b \
@@ -130,20 +130,20 @@ After training, check `runs/exp_option_b/test_metrics.csv` (held-out test) and `
 ### 3. Evaluate and plot
 
 ```bash
-uv run phase-unwrap plot training-curve --run-dir runs/exp_option_b
-uv run phase-unwrap plot qualitative \
+uv run phun plot training-curve --run-dir runs/exp_option_b
+uv run phun plot qualitative \
     --checkpoint runs/exp_option_b/best.pth \
     --data-dir data/full
-uv run phase-unwrap eval baselines \
+uv run phun eval baselines \
     --checkpoint runs/exp_option_b/best.pth \
     --n-samples 200
-uv run phase-unwrap eval tta \
+uv run phun eval tta \
     --checkpoint runs/exp_option_b/best.pth \
     --data-dir data/full
-uv run phase-unwrap eval noise \
+uv run phun eval noise \
     --checkpoint runs/exp_option_b/best.pth \
     --snr-min 5.0 --snr-max 40.0 --n-steps 8
-uv run phase-unwrap plot gradcam \
+uv run phun plot gradcam \
     --checkpoint runs/exp_option_b/best.pth \
     --data-dir data/full \
     --layer enc5
@@ -152,13 +152,13 @@ uv run phase-unwrap plot gradcam \
 ### 4. Export
 
 ```bash
-uv run phase-unwrap export onnx \
+uv run phun export onnx \
     --checkpoint runs/exp_option_b/best.pth \
     --out results/model.onnx
-uv run phase-unwrap export torchscript \
+uv run phun export torchscript \
     --checkpoint runs/exp_option_b/best.pth \
     --out results/model.pt
-uv run phase-unwrap eval benchmark \
+uv run phun eval benchmark \
     --checkpoint runs/exp_option_b/best.pth \
     --device cpu --n-runs 200
 ```
@@ -166,7 +166,7 @@ uv run phase-unwrap eval benchmark \
 ### Lab / real interferogram
 
 ```bash
-uv run phase-unwrap infer \
+uv run phun infer \
     --checkpoint runs/exp_option_b/best.pth \
     --input path/to/lab_image.png \
     --out results/lab_phi.npy
@@ -179,15 +179,15 @@ Inference builds a **zero** hint channel — same as training under Option B.
 ## CLI surface
 
 ```bash
-uv run phase-unwrap --help
+uv run phun --help
 # generate | train | tune | multiseed | ablation | infer | eval | export | plot
 ```
 
 Examples:
 
 ```bash
-uv run phase-unwrap multiseed --data-dir data/full --run-name ms --seeds "42,1337,7"
-uv run phase-unwrap ablation --config path/to/config.yaml --data-dir data/full --run-name abl
+uv run phun multiseed --data-dir data/full --run-name ms --seeds "42,1337,7"
+uv run phun ablation --config path/to/config.yaml --data-dir data/full --run-name abl
 ```
 
 ---
