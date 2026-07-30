@@ -1,6 +1,6 @@
-w# Implementation Plans
+# Implementation Plans
 
-Generated and reconciled by the improve skill on 2026-07-30 (`ab82cfc`).
+Generated and reconciled by the improve skill on 2026-07-30 (`60978bf`).
 
 Each executor: read the plan fully before starting, honor STOP conditions, and update your row when done.
 
