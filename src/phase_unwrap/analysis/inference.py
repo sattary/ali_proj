@@ -11,7 +11,6 @@ from typing import Optional, Tuple
 import imageio.v3 as iio
 import numpy as np
 import torch
-import torch.nn.functional as F
 
 from ..core.config import load_train_config
 from ..core.ops import generate_reference_beam_gradients

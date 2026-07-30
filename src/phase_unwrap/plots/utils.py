@@ -15,18 +15,18 @@ from scipy import ndimage
 from .style import add_colorbar, CMAP_INTENSITY
 
 
-def normalize_intensity(I: torch.Tensor | np.ndarray) -> torch.Tensor | np.ndarray:
+def normalize_intensity(intensity: torch.Tensor | np.ndarray) -> torch.Tensor | np.ndarray:
     """Standard Z-score normalization matching the dataset logic."""
-    if isinstance(I, torch.Tensor):
-        mean = I.mean(dim=(-2, -1), keepdim=True)
-        std = I.std(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
-        return (I - mean) / std
+    if isinstance(intensity, torch.Tensor):
+        mean = intensity.mean(dim=(-2, -1), keepdim=True)
+        std = intensity.std(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
+        return (intensity - mean) / std
 
     # Numpy version
-    mean = np.mean(I, axis=(-2, -1), keepdims=True)
-    std = np.std(I, axis=(-2, -1), keepdims=True)
+    mean = np.mean(intensity, axis=(-2, -1), keepdims=True)
+    std = np.std(intensity, axis=(-2, -1), keepdims=True)
     std = np.clip(std, 1e-6, None)
-    return (I - mean) / std
+    return (intensity - mean) / std
 
 
 def to_numpy(x: torch.Tensor | np.ndarray) -> np.ndarray:

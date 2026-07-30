@@ -20,8 +20,7 @@ import os
 from typing import Optional
 
 import matplotlib
-_HEADLESS = not os.environ.get("DISPLAY")
-if _HEADLESS:
+if not os.environ.get("DISPLAY"):
     matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np

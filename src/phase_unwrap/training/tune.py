@@ -58,7 +58,7 @@ def _create_objective(
             raise optuna.TrialPruned()
 
         model = build_model(cfg.model).to(device)
-        loss_fn = PCLNCLoss(
+        loss_fn = PCLCNLoss(
             w_data=cfg.loss.w_data,
             w_curl=cfg.loss.w_curl,
             w_zernike=cfg.loss.w_zernike,

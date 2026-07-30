@@ -10,8 +10,6 @@ import warnings
 from pathlib import Path
 from typing import Dict, Optional
 
-warnings.filterwarnings("ignore", message=".*spectral_angle_mapper.*")
-
 import torch
 from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
@@ -19,18 +17,20 @@ from torchmetrics.functional.image import structural_similarity_index_measure as
 from tqdm.auto import tqdm
 
 from ..core.config import TrainConfig, config_to_yaml
-from ..core.losses import MAEGradLoss, PCLCNLoss, compute_metrics
+from ..core.losses import PCLCNLoss, compute_metrics
 from ..core.ops import FixedSobel, piston_align
 from ..core.utils import ensure_dir, pick_device, set_seed
 from ..data import build_dataloaders
 from ..data.augmentation import NoiseAug, NoiseScheduler, prepare_batch
 from ..model import EMA, build_model
+from .callbacks import CSV_COLUMNS, CSVLogger, CheckpointManager, VisualizationDispatcher
+
+warnings.filterwarnings("ignore", message=".*spectral_angle_mapper.*")
 
 
 # ---------------------------------------------------------------------------
 # Metrics CSV
 # ---------------------------------------------------------------------------
-from .callbacks import CSV_COLUMNS, CSVLogger, CheckpointManager, VisualizationDispatcher
 
 def _unpack_batch(batch: tuple, device: torch.device):
     I_raw = batch[0].to(device, non_blocking=True)
@@ -297,7 +297,6 @@ def train(
                         grad_phi2 = torch.zeros(I_raw.size(0), 2, I_raw.shape[2], I_raw.shape[3], device=device)
                     phi_final, gx_tilde, gy_tilde, c_zernike, phi_zernike = model(I_raw, grad_phi2)
                     L_phase, parts = loss_fn(phi_final, phi_gt, gx_tilde, gy_tilde)
-                    phi_abs = phi_final
                     loss = cfg.loss.w_data * L_phase
 
                 scaler.scale(loss).backward()

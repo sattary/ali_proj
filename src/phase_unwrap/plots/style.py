@@ -11,6 +11,7 @@ Combines seaborn's statistical elegance with Nature journal requirements:
 from __future__ import annotations
 
 import contextlib
+import functools
 from pathlib import Path
 from typing import Generator, Tuple
 
@@ -241,8 +242,6 @@ def create_nature_palette(n_colors: int = 6) -> list[str]:
     base_colors = list(NATURE_PALETTE.values())[:n_colors]
     return base_colors
 
-
-import functools
 
 def publication_plot(func):
     """Decorator to apply nature_style and optionally save the figure."""

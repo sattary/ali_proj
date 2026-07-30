@@ -14,7 +14,6 @@ from phase_unwrap.core.ops import piston_align
 from phase_unwrap.data import build_dataloaders
 from phase_unwrap.plots.fig1_architecture import plot_f1_architecture
 from phase_unwrap.plots.fig2_baseline_comparison import plot_f2_baseline_comparison
-from phase_unwrap.plots.fig3_noise_robustness import plot_f3_noise_grid
 from phase_unwrap.plots.fig5_diagnostics import plot_f5_diagnostics
 from phase_unwrap.plots.fig6_physics_zernike import plot_f6_physics_zernike
 

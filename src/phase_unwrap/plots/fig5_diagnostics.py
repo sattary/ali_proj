@@ -22,7 +22,6 @@ from .style import (
     publication_plot,
     label_panels,
 )
-from .utils import draw_phase_panel
 
 
 @publication_plot
