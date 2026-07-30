@@ -11,40 +11,31 @@ import numpy as np
 import torch
 
 
-
 def export_onnx(
     checkpoint_path: str,
     out_path: str = "results/model.onnx",
     opset: int = 17,
     config_path: str | None = None,
 ) -> None:
-    """Export model to ONNX with dynamic spatial axes."""
+    """Export PCLCN model to ONNX."""
     from ..core.inference import load_inference_state
-    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir='', config_path=config_path)
+    model, cfg, _, device = load_inference_state(checkpoint_path, data_dir="", config_path=config_path)
 
-    dummy = torch.randn(1, 2, 128, 128)
+    I_raw = torch.randn(1, 1, 128, 128, device=device)
+    grad_phi2 = torch.randn(1, 2, 128, 128, device=device)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
 
     torch.onnx.export(
         model,
-        dummy,
+        (I_raw, grad_phi2),
         out_path,
         opset_version=opset,
+        input_names=["I_raw", "grad_phi2"],
+        output_names=["phi_final", "gx_tilde", "gy_tilde", "c_zernike", "phi_zernike"],
     )
 
     size_mb = Path(out_path).stat().st_size / (1024 * 1024)
-    print(f"Exported ONNX: {out_path} ({size_mb:.1f} MB, opset {opset})")
-
-    try:
-        import onnx
-
-        m = onnx.load(out_path)
-        onnx.checker.check_model(m)
-        print("  ONNX model validation passed.")
-    except ImportError:
-        print("  Install 'onnx' package for model validation.")
-    except Exception as e:
-        print(f"  ONNX validation warning: {e}")
+    print(f"Exported PCLCN ONNX: {out_path} ({size_mb:.1f} MB, opset {opset})")
 
 
 def export_torchscript(
@@ -52,10 +43,9 @@ def export_torchscript(
     out_path: str = "results/model.pt",
     config_path: str | None = None,
 ) -> None:
-    """Export model to TorchScript (traced) format."""
-    # Load weights without build_dataloaders (no dataset required for export).
+    """Export PCLCN model to TorchScript (traced) format."""
     from ..core.config import load_train_config
-    from ..model.unet import build_model
+    from ..model import build_model
 
     run_dir = str(Path(checkpoint_path).parent)
     cfg_file = config_path or str(Path(run_dir) / "config.yaml")
@@ -67,20 +57,16 @@ def export_torchscript(
     model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
-    dummy = torch.randn(1, 2, 128, 128)
+    I_raw = torch.randn(1, 1, 128, 128)
+    grad_phi2 = torch.randn(1, 2, 128, 128)
     with torch.no_grad():
-        traced = torch.jit.trace(model, dummy)
+        traced = torch.jit.trace(model, (I_raw, grad_phi2))
 
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     traced.save(out_path)
 
     size_mb = Path(out_path).stat().st_size / (1024 * 1024)
-    print(f"Exported TorchScript: {out_path} ({size_mb:.1f} MB)")
-
-    with torch.no_grad():
-        phi_raw, k_off = traced(dummy)
-    print(f"  phi_raw shape: {list(phi_raw.shape)}")
-    print(f"  k_off shape:   {list(k_off.shape)}")
+    print(f"Exported PCLCN TorchScript: {out_path} ({size_mb:.1f} MB)")
 
 
 def benchmark_inference(
@@ -94,7 +80,7 @@ def benchmark_inference(
     """Benchmark mean latency and throughput."""
     from ..core.config import load_train_config
     from ..core.utils import pick_device
-    from ..model.unet import build_model
+    from ..model import build_model
 
     run_dir = str(Path(checkpoint_path).parent)
     cfg_file = config_path or str(Path(run_dir) / "config.yaml")
@@ -107,11 +93,12 @@ def benchmark_inference(
     model.load_state_dict({k.replace("_orig_mod.", ""): v for k, v in sd.items()})
     model.eval()
 
-    dummy = torch.randn(batch_size, 2, 128, 128, device=dev)
+    I_raw = torch.randn(batch_size, 1, 128, 128, device=dev)
+    grad_phi2 = torch.randn(batch_size, 2, 128, 128, device=dev)
 
     with torch.no_grad():
         for _ in range(n_warmup):
-            model(dummy)
+            model(I_raw, grad_phi2)
     if dev.type == "cuda":
         torch.cuda.synchronize()
 
@@ -121,7 +108,7 @@ def benchmark_inference(
             if dev.type == "cuda":
                 torch.cuda.synchronize()
             t0 = time.perf_counter()
-            model(dummy)
+            model(I_raw, grad_phi2)
             if dev.type == "cuda":
                 torch.cuda.synchronize()
             times.append((time.perf_counter() - t0) * 1000)

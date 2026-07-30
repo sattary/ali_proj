@@ -24,6 +24,7 @@ Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` | `REJECTED`
 | **027** | Refactor `src/` Over-Engineering & Simplify Utilities (Ponytail Audit) | P2 | S | none | DONE |
 | **028** | Purge Legacy `UNetRes2` Models & Oracle Data Leaks from `src/` | P1 | M | none | DONE |
 | **029** | Modernize PCLCN Ablation & Multi-Seed Framework (Fast Core Matrix) | P1 | M | 028 | DONE |
+| **030** | Modernize & Refactor CLI with Flat Architecture & Purge Plot Clutter (Ponytail) | P1 | M | 029 | DONE |
 
 ---
 

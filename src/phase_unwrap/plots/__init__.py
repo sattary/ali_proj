@@ -1,51 +1,25 @@
 """
-Visualize sub-package: Nature-level publication figures with seaborn.
+Visualize sub-package: Publication-ready figures aligned with Optics Express.
 
-Provides self-contained plot functions and a shared style module.
-Each plot module handles its own data loading and model inference
-where needed, requiring only paths to run directories or checkpoints.
-
-New seaborn-enhanced plots:
-- Statistical distributions (violin, KDE)
-- Regression with confidence intervals
-- Method comparisons with significance testing
-- Multi-seed aggregation
+Stateless plotting functions taking pure data arrays.
 """
 
-from .convergence import plot_convergence
-from .error_histogram import plot_error_histogram
-from .loss_landscape import plot_loss_landscape
-from .method_comparison import plot_method_comparison, plot_method_comparison_bar
-from .multiseed_comparison import plot_ablation_radar, plot_multiseed_comparison
-from .noise_comparison_grid import plot_noise_comparison_grid
-from .phase_profile import plot_phase_profile
-from .prediction_scatter import plot_prediction_scatter
-from .qualitative_grid import plot_qualitative_grid
-from .residual_analysis import plot_residual_analysis
-from .training_curve import plot_training_curve
-from .tta_benefit import plot_tta_benefit
-
-# Backward-compat re-export for train.py epoch visuals
+from .fig1_architecture import plot_f1_architecture
+from .fig2_baseline_comparison import plot_f2_baseline_comparison
+from .fig3_noise_robustness import plot_f3_noise_grid, plot_f3_noise_sweep
+from .fig4_ablation import plot_f4_multiseed, plot_f4_radar
+from .fig5_diagnostics import plot_f5_diagnostics
+from .fig6_physics_zernike import plot_f6_physics_zernike
 from ._epoch_visuals import save_epoch_visuals
 
 __all__ = [
-    # Enhanced existing plots
-    "plot_convergence",
-    "plot_error_histogram",
-    "plot_loss_landscape",
-    "plot_phase_profile",
-    "plot_qualitative_grid",
-    "plot_training_curve",
-    # New seaborn plots
-    "plot_method_comparison",
-    "plot_method_comparison_bar",
-    "plot_multiseed_comparison",
-    "plot_ablation_radar",
-    "plot_prediction_scatter",
-    "plot_residual_analysis",
-    "plot_tta_benefit",
-    # Noise comparison (new)
-    "plot_noise_comparison_grid",
-    # Internal
+    "plot_f1_architecture",
+    "plot_f2_baseline_comparison",
+    "plot_f3_noise_sweep",
+    "plot_f3_noise_grid",
+    "plot_f4_multiseed",
+    "plot_f4_radar",
+    "plot_f5_diagnostics",
+    "plot_f6_physics_zernike",
     "save_epoch_visuals",
 ]

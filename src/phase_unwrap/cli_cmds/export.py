@@ -23,7 +23,7 @@ def export_onnx_cmd(
     """Export model to ONNX format."""
     from phase_unwrap.analysis.export import export_onnx
 
-    export_onnx(checkpoint, out_path=out, opset=opset, config_path=config)
+    export_onnx(checkpoint, filepath=out, opset=opset, config_path=config)
 
 
 @ExportApp.command("torchscript")
@@ -40,7 +40,7 @@ def export_torchscript_cmd(
     """Export model to TorchScript (traced) format."""
     from phase_unwrap.analysis.export import export_torchscript
 
-    export_torchscript(checkpoint, out_path=out, config_path=config)
+    export_torchscript(checkpoint, filepath=out, config_path=config)
 
 
 @ExportApp.command("table")
@@ -56,7 +56,7 @@ def export_table_cmd(
     """Export training metrics to a LaTeX booktabs table."""
     from phase_unwrap.analysis.export_latex import metrics_to_latex
 
-    table = metrics_to_latex(run_dir, out_path=out, epoch=epoch)
+    table = metrics_to_latex(run_dir, filepath=out, epoch=epoch)
     typer.echo(table)
 
 
