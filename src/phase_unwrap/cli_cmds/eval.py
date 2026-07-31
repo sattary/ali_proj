@@ -11,24 +11,7 @@ import typer
 EvalApp = typer.Typer(help="Evaluation commands.")
 
 
-@EvalApp.command("eval")
-def eval_cmd(
-    checkpoint: str = typer.Option(..., "--checkpoint", help="Path to model checkpoint."),
-    data_dir: Optional[str] = typer.Option(None, "--data-dir", help="Override dataset directory."),
-    subset: str = typer.Option("test", "--subset", help="Dataset split (train, val, test)."),
-    config: Optional[str] = typer.Option(None, "--config", help="Config file."),
-) -> None:
-    """Evaluate model checkpoint on dataset split."""
-    from phase_unwrap.core.inference import load_inference_state
-    from phase_unwrap.data import build_dataloaders
-    from phase_unwrap.training.train import run_eval
 
-    model, cfg, _, device = load_inference_state(checkpoint, data_dir=data_dir, config_path=config)
-    train_loader, val_loader, test_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed)
-    loader = test_loader if subset == "test" else (val_loader if subset == "val" else train_loader)
-    metrics = run_eval(model, loader, device, use_amp=cfg.model.use_amp)
-    for k, v in metrics.items():
-        typer.echo(f"  {k}: {v:.6f}")
 
 
 @EvalApp.command("baselines")

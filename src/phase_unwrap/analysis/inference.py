@@ -13,11 +13,23 @@ import numpy as np
 import torch
 
 from ..core import _torch_compat  # noqa: F401
+import math
 from ..core.config import load_train_config
-from ..core.ops import generate_reference_beam_gradients
 from ..core.utils import pick_device
 from ..model import EMA, build_model
 
+
+def generate_reference_beam_gradients(
+    height: int, width: int, z2: float, alpha: float, wavelength: float, dx: float, device: torch.device
+) -> torch.Tensor:
+    x = torch.linspace(-dx * width / 2, dx * width / 2, width, dtype=torch.float32, device=device)
+    y = torch.linspace(-dx * height / 2, dx * height / 2, height, dtype=torch.float32, device=device)
+    xx, yy = torch.meshgrid(x, y, indexing="xy")
+    r2 = torch.sqrt(xx.square() + yy.square() + z2**2)
+    k = 2.0 * math.pi / wavelength
+    grad_x = k * alpha * xx / r2
+    grad_y = k * alpha * yy / r2
+    return torch.stack((grad_x, grad_y), dim=0)
 
 @torch.no_grad()
 def run_inference(
