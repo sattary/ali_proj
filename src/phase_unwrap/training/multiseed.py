@@ -16,20 +16,20 @@ from ..core.config import TrainConfig
 from .train import CSV_COLUMNS, train
 
 
-def _aggregate(run_dirs: List[str], out_path: Path) -> None:
-    """Read metrics.csv from each run, compute mean+/-std per epoch."""
+def _aggregate(run_dirs: List[str], out_path: Path, target_csv: str) -> None:
+    """Read target_csv from each run, compute mean+/-std per epoch (or row)."""
     all_data: list[list[dict[str, str]]] = []
     for rd in run_dirs:
-        csv_path = Path(rd) / "metrics.csv"
+        csv_path = Path(rd) / target_csv
         if csv_path.exists():
             with csv_path.open("r", encoding="utf-8") as f:
                 all_data.append(list(csv.DictReader(f)))
 
     if not all_data:
-        print("No metrics.csv files found to aggregate.")
+        print(f"No {target_csv} files found to aggregate.")
         return
 
-    numeric_cols = [c for c in CSV_COLUMNS if c != "epoch"]
+    numeric_cols = [k for k in all_data[0][0].keys() if k != "epoch"]
     min_epochs = min(len(d) for d in all_data)
 
     agg_header = ["epoch"]
@@ -66,7 +66,6 @@ def run_multiseed(
     cfg: TrainConfig,
     base_run_name: str,
     seeds: List[int],
-    use_amp: bool = False,
 ) -> None:
     """
     Executes identical training configurations across multiple initialization seeds
@@ -82,8 +81,6 @@ def run_multiseed(
         seed_cfg.logging.seed = seed
         seed_cfg.logging.run_name = f"{base_run_name}/seed_{seed}"
 
-        if use_amp:
-            seed_cfg.model.use_amp = True
 
         print(f"\n{'=' * 60}")
         print(f"Multi-seed run {i + 1}/{len(seeds)} | seed={seed}")
@@ -93,7 +90,10 @@ def run_multiseed(
         run_dirs.append(seed_cfg.logging.run_dir)
 
     agg_path = base_dir / "aggregate.csv"
-    _aggregate(run_dirs, agg_path)
+    _aggregate(run_dirs, agg_path, "metrics.csv")
+
+    agg_test_path = base_dir / "aggregate_test.csv"
+    _aggregate(run_dirs, agg_test_path, "test_metrics.csv")
 
     print(f"\nAll {len(seeds)} seed runs complete.")
     print(f"Aggregate: {agg_path}")

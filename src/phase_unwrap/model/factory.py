@@ -14,6 +14,9 @@ def build_model(cfg: ModelConfig) -> PCLCNModel:
         height=128,
         width=128,
         base=cfg.base,
-        zero_reference_prior=(getattr(cfg, "reference_mode", "reference_free") == "reference_free") or getattr(cfg, "zero_reference_prior", False),
+        zero_reference_prior=(
+            getattr(cfg, "reference_mode", "reference_free") == "reference_free"
+        )
+        or getattr(cfg, "zero_reference_prior", False),
         unmasked_zernike=getattr(cfg, "unmasked_zernike", False),
     )

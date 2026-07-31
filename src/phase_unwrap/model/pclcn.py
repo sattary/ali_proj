@@ -116,7 +116,14 @@ class PCLCNModel(nn.Module):
             phi_zernike: [B, 1, H, W] Zernike surface.
         """
         if grad_phi2 is None:
-            grad_phi2 = torch.zeros(I_raw.shape[0], 2, I_raw.shape[2], I_raw.shape[3], device=I_raw.device, dtype=I_raw.dtype)
+            grad_phi2 = torch.zeros(
+                I_raw.shape[0],
+                2,
+                I_raw.shape[2],
+                I_raw.shape[3],
+                device=I_raw.device,
+                dtype=I_raw.dtype,
+            )
         if self.zero_reference_prior:
             grad_phi2 = torch.zeros_like(grad_phi2)
 
@@ -127,7 +134,9 @@ class PCLCNModel(nn.Module):
         gx, gy = self.grad_op(wrapped_phase)
 
         # Step 3: CNN 1 predicts gradient correction (delta_gx, delta_gy)
-        delta_gx, delta_gy = self.corrector(I_raw, wrapped_phase, amplitude, gx, gy, grad_phi2)
+        delta_gx, delta_gy = self.corrector(
+            I_raw, wrapped_phase, amplitude, gx, gy, grad_phi2
+        )
         gx_tilde = gx + delta_gx
         gy_tilde = gy + delta_gy
 
@@ -138,7 +147,9 @@ class PCLCNModel(nn.Module):
         if self.unmasked_zernike:
             # Mask set to all ones
             phi_zernike = phi_base  # Fallback to base phase for unmasked ablation
-            c_zernike = torch.zeros(I_raw.shape[0], 15, device=I_raw.device, dtype=I_raw.dtype)
+            c_zernike = torch.zeros(
+                I_raw.shape[0], 15, device=I_raw.device, dtype=I_raw.dtype
+            )
         else:
             c_zernike, phi_zernike = self.zernike_proj(phi_base)
 

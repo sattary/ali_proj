@@ -22,23 +22,26 @@ from ..core.config import TrainConfig, config_to_yaml
 from ..core.losses import PCLCNLoss, compute_metrics
 from ..core.ops import FixedSobel, piston_align
 from ..core.utils import ensure_dir, pick_device, set_seed
+def _hash_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(8192):
+            h.update(chunk)
+    return h.hexdigest()
 from ..data import build_dataloaders, build_otf_loaders
 from ..data.augmentation import normalize_intensity
 from ..data.augmentation import NoiseAug
 from ..model import EMA, build_model
-from .callbacks import CSV_COLUMNS, CSVLogger, CheckpointManager, VisualizationDispatcher
+from .callbacks import (
+    CSV_COLUMNS,
+    CSVLogger,
+    CheckpointManager,
+    VisualizationDispatcher,
+)
 
 warnings.filterwarnings("ignore", message=".*spectral_angle_mapper.*")
 
 
-# ---------------------------------------------------------------------------
-# Metrics CSV
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# Extended evaluation
-# ---------------------------------------------------------------------------
 @torch.no_grad()
 def run_eval(
     model: torch.nn.Module,
@@ -46,17 +49,11 @@ def run_eval(
     device: torch.device,
     use_amp: bool,
     sobel: FixedSobel,
-    hint_mode: str = "zero",
     noise_aug: NoiseAug | None = None,
     severity: float = 0.0,
     noise_seed: int = 0,
 ) -> Dict[str, float]:
-    """
-    Evaluate with Option-B inputs by default (zero hint).
-
-    TopoMAE key retained for CSV compatibility but is **piston-only** aligned
-    (no GT scale fit). AbsMAE is raw absolute error (primary selection metric).
-    """
+    """Evaluate validation dataset metrics."""
     if loader is None:
         return {
             k: float("nan")
@@ -64,23 +61,31 @@ def run_eval(
         }
 
     sums: Dict[str, float] = {
-        k: 0.0 for k in ["AbsMAE", "TopoMAE", "RMSE", "SSIM", "PSNR", "MaxErr", "GradMAE"]
+        k: 0.0
+        for k in ["AbsMAE", "TopoMAE", "RMSE", "SSIM", "PSNR", "MaxErr", "GradMAE"]
     }
     n = 0
 
-    noise_generator = torch.Generator(device=device); noise_generator.manual_seed(noise_seed)
+    noise_generator = torch.Generator(device=device)
+    noise_generator.manual_seed(noise_seed)
     pbar = tqdm(loader, desc="Validating", leave=False, dynamic_ncols=True)
     for batch in pbar:
         I_raw, phi_gt, grad_phi2 = (x.to(device, non_blocking=True) for x in batch[:3])
         bs = I_raw.size(0)
 
         with autocast(device_type=device.type, enabled=use_amp):
-            if grad_phi2 is None:
-                grad_phi2 = torch.zeros(bs, 2, I_raw.shape[2], I_raw.shape[3], device=device)
-            I_input = normalize_intensity(I_raw) if noise_aug is None else noise_aug(I_raw, severity, generator=noise_generator)[1]
-            phi_abs, _, _, _, _ = model(I_input, grad_phi2 if getattr(model, "reference_mode", "reference_free") == "calibrated" else None)
+            I_input = (
+                normalize_intensity(I_raw)
+                if noise_aug is None
+                else noise_aug(I_raw, severity, generator=noise_generator)[1]
+            )
+            phi_abs, _, _, _, _ = model(
+                I_input,
+                grad_phi2
+                if getattr(model, "reference_mode", "reference_free") == "calibrated"
+                else None,
+            )
 
-        # TopoMAE key retained for CSV compat; now offset-only (piston) aligned.
         phi_aligned, _ = piston_align(phi_abs, phi_gt)
 
         m_abs = compute_metrics(phi_abs, phi_gt)
@@ -171,7 +176,9 @@ def train(
     if getattr(cfg.data, "backend", "otf") == "otf":
         train_loader, val_loader, test_loader = build_otf_loaders(cfg, device)
     else:
-        train_loader, val_loader, test_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed)
+        train_loader, val_loader, test_loader = build_dataloaders(
+            cfg, device, seed=cfg.logging.seed
+        )
     print(
         f"[data] dir={cfg.data.data_dir} pattern={cfg.data.pattern} | "
         f"train={len(train_loader)} "
@@ -184,6 +191,7 @@ def train(
     loss_fn = PCLCNLoss(
         w_phase=getattr(cfg.loss, "w_complex", 1.0),
         w_curl=getattr(cfg.loss, "w_curl", 0.1),
+        w_grad_curv=getattr(cfg.loss, "w_grad_curv", 0.1),
     )
     eval_sobel = FixedSobel().to(device)
 
@@ -193,17 +201,17 @@ def train(
         weight_decay=cfg.optim.weight_decay,
     )
 
-    total_steps = cfg.optim.epochs * (cfg.data.steps_per_epoch if getattr(cfg.data, "backend", "otf") == "otf" else len(train_loader))
+    total_steps = cfg.optim.epochs * (
+        cfg.data.steps_per_epoch
+        if getattr(cfg.data, "backend", "otf") == "otf"
+        else len(train_loader)
+    )
     warmup_steps = min(cfg.optim.warmup_steps, total_steps // 2)
     sched = _build_warmup_scheduler(
         opt, warmup_steps, total_steps - warmup_steps, cfg.optim.eta_min
     )
 
-    # Rationale (Mathematical Implication):
-    # PyTorch 1.1+ requires optimizer.step() before scheduler.step().
-    # WARNING: Because this is AdamW, `opt.step()` physically applies weight decay 
-    # (w = w - lambda * w) even when gradients are zero. This slightly shrinks the seeded 
-    # weight initialization before the first forward pass. It is deterministic, but non-zero.
+
     global_step = 0
     opt.step()
     sched.step()
@@ -222,32 +230,31 @@ def train(
     start_epoch = 1
     noise_generator = torch.Generator(device=device)
     noise_generator.manual_seed(getattr(cfg.data, "noise_seed", cfg.logging.seed + 1))
-    
-    if resume_path and os.path.exists(resume_path):
+
+    is_resuming = bool(resume_path and os.path.exists(resume_path))
+    if is_resuming:
         print(f"[resume] Loading checkpoint from {resume_path}")
         loaded = CheckpointManager.load(
-            resume_path, model, ema, opt, sched, scaler, device,
-            phase_generator=getattr(train_loader, "generator", None), noise_generator=noise_generator,
+            resume_path,
+            model,
+            ema,
+            opt,
+            sched,
+            scaler,
+            device,
+            phase_generator=getattr(train_loader, "generator", None),
+            noise_generator=noise_generator,
         )
         start_epoch, best_mae = loaded[:2]
         if hasattr(train_loader, "next_sample_id"):
             train_loader.next_sample_id = loaded[2]
 
-        # Rationale (State Synchronization):
-        # If the user explicitly overrides `--epochs` or `--batch-size` on a resumed run, 
-        # the checkpoint's frozen scheduler state will physically overwrite the new `T_max` 
-        # with the old stale math. We must discard the loaded scheduler, reconstruct it 
-        # natively against the new configuration, and mathematically fast-forward it.
+
         global_step = (start_epoch - 1) * len(train_loader) + 1
-        sched = _build_warmup_scheduler(
-            opt, warmup_steps, total_steps - warmup_steps, cfg.optim.eta_min
-        )
-        for _ in range(global_step):
-            sched.step()
     elif resume_path:
         print(f"[resume] Warning: Checkpoint not found at {resume_path}")
 
-    csv_logger = CSVLogger(metrics_path, columns=CSV_COLUMNS)
+    csv_logger = CSVLogger(metrics_path, columns=CSV_COLUMNS, append=is_resuming)
     ckpt_manager = CheckpointManager(run_dir)
     vis_dispatcher = VisualizationDispatcher(vis_dir, vis_max=cfg.logging.vis_max)
 
@@ -257,7 +264,6 @@ def train(
         train_aug = NoiseAug(
             gauss_std=cfg.aug.gauss_std,
             speckle_std=cfg.aug.speckle_std,
-            poisson_scale=cfg.aug.poisson_scale,
             photon_min=cfg.aug.photon_min,
             photon_max=cfg.aug.photon_max,
             sensor_min=cfg.aug.sensor_min,
@@ -277,7 +283,7 @@ def train(
         vis_batch = next(iter(train_loader))
 
     for epoch in range(start_epoch, cfg.optim.epochs + 1):
-        partial_epoch = False
+
         current_noise_level = min(1.0, (epoch - 1) / max(1, cfg.optim.epochs - 1))
 
         if train_aug is not None:
@@ -293,7 +299,9 @@ def train(
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{cfg.optim.epochs}", leave=False)
         for batch in pbar:
-            I_raw, phi_gt, grad_phi2 = (x.to(device, non_blocking=True) for x in batch[:3])
+            I_raw, phi_gt, grad_phi2 = (
+                x.to(device, non_blocking=True) for x in batch[:3]
+            )
             opt.zero_grad(set_to_none=True)
 
             if train_aug is not None:
@@ -305,59 +313,55 @@ def train(
                     if u < cfg.aug.clean_probability:
                         step_severity = 0.0
                     elif u < cfg.aug.clean_probability + cfg.aug.mid_probability:
-                        step_severity = float(torch.empty((), device=device).uniform_(0.05, 0.75, generator=noise_generator))
+                        step_severity = float(
+                            torch.empty((), device=device).uniform_(
+                                0.05, 0.75, generator=noise_generator
+                            )
+                        )
                     else:
-                        step_severity = float(torch.empty((), device=device).uniform_(0.75, 1.0, generator=noise_generator))
-                I_raw_noisy, I_norm_noisy = train_aug(I_raw, step_severity, generator=noise_generator)
-            else:
-                I_raw_noisy = I_raw
-                mean = I_raw.mean(dim=(-2, -1), keepdim=True)
-                std = I_raw.std(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
-                I_norm_noisy = (I_raw - mean) / std
-
-            try:
-                with autocast(device_type=device.type, enabled=use_amp):
-                    if grad_phi2 is None:
-                        grad_phi2 = torch.zeros(I_raw.size(0), 2, I_raw.shape[2], I_raw.shape[3], device=device)
-                    phi_final, gx_tilde, gy_tilde, c_zernike, phi_zernike = model(I_norm_noisy, grad_phi2 if cfg.model.reference_mode == "calibrated" else None)
-                    L_phase, parts = loss_fn(phi_final, phi_gt, gx_tilde, gy_tilde)
-                    loss = cfg.loss.w_data * L_phase
-
-                scaler.scale(loss).backward()
-                scaler.unscale_(opt)
-                torch.nn.utils.clip_grad_norm_(
-                    model.parameters(),
-                    cfg.optim.grad_clip,
-                    error_if_nonfinite=False,
+                        step_severity = float(
+                            torch.empty((), device=device).uniform_(
+                                0.75, 1.0, generator=noise_generator
+                            )
+                        )
+                I_raw_noisy, I_norm_noisy = train_aug(
+                    I_raw, step_severity, generator=noise_generator
                 )
+            else:
+                I_norm_noisy = normalize_intensity(I_raw)
 
-                # AMP scaler.step may skip the optimizer step if gradients are NaN/Inf.
-                # If it skips, we shouldn't step the LR scheduler.
-                scale_before = scaler.get_scale()
-                scaler.step(opt)
-                scaler.update()
-                scale_after = scaler.get_scale()
+            with autocast(device_type=device.type, enabled=use_amp):
+                phi_final, gx_tilde, gy_tilde, c_zernike, phi_zernike = model(
+                    I_norm_noisy,
+                    grad_phi2 if cfg.model.reference_mode == "calibrated" else None,
+                )
+                L_phase, parts = loss_fn(phi_final, phi_gt, gx_tilde, gy_tilde)
+                loss = cfg.loss.w_data * L_phase
 
-                # Only step the scheduler if the scaler didn't reduce the scale
-                # (which indicates it skipped the opt.step due to nan/inf grads).
-                # Skip EMA when AMP skipped the optimizer step (NaN/Inf grads).
-                if scale_after >= scale_before:
-                    sched.step()
-                    global_step += 1
-                    ema.update(model)
+            scaler.scale(loss).backward()
+            scaler.unscale_(opt)
+            torch.nn.utils.clip_grad_norm_(
+                model.parameters(),
+                cfg.optim.grad_clip,
+                error_if_nonfinite=False,
+            )
 
-            except RuntimeError as e:
-                if "out of memory" in str(e).lower():
-                    raise RuntimeError(
-                        f"CUDA OOM at batch_size={cfg.optim.batch_size}; reduce batch_size and restart the scientific run."
-                    ) from e
-                raise
+            scale_before = scaler.get_scale()
+            scaler.step(opt)
+            scaler.update()
+            scale_after = scaler.get_scale()
+
+            # Only step scheduler/EMA if optimizer stepped (no NaN grads)
+            if scale_after >= scale_before:
+                sched.step()
+                global_step += 1
+                ema.update(model)
 
             bs = I_raw.size(0)
             run_loss += float(loss.item()) * bs
-            mae_val = float(parts.get("mae", parts.get("phase_complex", 0.0)))
-            grad_val = float(parts.get("grad", parts.get("curl", 0.0)))
-            curv_val = float(parts.get("curv", 0.0))
+            mae_val = float(parts.get("mae", parts.get("phase", 0.0)))
+            grad_val = float(parts.get("curl", 0.0))
+            curv_val = float(parts.get("grad_curv", 0.0))
             run_mae += mae_val * bs
             run_grad += grad_val * bs
             run_curv += curv_val * cfg.loss.w_curv * bs
@@ -378,50 +382,55 @@ def train(
         epoch_time = time.time() - t0
 
         eval_stats: Dict[str, float] = {}
-        if (not partial_epoch) and (epoch % cfg.logging.val_interval == 0) and (val_loader is not None):
+        if (
+            (epoch % cfg.logging.val_interval == 0)
+            and (val_loader is not None)
+        ):
             severity_stats = {
-                s: run_eval(ema.m, val_loader, device, use_amp, eval_sobel,
-                            hint_mode=cfg.aug.hint_mode, noise_aug=train_aug,
-                            severity=s, noise_seed=cfg.data.noise_seed)
+                s: run_eval(
+                    ema.m,
+                    val_loader,
+                    device,
+                    use_amp,
+                    eval_sobel,
+                    noise_aug=train_aug,
+                    severity=s,
+                    noise_seed=cfg.data.noise_seed,
+                )
                 for s in cfg.aug.fixed_severities
             }
             eval_stats = severity_stats[0.0]
 
             try:
                 # Get visualization data from cached vis_batch
-                if vis_batch is not None:
-                    I_raw_v, phi_gt_v, grad_phi2_v = (x.to(device, non_blocking=True) for x in vis_batch[:3])
-                else:
-                    I_raw_v, phi_gt_v, grad_phi2_v = (x.to(device, non_blocking=True) for x in next(iter(train_loader))[:3])
+                I_raw_v, phi_gt_v, grad_phi2_v = (
+                    x.to(device, non_blocking=True) for x in vis_batch[:3]
+                )
 
                 if train_aug is not None:
-                    I_raw_n_v, I_input_v = train_aug(I_raw_v, current_noise_level, generator=noise_generator)
+                    I_raw_n_v, I_input_v = train_aug(
+                        I_raw_v, current_noise_level, generator=noise_generator
+                    )
                 else:
                     I_raw_n_v = I_raw_v
-                    mean = I_raw_v.mean(dim=(-2, -1), keepdim=True)
-                    std = I_raw_v.std(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
-                    I_input_v = (I_raw_v - mean) / std
-
-                I_raw_c_v = I_raw_v.clone()
-
-                I_input_v = I_input_v.contiguous(memory_format=torch.channels_last)
-                phi_gt_v = phi_gt_v.contiguous(memory_format=torch.channels_last)
+                    I_input_v = normalize_intensity(I_raw_v)
 
                 with autocast(device_type=device.type, enabled=use_amp):
-                    if grad_phi2_v is None:
-                        grad_phi2_v = torch.zeros(I_raw_v.size(0), 2, I_raw_v.shape[2], I_raw_v.shape[3], device=device)
-                    phi_abs_v, _, _, _, _ = ema.m(I_input_v, grad_phi2_v if cfg.model.reference_mode == "calibrated" else None)
+                    phi_abs_v, _, _, _, _ = ema.m(
+                        I_input_v,
+                        grad_phi2_v
+                        if cfg.model.reference_mode == "calibrated"
+                        else None,
+                    )
 
-                # Epoch PNGs: piston-only (same as metrics); affine_align remains for other plots
                 phi_aligned_v, _ = piston_align(phi_abs_v, phi_gt_v)
-
 
                 vis_dispatcher.dispatch(
                     epoch=epoch,
                     I_input_v=I_input_v,
                     phi_aligned_v=phi_aligned_v,
                     phi_gt_v=phi_gt_v,
-                    I_raw_c_v=I_raw_c_v,
+                    I_raw_c_v=I_raw_v,
                     I_raw_n_v=I_raw_n_v,
                     noise_level=current_noise_level,
                 )
@@ -440,59 +449,58 @@ def train(
                 f"time={epoch_time:.1f}s"
             )
 
-            # Reference-free selection is piston aligned across clean/light/moderate.
-            selection_score = sum(severity_stats[s]["TopoMAE"] for s in (0.0, 0.25, 0.5)) / 3
+            # Selection based on piston-aligned MAE across noise levels
+            selection_score = (
+                sum(severity_stats[s]["TopoMAE"] for s in (0.0, 0.25, 0.5)) / 3
+            )
+            save_kwargs = {
+                "epoch": epoch,
+                "model": model,
+                "ema": ema,
+                "optimizer": opt,
+                "scheduler": sched,
+                "scaler": scaler,
+                "phase_generator": getattr(train_loader, "generator", None),
+                "noise_generator": noise_generator,
+                "next_sample_id": getattr(train_loader, "next_sample_id", 0),
+            }
             if selection_score < best_mae:
                 best_mae = selection_score
-                ckpt_manager.save(
-                    "best.pth",
-                    epoch,
-                    model,
-                    ema,
-                    opt,
-                    sched,
-                    scaler,
-                    best_mae,
-                    phase_generator=getattr(train_loader, "generator", None),
-                    noise_generator=noise_generator,
-                    next_sample_id=getattr(train_loader, "next_sample_id", 0),
-                )
+                ckpt_manager.save("best.pth", best_mae=best_mae, **save_kwargs)
         else:
             print(f"Epoch {epoch} | train={train_loss:.4f} | time={epoch_time:.1f}s")
+            save_kwargs = {
+                "epoch": epoch,
+                "model": model,
+                "ema": ema,
+                "optimizer": opt,
+                "scheduler": sched,
+                "scaler": scaler,
+                "phase_generator": getattr(train_loader, "generator", None),
+                "noise_generator": noise_generator,
+                "next_sample_id": getattr(train_loader, "next_sample_id", 0),
+            }
 
-        ckpt_manager.save(
-            "final.pth",
-            epoch,
-            model,
-            ema,
-            opt,
-            sched,
-            scaler,
-            best_mae,
-            phase_generator=getattr(train_loader, "generator", None),
-            noise_generator=noise_generator,
-            next_sample_id=getattr(train_loader, "next_sample_id", 0),
-        )
+        ckpt_manager.save("final.pth", best_mae=best_mae, **save_kwargs)
 
         current_lr = opt.param_groups[0]["lr"]
-        
 
         csv_logger.log(
             {
                 "epoch": epoch,
-                "partial": 1 if partial_epoch else 0,
+                "partial": 0,
                 "noise_level": f"{current_noise_level:.4f}",
                 "train_loss": f"{train_loss:.6f}",
                 "train_mae": f"{train_mae:.6f}",
                 "train_grad": f"{train_grad:.6f}",
                 "train_curv": f"{train_curv:.6f}",
-                "val_abs_mae": f"{eval_stats.get('AbsMAE', ''):.6f}" if eval_stats else "",
-                "val_topo_mae": f"{eval_stats.get('TopoMAE', ''):.6f}" if eval_stats else "",
-                "val_rmse": f"{eval_stats.get('RMSE', ''):.6f}" if eval_stats else "",
-                "val_ssim": f"{eval_stats.get('SSIM', ''):.6f}" if eval_stats else "",
-                "val_psnr": f"{eval_stats.get('PSNR', ''):.4f}" if eval_stats else "",
-                "val_max_err": f"{eval_stats.get('MaxErr', ''):.6f}" if eval_stats else "",
-                "val_grad_mae": f"{eval_stats.get('GradMAE', ''):.6f}" if eval_stats else "",
+                "val_abs_mae": f"{eval_stats['AbsMAE']:.6f}" if eval_stats else "",
+                "val_topo_mae": f"{eval_stats['TopoMAE']:.6f}" if eval_stats else "",
+                "val_rmse": f"{eval_stats['RMSE']:.6f}" if eval_stats else "",
+                "val_ssim": f"{eval_stats['SSIM']:.6f}" if eval_stats else "",
+                "val_psnr": f"{eval_stats['PSNR']:.4f}" if eval_stats else "",
+                "val_max_err": f"{eval_stats['MaxErr']:.6f}" if eval_stats else "",
+                "val_grad_mae": f"{eval_stats['GradMAE']:.6f}" if eval_stats else "",
                 "lr": f"{current_lr:.8f}",
                 "epoch_time_s": f"{epoch_time:.1f}",
             }
@@ -503,10 +511,19 @@ def train(
         if os.path.exists(best_path):
             best = torch.load(best_path, map_location=device, weights_only=True)
             ema.m.load_state_dict(best.get("model_ema", best["model"]))
-        test_by_severity = {s: run_eval(ema.m, test_loader, device, use_amp, eval_sobel,
-                                        hint_mode=cfg.aug.hint_mode, noise_aug=train_aug,
-                                        severity=s, noise_seed=cfg.data.noise_seed + 1)
-                            for s in cfg.aug.fixed_severities}
+        test_by_severity = {
+            s: run_eval(
+                ema.m,
+                test_loader,
+                device,
+                use_amp,
+                eval_sobel,
+                noise_aug=train_aug,
+                severity=s,
+                noise_seed=cfg.data.noise_seed + 1,
+            )
+            for s in cfg.aug.fixed_severities
+        }
         test_stats = test_by_severity[0.0]
         print(
             f"[TEST] AbsMAE={test_stats.get('AbsMAE', 0):.4f} "
@@ -518,7 +535,8 @@ def train(
         test_path = os.path.join(run_dir, "test_metrics.csv")
         test_csv_logger = CSVLogger(
             test_path,
-            columns=["AbsMAE", "TopoMAE", "RMSE", "SSIM", "PSNR", "MaxErr", "GradMAE"]
+            columns=["AbsMAE", "TopoMAE", "RMSE", "SSIM", "PSNR", "MaxErr", "GradMAE"],
+            append=False,
         )
         test_csv_logger.log(
             {
@@ -532,12 +550,21 @@ def train(
             }
         )
         artifact = {
-            "generator": "MatlabSimulator.float64.v1", "reference_mode": cfg.model.reference_mode,
-            "seeds": {k: getattr(cfg.data, k) for k in ("train_seed", "val_seed", "test_seed", "noise_seed")},
+            "generator": "MatlabSimulator.float64.v1",
+            "reference_mode": cfg.model.reference_mode,
+            "seeds": {
+                k: getattr(cfg.data, k)
+                for k in ("train_seed", "val_seed", "test_seed", "noise_seed")
+            },
             "sample_id_next": getattr(train_loader, "next_sample_id", None),
-            "noise": vars(cfg.aug), "test_by_severity": {str(k): v for k, v in test_by_severity.items()},
-            "checkpoint_sha256": hashlib.sha256(Path(best_path).read_bytes()).hexdigest() if os.path.exists(best_path) else None,
+            "noise": vars(cfg.aug),
+            "test_by_severity": {str(k): v for k, v in test_by_severity.items()},
+            "checkpoint_sha256": _hash_file(best_path)
+            if os.path.exists(best_path)
+            else None,
         }
-        Path(os.path.join(run_dir, "result.json")).write_text(json.dumps(artifact, indent=2, default=str))
+        Path(os.path.join(run_dir, "result.json")).write_text(
+            json.dumps(artifact, indent=2, default=str)
+        )
 
     print(f"\nDone. Best Val AbsMAE: {best_mae:.4f}")

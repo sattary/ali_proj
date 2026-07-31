@@ -5,7 +5,7 @@ Sub-package layout:
     core/      - config, ops, losses, utils
     data/      - HDF5 dataset, synthetic generator
     model/     - UNetRes2 architecture, EMA
-    training/  - training loop, multi-seed, HPO, ablation
+    training/  - training loop, multi-seed, ablation
     analysis/  - baselines, noise sweep, GradCAM, TTA, export, LaTeX tables
     plots/ - publication figures
 """

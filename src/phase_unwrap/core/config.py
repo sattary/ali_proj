@@ -9,14 +9,10 @@ fields falling back to built-in defaults.
 from __future__ import annotations
 
 import json
+import yaml
 from dataclasses import asdict, dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
-
-try:
-    import yaml  # type: ignore
-except Exception:  # pragma: no cover
-    yaml = None
 
 
 @dataclass
@@ -118,7 +114,6 @@ class AugmentationConfig:
     stochastic_std: float = 0.05
     gauss_std: float = 0.02
     speckle_std: float = 0.05
-    poisson_scale: float = 0.0
     photon_min: float = 256.0
     photon_max: float = 4096.0
     sensor_min: float = 0.0
@@ -133,8 +128,6 @@ class AugmentationConfig:
     gain_max: float = 1.1
     off_min: float = -0.05
     off_max: float = 0.05
-    hint_std: float = 0.2
-    hint_mode: str = "zero"
     clean_probability: float = 0.2
     mid_probability: float = 0.6
     hard_probability: float = 0.2
@@ -176,23 +169,10 @@ def _load_mapping(path: Path) -> Dict[str, Any]:
     """Load a configuration mapping from JSON or YAML."""
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
-    suffix = path.suffix.lower()
     text = path.read_text()
-    if suffix in {".json"}:
+    if path.suffix.lower() == ".json":
         return json.loads(text)
-    if suffix in {".yml", ".yaml"}:
-        if yaml is None:
-            raise RuntimeError(
-                "YAML config requested but PyYAML is not installed. "
-                "Install `pyyaml` or use JSON instead."
-            )
-        return yaml.safe_load(text) or {}
-    try:
-        return json.loads(text)
-    except Exception:
-        if yaml is not None:
-            return yaml.safe_load(text) or {}
-        raise
+    return yaml.safe_load(text) or {}
 
 
 def load_train_config(path: Optional[ConfigPath] = None) -> TrainConfig:
@@ -200,14 +180,9 @@ def load_train_config(path: Optional[ConfigPath] = None) -> TrainConfig:
     cfg = TrainConfig()
     if path is None:
         return cfg
-    p = Path(path)
-    data = _load_mapping(p)
-    return _update_dataclass(cfg, data)
+    return _update_dataclass(cfg, _load_mapping(Path(path)))
 
 
 def config_to_yaml(cfg: TrainConfig) -> str:
     """Serialize a TrainConfig to YAML string."""
-    d = asdict(cfg)
-    if yaml is not None:
-        return yaml.dump(d, default_flow_style=False, sort_keys=False)
-    return json.dumps(d, indent=2)
+    return yaml.dump(asdict(cfg), default_flow_style=False, sort_keys=False)

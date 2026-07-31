@@ -9,8 +9,9 @@ from ..plots import save_epoch_visuals
 
 class CSVLogger:
     """Handles appending metrics to a CSV file safely."""
-    def __init__(self, metrics_path: str, columns: Optional[List[str]] = None):
+    def __init__(self, metrics_path: str, columns: Optional[List[str]] = None, append: bool = True):
         self.metrics_path = metrics_path
+        self.append = append
         self.columns = columns or [
             "epoch",
             "partial",
@@ -32,6 +33,9 @@ class CSVLogger:
         self._init_csv()
 
     def _init_csv(self) -> None:
+        if not self.append and os.path.exists(self.metrics_path):
+            os.remove(self.metrics_path)
+            
         if not os.path.exists(self.metrics_path):
             with open(self.metrics_path, "w", newline="") as f:
                 writer = csv.writer(f)
@@ -81,7 +85,6 @@ class VisualizationDispatcher:
                     "noise_level": noise_level,
                     "samples_per_file": 4,
                 },
-                daemon=True,
             ).start()
         except Exception as e:
             print(f"Warning: dispatching visuals failed: {e}")
@@ -126,7 +129,10 @@ class CheckpointManager:
             state["rng_noise"] = noise_generator.get_state()
         if torch.cuda.is_available():
             state["rng_cuda"] = torch.cuda.get_rng_state_all()
-        torch.save(state, os.path.join(self.run_dir, filename))
+        target_path = os.path.join(self.run_dir, filename)
+        tmp_path = target_path + ".tmp"
+        torch.save(state, tmp_path)
+        os.replace(tmp_path, target_path)
 
     @staticmethod
     def load(

@@ -12,8 +12,17 @@ from .config import (
     config_to_yaml,
     load_train_config,
 )
-from .losses import MAEGradLoss, compute_metrics
-from .ops import FixedSobel, curvature_loss, laplacian, piston_align
+from .losses import compute_metrics
+from .ops import (
+    AnalyticSignalStem,
+    DifferentiablePoissonSolver,
+    FixedSobel,
+    MaskedZernikeProjection,
+    WrappedGradientOperator,
+    curvature_loss,
+    laplacian,
+    piston_align,
+)
 from .utils import ensure_dir, pick_device, set_seed
 
 __all__ = [
@@ -25,8 +34,9 @@ __all__ = [
     "TrainConfig",
     "config_to_yaml",
     "load_train_config",
-    "MAEGradLoss",
     "compute_metrics",
+    "AnalyticSignalStem",
+    "DifferentiablePoissonSolver",
     "FixedSobel",
     "piston_align",
     "curvature_loss",

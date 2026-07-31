@@ -39,7 +39,10 @@ class MatlabSimulator(nn.Module):
     def _resize_deviation(v: torch.Tensor, height: int, width: int) -> torch.Tensor:
         # MATLAB imresize(..., 'bicubic') equivalent separable bicubic path.
         return F.interpolate(
-            v[None, None], size=(height, width), mode="bicubic", align_corners=False
+            v[None, None, None, :],
+            size=(height, width),
+            mode="bicubic",
+            align_corners=False,
         )[0, 0]
 
     def sample(
@@ -49,10 +52,7 @@ class MatlabSimulator(nn.Module):
         h, w = self.x.shape
         clean, target, wrapped, pistons, grads = [], [], [], [], []
         with torch.autocast(device_type=device.type, enabled=False):
-            x, y, r2, k = (
-                t.to(device=device, dtype=torch.float64)
-                for t in (self.x, self.y, self.r2, self.k)
-            )
+            x, y, r2, k = self.x, self.y, self.r2, self.k
             for _ in range(batch_size):
                 u = torch.rand(
                     3, generator=generator, device=device, dtype=torch.float64

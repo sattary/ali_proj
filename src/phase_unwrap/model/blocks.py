@@ -154,12 +154,3 @@ class EMA:
             p_ema.data.mul_(d).add_(p.data, alpha=1 - d)
         for b_ema, b in zip(self.m.buffers(), model.buffers()):
             b_ema.data.copy_(b.data)
-
-class UpBlockRes2(nn.Module):
-    def __init__(self, in_ch_cat: int, out_ch: int, s: int = 4, expansion: float = 1.0, act: str = "relu") -> None:
-        super().__init__()
-        self.conv = Res2_DS_Block(in_ch_cat, out_ch, s, expansion, act)
-        
-    def forward(self, x: torch.Tensor, skip: torch.Tensor) -> torch.Tensor:
-        x = F.interpolate(x, size=skip.shape[-2:], mode='bilinear', align_corners=False)
-        return self.conv(torch.cat([x, skip], dim=1))
