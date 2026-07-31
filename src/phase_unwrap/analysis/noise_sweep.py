@@ -46,14 +46,20 @@ def compute_noise_robustness(
         checkpoint_path, data_dir=data_dir, subset="test", config_path=config_path
     )
 
-    test_samples: list[tuple[np.ndarray, np.ndarray]] = []
-    for I_raw_batch, phi_gt_batch in loader:
+    test_samples: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+    for batch in loader:
+        if len(batch) == 3:
+            I_raw_batch, phi_gt_batch, grad_phi2_batch = batch
+        else:
+            I_raw_batch, phi_gt_batch, grad_phi2_batch, _ = batch
+        
         for i in range(I_raw_batch.size(0)):
             if len(test_samples) >= n_samples:
                 break
             I_clean = I_raw_batch[i, 0].numpy()
             dphi = phi_gt_batch[i, 0].numpy()
-            test_samples.append((I_clean, dphi))
+            grad_phi2 = grad_phi2_batch[i].numpy()
+            test_samples.append((I_clean, dphi, grad_phi2))
         if len(test_samples) >= n_samples:
             break
 
@@ -71,7 +77,7 @@ def compute_noise_robustness(
     for snr_db in snr_eval:
         maes: list[float] = []
 
-        for I_clean, dphi in test_samples:
+        for I_clean, dphi, grad_phi2_np in test_samples:
             I_noisy = (
                 I_clean if math.isinf(snr_db) else _add_gaussian_noise(I_clean, snr_db)
             )
@@ -79,18 +85,13 @@ def compute_noise_robustness(
             I_mean = I_noisy.mean()
             I_std = I_noisy.std() + 1e-6
             I_norm = (I_noisy - I_mean) / I_std
-            phi_hint = np.zeros_like(I_norm, dtype=np.float32)
 
-            inp_t = (
-                torch.from_numpy(np.stack([I_norm, phi_hint], 0))
-                .unsqueeze(0)
-                .to(device)
-            )
+            inp_t = torch.from_numpy(I_norm).unsqueeze(0).unsqueeze(0).to(device)
+            grad_t = torch.from_numpy(grad_phi2_np).unsqueeze(0).to(device)
             gt_t = torch.from_numpy(dphi).unsqueeze(0).unsqueeze(0).to(device)
 
             with autocast(device_type=device.type, enabled=False):
-                phi_raw, k_off = model(inp_t)
-                phi_abs = phi_raw + k_off
+                phi_abs, _, _, _, _ = model(inp_t, grad_t)
 
             aligned, _ = piston_align(phi_abs, gt_t)
             maes.append(float((aligned - gt_t).abs().mean().item()))
