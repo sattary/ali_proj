@@ -306,9 +306,17 @@ class OTFLoader:
     """Small DataLoader-compatible iterable for device-resident simulation."""
 
     def __init__(
-        self, simulator, batch_size, batches, generator, first_sample_id=0, fixed=False
+        self,
+        simulator,
+        batch_size,
+        batches,
+        generator,
+        first_sample_id=0,
+        fixed=False,
+        observation="intensity",
     ):
         self.simulator, self.batch_size, self.batches = simulator, batch_size, batches
+        self.observation = observation
         self.generator, self.next_sample_id, self.fixed = (
             generator,
             first_sample_id,
@@ -330,7 +338,8 @@ class OTFLoader:
                 first_sample_id=self.next_sample_id,
             )
             self.next_sample_id += self.batch_size
-            yield b.I_clean, b.phi_gt, b.grad_phi2, b.sample_ids
+            x = b.wrapped_dp if self.observation == "wrapped_dp" else b.I_clean
+            yield x, b.phi_gt, b.grad_phi2, b.sample_ids
 
 
 def build_otf_loaders(cfg, device):
@@ -341,8 +350,29 @@ def build_otf_loaders(cfg, device):
     val_g.manual_seed(cfg.data.val_seed)
     test_g = torch.Generator(device=device)
     test_g.manual_seed(cfg.data.test_seed)
+    observation = getattr(cfg.data, "observation", "intensity")
     return (
-        OTFLoader(sim, cfg.optim.batch_size, cfg.data.steps_per_epoch, train_g),
-        OTFLoader(sim, cfg.optim.batch_size, cfg.data.val_batches, val_g, fixed=True),
-        OTFLoader(sim, cfg.optim.batch_size, cfg.data.test_batches, test_g, fixed=True),
+        OTFLoader(
+            sim,
+            cfg.optim.batch_size,
+            cfg.data.steps_per_epoch,
+            train_g,
+            observation=observation,
+        ),
+        OTFLoader(
+            sim,
+            cfg.optim.batch_size,
+            cfg.data.val_batches,
+            val_g,
+            fixed=True,
+            observation=observation,
+        ),
+        OTFLoader(
+            sim,
+            cfg.optim.batch_size,
+            cfg.data.test_batches,
+            test_g,
+            fixed=True,
+            observation=observation,
+        ),
     )

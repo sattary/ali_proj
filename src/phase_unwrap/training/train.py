@@ -55,6 +55,7 @@ def run_eval(
     noise_aug: NoiseAug | None = None,
     severity: float = 0.0,
     noise_seed: int = 0,
+    observation: str = "intensity",
 ) -> Dict[str, float]:
     """Evaluate validation dataset metrics."""
     if loader is None:
@@ -77,11 +78,14 @@ def run_eval(
         bs = I_raw.size(0)
 
         with autocast(device_type=device.type, enabled=use_amp):
-            I_input = (
-                normalize_intensity(I_raw)
-                if noise_aug is None
-                else noise_aug(I_raw, severity, generator=noise_generator)[1]
-            )
+            if observation == "wrapped_dp":
+                I_input = I_raw
+            else:
+                I_input = (
+                    normalize_intensity(I_raw)
+                    if noise_aug is None
+                    else noise_aug(I_raw, severity, generator=noise_generator)[1]
+                )
             phi_abs, _, _, _, _ = model(
                 I_input,
                 grad_phi2
@@ -247,6 +251,14 @@ def train(
     device = pick_device(cfg.model.device)
     use_cuda = device.type == "cuda"
     use_amp = bool(use_cuda and cfg.model.use_amp)
+    observation = getattr(cfg.data, "observation", "intensity")
+    if observation not in {"intensity", "wrapped_dp"}:
+        raise ValueError(f"Unknown data.observation: {observation}")
+    if observation == "wrapped_dp":
+        if getattr(cfg.data, "backend", "otf") != "otf":
+            raise ValueError("data.observation=wrapped_dp requires data.backend=otf")
+        if getattr(cfg, "aug", None) and cfg.aug.enable:
+            raise ValueError("Disable aug for the wrapped_dp diagnostic")
 
     run_dir = cfg.logging.run_dir
     vis_dir = cfg.logging.vis_dir
@@ -260,6 +272,7 @@ def train(
         f"batch={cfg.optim.batch_size} | workers={cfg.data.workers}"
     )
     print(f"[run_dir] {run_dir}")
+    print(f"[observation] {observation}")
 
     config_snap_path = os.path.join(run_dir, "config.yaml")
     if not os.path.exists(config_snap_path):
@@ -280,6 +293,7 @@ def train(
 
     model = build_model(cfg.model).to(device=device)
     model.reference_mode = cfg.model.reference_mode
+    model.observation_mode = observation
     loss_fn = PCLCNLoss(
         w_phase=getattr(cfg.loss, "w_complex", 1.0),
         w_curl=getattr(cfg.loss, "w_curl", 0.1),
@@ -312,6 +326,7 @@ def train(
     scaler = GradScaler(device=device.type, enabled=use_amp)
     ema = EMA(model, decay=cfg.model.ema_decay)
     ema.m.reference_mode = cfg.model.reference_mode
+    ema.m.observation_mode = observation
 
     if cfg.optim.compile:
         print("[startup] torch.compile enabled")
@@ -396,7 +411,9 @@ def train(
             )
             opt.zero_grad(set_to_none=True)
 
-            if train_aug is not None:
+            if observation == "wrapped_dp":
+                I_norm_noisy = I_raw
+            elif train_aug is not None:
                 progress = global_step / max(1, total_steps)
                 if progress < 0.05:
                     step_severity = 0.0
@@ -428,7 +445,14 @@ def train(
                     I_norm_noisy,
                     grad_phi2 if cfg.model.reference_mode == "calibrated" else None,
                 )
-                L_phase, parts = loss_fn(phi_final, phi_gt, gx_tilde, gy_tilde)
+                phi_for_loss = (
+                    piston_align(phi_final, phi_gt)[0]
+                    if observation == "wrapped_dp"
+                    else phi_final
+                )
+                L_phase, parts = loss_fn(
+                    phi_for_loss, phi_gt, gx_tilde, gy_tilde
+                )
                 loss = cfg.loss.w_data * L_phase
 
             scaler.scale(loss).backward()
@@ -479,6 +503,9 @@ def train(
             (epoch % cfg.logging.val_interval == 0)
             and (val_loader is not None)
         ):
+            eval_severities = (
+                [0.0] if observation == "wrapped_dp" else cfg.aug.fixed_severities
+            )
             severity_stats = {
                 s: run_eval(
                     ema.m,
@@ -489,8 +516,9 @@ def train(
                     noise_aug=train_aug,
                     severity=s,
                     noise_seed=cfg.data.noise_seed,
+                    observation=observation,
                 )
-                for s in cfg.aug.fixed_severities
+                for s in eval_severities
             }
             eval_stats = severity_stats[0.0]
 
@@ -500,7 +528,10 @@ def train(
                     x.to(device, non_blocking=True) for x in vis_batch[:3]
                 )
 
-                if train_aug is not None:
+                if observation == "wrapped_dp":
+                    I_raw_n_v = I_raw_v
+                    I_input_v = I_raw_v
+                elif train_aug is not None:
                     I_raw_n_v, I_input_v = train_aug(
                         I_raw_v, current_noise_level, generator=noise_generator
                     )
@@ -544,7 +575,12 @@ def train(
 
             # Selection based on piston-aligned MAE across noise levels
             selection_score = (
-                sum(severity_stats[s]["TopoMAE"] for s in (0.0, 0.25, 0.5)) / 3
+                eval_stats["TopoMAE"]
+                if observation == "wrapped_dp"
+                else sum(
+                    severity_stats[s]["TopoMAE"] for s in (0.0, 0.25, 0.5)
+                )
+                / 3
             )
             save_kwargs = {
                 "epoch": epoch,
@@ -604,6 +640,9 @@ def train(
         if os.path.exists(best_path):
             best = torch.load(best_path, map_location=device, weights_only=True)
             ema.m.load_state_dict(best.get("model_ema", best["model"]))
+        test_severities = (
+            [0.0] if observation == "wrapped_dp" else cfg.aug.fixed_severities
+        )
         test_by_severity = {
             s: run_eval(
                 ema.m,
@@ -614,22 +653,24 @@ def train(
                 noise_aug=train_aug,
                 severity=s,
                 noise_seed=cfg.data.noise_seed + 1,
+                observation=observation,
             )
-            for s in cfg.aug.fixed_severities
+            for s in test_severities
         }
         # Gaussian SNR sweep (standard metric, runs in seconds on GPU)
         snr_levels = [5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0]
         test_by_snr: dict[float, dict[str, float]] = {}
-        for snr_db in snr_levels + [float("inf")]:
-            test_by_snr[snr_db] = _run_eval_snr(
-                ema.m,
-                test_loader,
-                device,
-                use_amp,
-                eval_sobel,
-                snr_db=snr_db,
-                noise_seed=cfg.data.noise_seed + 2,
-            )
+        if observation == "intensity":
+            for snr_db in snr_levels + [float("inf")]:
+                test_by_snr[snr_db] = _run_eval_snr(
+                    ema.m,
+                    test_loader,
+                    device,
+                    use_amp,
+                    eval_sobel,
+                    snr_db=snr_db,
+                    noise_seed=cfg.data.noise_seed + 2,
+                )
         test_stats = test_by_severity[0.0]
         print(
             f"[TEST] AbsMAE={test_stats.get('AbsMAE', 0):.4f} "
@@ -662,6 +703,7 @@ def train(
         )
         artifact = {
             "generator": "MatlabSimulator.float64.v1",
+            "observation": observation,
             "reference_mode": cfg.model.reference_mode,
             "seeds": {
                 k: getattr(cfg.data, k)

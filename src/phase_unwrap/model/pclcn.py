@@ -127,8 +127,13 @@ class PCLCNModel(nn.Module):
         if self.zero_reference_prior:
             grad_phi2 = torch.zeros_like(grad_phi2)
 
-        # Step 1: Deterministic Fourier demodulation
-        wrapped_phase, amplitude = self.stem(I_raw)
+        # Diagnostic mode receives the signed wrapped phase directly, proving
+        # unwrapping separately from single-frame phase extraction.
+        if getattr(self, "observation_mode", "intensity") == "wrapped_dp":
+            wrapped_phase = I_raw
+            amplitude = torch.ones_like(I_raw)
+        else:
+            wrapped_phase, amplitude = self.stem(I_raw)
 
         # Step 2: Extract wrapped gradients
         gx, gy = self.grad_op(wrapped_phase)
