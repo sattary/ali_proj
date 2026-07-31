@@ -13,6 +13,21 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import torch
+import numpy as np
+
+if hasattr(torch.serialization, "add_safe_globals"):
+    try:
+        import numpy.core.multiarray
+        torch.serialization.add_safe_globals([numpy.core.multiarray._reconstruct])
+    except ImportError:
+        pass
+    try:
+        import numpy._core.multiarray
+        torch.serialization.add_safe_globals([numpy._core.multiarray._reconstruct])
+    except ImportError:
+        pass
+    torch.serialization.add_safe_globals([np.ndarray, np.dtype, np.core.multiarray.scalar if hasattr(np, 'core') else np._core.multiarray.scalar])
+
 from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
 from torchmetrics.functional.image import structural_similarity_index_measure as ssim_fn
@@ -509,7 +524,7 @@ def train(
         print("\n--- Final Evaluation on Held-Out Test Set ---")
         best_path = os.path.join(run_dir, "best.pth")
         if os.path.exists(best_path):
-            best = torch.load(best_path, map_location=device, weights_only=True)
+            best = torch.load(best_path, map_location=device, weights_only=False)
             ema.m.load_state_dict(best.get("model_ema", best["model"]))
         test_by_severity = {
             s: run_eval(

@@ -66,6 +66,7 @@ def run_multiseed(
     cfg: TrainConfig,
     base_run_name: str,
     seeds: List[int],
+    auto_resume: bool = False,
 ) -> None:
     """
     Executes identical training configurations across multiple initialization seeds
@@ -86,7 +87,16 @@ def run_multiseed(
         print(f"Multi-seed run {i + 1}/{len(seeds)} | seed={seed}")
         print(f"{'=' * 60}\n")
 
-        train(seed_cfg)
+        resume_file = None
+        if auto_resume:
+            final_ckpt = Path(seed_cfg.logging.run_dir) / "final.pth"
+            best_ckpt = Path(seed_cfg.logging.run_dir) / "best.pth"
+            if final_ckpt.exists():
+                resume_file = str(final_ckpt)
+            elif best_ckpt.exists():
+                resume_file = str(best_ckpt)
+
+        train(seed_cfg, resume_path=resume_file)
         run_dirs.append(seed_cfg.logging.run_dir)
 
     agg_path = base_dir / "aggregate.csv"

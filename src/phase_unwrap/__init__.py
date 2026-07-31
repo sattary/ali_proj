@@ -12,13 +12,11 @@ Sub-package layout:
 
 import os
 
-# Fix matplotlib backend for Kaggle/Colab environments
-# Must be set before any matplotlib imports
-if os.environ.get("MPLBACKEND") == "module://matplotlib_inline.backend_inline":
-    os.environ["MPLBACKEND"] = "Agg"
+import matplotlib
+matplotlib.use("Agg")
 
 from .core.config import TrainConfig, load_train_config
 from .training.train import train
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 __all__ = ["TrainConfig", "load_train_config", "train", "__version__"]

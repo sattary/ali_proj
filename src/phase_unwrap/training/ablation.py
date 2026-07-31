@@ -34,6 +34,7 @@ def run_ablation(
     ablations: Dict[str, Dict[str, Any]],
     base_name: str = "pclcn_ablation",
     seeds: Sequence[int] = (42, 1337, 7),
+    auto_resume: bool = False,
 ) -> Path:
     """
     Automates multi-seed ablation runs across PCLCN components.
@@ -54,7 +55,7 @@ def run_ablation(
         _apply_overrides(cfg, overrides)
 
         group_name = f"{base_name}/{label}"
-        run_multiseed(cfg, base_run_name=group_name, seeds=list(seeds))
+        run_multiseed(cfg, base_run_name=group_name, seeds=list(seeds), auto_resume=auto_resume)
 
         summary[label] = {
             "overrides": overrides,

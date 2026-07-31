@@ -33,6 +33,7 @@ def multiseed_cmd(
     ),
     seeds: Optional[str] = typer.Option(None, "--seeds", help="Comma-separated seeds."),
     num_seeds: int = typer.Option(3, "--num-seeds", help="Auto-generate N seeds."),
+    auto_resume: bool = typer.Option(False, "--auto-resume", help="Resume crashed runs automatically."),
 ) -> None:
     """Run N training runs with different seeds, aggregate results."""
     from phase_unwrap.training.multiseed import run_multiseed
@@ -44,7 +45,7 @@ def multiseed_cmd(
         else [random.randint(0, 2**31) for _ in range(num_seeds)]
     )
     run_multiseed(
-        cfg, base_run_name=run_name, seeds=seed_list
+        cfg, base_run_name=run_name, seeds=seed_list, auto_resume=auto_resume
     )
 
 
@@ -60,6 +61,7 @@ def ablation_cmd(
     num_seeds: int = typer.Option(
         3, "--num-seeds", help="Number of seeds per ablation."
     ),
+    auto_resume: bool = typer.Option(False, "--auto-resume", help="Resume crashed runs automatically."),
 ) -> None:
     """Run ablation study and output JSON summary."""
     from phase_unwrap.training.ablation import run_ablation
@@ -81,5 +83,5 @@ def ablation_cmd(
         ablations=ablations,
         base_name=run_name,
         seeds=seed_list,
-        use_amp=cfg.model.use_amp,
+        auto_resume=auto_resume,
     )
