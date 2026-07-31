@@ -1,0 +1,19 @@
+data:
+  backend: "otf"
+  steps_per_epoch: 2
+  val_batches: 1
+  test_batches: 1
+  workers: 0
+
+model:
+  device: "cpu"
+  base: 8
+
+optim:
+  epochs: 1
+  batch_size: 2
+  compile: false
+
+logging:
+  run_name: "cpu_test"
+  val_interval: 1

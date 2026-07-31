@@ -19,7 +19,7 @@ model:
   ema_decay: 0.999
 
 optim:
-  epochs: 5
+  epochs: 50
   batch_size: 64
   lr: 3.0e-4
   eta_min: 1.0e-6
