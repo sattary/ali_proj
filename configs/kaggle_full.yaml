@@ -1,0 +1,94 @@
+# Kaggle full-training config: production PCLCN run on GPU.
+# Covers every field in TrainConfig.  OTF backend (no HDF5 needed).
+# Usage:
+#   uv run phun train -c configs/kaggle_full.yaml
+#
+# After training (locally, no GPU):
+#   uv run phun plot --run-dir runs/pclcn_full --out-dir results/paper_figures
+
+data:
+  data_dir: "data"                     # ignored when backend=otf
+  pattern: "*.h5"                      # ignored when backend=otf
+  I_key: "I"                           # ignored when backend=otf
+  phi_key: "phi"                       # ignored when backend=otf
+  val_frac: 0.1                        # ignored when backend=otf
+  test_frac: 0.1                       # ignored when backend=otf
+  workers: 4                           # parallel dataloader workers
+  persistent_workers: true             # keep workers alive between epochs
+  prefetch_factor: 4                   # batches prefetched per worker
+  augment: true                        # geometric flips/rotations on train
+  backend: "otf"                       # "otf" = GPU on-the-fly, "h5" = HDF5 shards
+  steps_per_epoch: 1000                # batches per epoch
+  val_batches: 32                      # validation batches per epoch
+  test_batches: 64                     # test batches at end of training
+  train_seed: 1337
+  val_seed: 7331
+  test_seed: 9337
+  noise_seed: 12345
+
+model:
+  arch: "pclcn"                        # only "pclcn" is supported
+  base: 32                             # channel multiplier (32 = standard, 64 = large)
+  activation: "silu"                   # "relu" | "silu" | "mish"
+  final_dropout: 0.3
+  ema_decay: 0.999
+  device: "auto"                       # "auto" → CUDA on Kaggle (T4/P100/L4)
+  use_amp: true                        # mixed precision (~2x faster on T4/P100)
+  use_coordconv: true
+  zero_reference_prior: false
+  unmasked_zernike: false              # false = masked Zernike projection
+  reference_mode: "reference_free"     # "reference_free" | "calibrated"
+
+optim:
+  epochs: 100                          # full training
+  batch_size: 128                      # fits T4 16 GB with base=32 + AMP
+  lr: 3.0e-4
+  eta_min: 1.0e-6
+  weight_decay: 1.0e-4
+  grad_clip: 5.0
+  warmup_steps: 500
+  compile: true                        # torch.compile (faster, requires PyTorch 2.x)
+
+loss:
+  w_mae: 1.0
+  w_grad: 0.1
+  int_wgrad: false
+  w_curv: 0.01
+  w_data: 1.0
+  w_curl: 0.1
+  w_complex: 1.0
+
+logging:
+  run_name: "pclcn_full"
+  runs_root: "runs"
+  vis_max: 8
+  val_interval: 1
+  seed: 1337
+
+aug:
+  enable: true
+  warmup_ratio: 0.1
+  full_ratio: 0.4
+  profile: "cosine"
+  cycles: 2.0
+  stochastic_std: 0.05
+  gauss_std: 0.02
+  speckle_std: 0.05
+  photon_min: 256.0
+  photon_max: 4096.0
+  sensor_min: 0.0
+  sensor_max: 4.0
+  lowfreq_amp: 0.05
+  blur_prob: 0.2
+  blur_min: 0.5
+  blur_max: 1.0
+  dropout_prob: 0.02
+  sap_prob: 0.0
+  gain_min: 0.9
+  gain_max: 1.1
+  off_min: -0.05
+  off_max: 0.05
+  clean_probability: 0.2
+  mid_probability: 0.6
+  hard_probability: 0.2
+  fixed_severities: [0.0, 0.25, 0.5, 0.75, 1.0]
