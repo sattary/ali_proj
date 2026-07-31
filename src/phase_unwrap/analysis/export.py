@@ -10,6 +10,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from ..core import _torch_compat  # noqa: F401
+
 
 def export_onnx(
     checkpoint_path: str,

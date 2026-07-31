@@ -5,15 +5,16 @@ Unified inference and checkpoint loading utilities.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 import torch
 from torch.utils.data import DataLoader
 
-from .config import load_train_config, TrainConfig
-from .utils import pick_device
-from ..model import build_model
 from ..data import build_dataloaders
+from ..model import build_model
+from . import _torch_compat  # noqa: F401
+from .config import TrainConfig, load_train_config
+from .utils import pick_device
 
 
 def load_inference_state(

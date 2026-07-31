@@ -4,39 +4,27 @@ Training loop for absolute phase reconstruction.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import time
 import warnings
-import hashlib
-import json
 from pathlib import Path
 from typing import Dict, Optional
 
 import torch
-import numpy as np
-
-if hasattr(torch.serialization, "add_safe_globals"):
-    try:
-        import numpy.core.multiarray
-        torch.serialization.add_safe_globals([numpy.core.multiarray._reconstruct])
-    except ImportError:
-        pass
-    try:
-        import numpy._core.multiarray
-        torch.serialization.add_safe_globals([numpy._core.multiarray._reconstruct])
-    except ImportError:
-        pass
-    torch.serialization.add_safe_globals([np.ndarray, np.dtype, np.core.multiarray.scalar if hasattr(np, 'core') else np._core.multiarray.scalar])
-
 from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader
 from torchmetrics.functional.image import structural_similarity_index_measure as ssim_fn
 from tqdm.auto import tqdm
 
+from ..core import _torch_compat  # noqa: F401
 from ..core.config import TrainConfig, config_to_yaml
 from ..core.losses import PCLCNLoss, compute_metrics
 from ..core.ops import FixedSobel, piston_align
 from ..core.utils import ensure_dir, pick_device, set_seed
+
+
 def _hash_file(path: str) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -44,13 +32,12 @@ def _hash_file(path: str) -> str:
             h.update(chunk)
     return h.hexdigest()
 from ..data import build_dataloaders, build_otf_loaders
-from ..data.augmentation import normalize_intensity
-from ..data.augmentation import NoiseAug
+from ..data.augmentation import NoiseAug, normalize_intensity
 from ..model import EMA, build_model
 from .callbacks import (
     CSV_COLUMNS,
-    CSVLogger,
     CheckpointManager,
+    CSVLogger,
     VisualizationDispatcher,
 )
 
@@ -524,7 +511,7 @@ def train(
         print("\n--- Final Evaluation on Held-Out Test Set ---")
         best_path = os.path.join(run_dir, "best.pth")
         if os.path.exists(best_path):
-            best = torch.load(best_path, map_location=device, weights_only=False)
+            best = torch.load(best_path, map_location=device, weights_only=True)
             ema.m.load_state_dict(best.get("model_ema", best["model"]))
         test_by_severity = {
             s: run_eval(

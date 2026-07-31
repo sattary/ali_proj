@@ -1,6 +1,6 @@
 [project]
 name = "ali-proj"
-version = "0.1.0"
+version = "1.0.0"
 description = "UNetRes2 absolute phase reconstruction from interferometric data"
 readme = "README.md"
 requires-python = ">=3.12"

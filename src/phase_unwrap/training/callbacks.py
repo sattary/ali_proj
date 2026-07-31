@@ -1,25 +1,13 @@
-import os
 import csv
+import os
 import threading
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 
 import torch
 
-if hasattr(torch.serialization, "add_safe_globals"):
-    try:
-        import numpy.core.multiarray
-        torch.serialization.add_safe_globals([numpy.core.multiarray._reconstruct])
-    except ImportError:
-        pass
-    try:
-        import numpy._core.multiarray
-        torch.serialization.add_safe_globals([numpy._core.multiarray._reconstruct])
-    except ImportError:
-        pass
-    import numpy as np
-    torch.serialization.add_safe_globals([np.ndarray, np.dtype, np.core.multiarray.scalar if hasattr(np, 'core') else np._core.multiarray.scalar])
-
+from ..core import _torch_compat  # noqa: F401
 from ..plots import save_epoch_visuals
+
 
 class CSVLogger:
     """Handles appending metrics to a CSV file safely."""
@@ -123,6 +111,7 @@ class CheckpointManager:
         next_sample_id: int = 0,
     ) -> None:
         import random
+
         import numpy as np
         state = {
             "epoch": epoch,
@@ -161,8 +150,9 @@ class CheckpointManager:
         noise_generator: Optional[torch.Generator] = None,
     ) -> tuple[int, float, int]:
         import random
+
         import numpy as np
-        ckpt = torch.load(path, map_location=device, weights_only=False)
+        ckpt = torch.load(path, map_location=device, weights_only=True)
         model.load_state_dict(ckpt["model"])
         ema.m.load_state_dict(ckpt["model_ema"])
         optimizer.load_state_dict(ckpt["optimizer"])
