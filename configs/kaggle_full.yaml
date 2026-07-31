@@ -88,7 +88,7 @@ aug:
   gain_max: 1.1
   off_min: -0.05
   off_max: 0.05
-  clean_probability: 0.5                # ⚡ increased from 0.2 → 0.5 (more clean signal early)
+  clean_probability: 0.2
   mid_probability: 0.6
   hard_probability: 0.2
   fixed_severities: [0.0, 0.25, 0.5, 0.75, 1.0]

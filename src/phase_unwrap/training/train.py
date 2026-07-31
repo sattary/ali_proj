@@ -433,7 +433,6 @@ def train(
                                 0.75, 1.0, generator=noise_generator
                             )
                         )
-                    step_severity *= current_noise_level
                 I_raw_noisy, I_norm_noisy = train_aug(
                     I_raw, step_severity, generator=noise_generator
                 )
