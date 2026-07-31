@@ -52,18 +52,3 @@ python_version = "3.12"
 strict = true
 ignore_missing_imports = true
 
-[project.optional-dependencies]
-cpu = ["torch", "torchvision"]
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
-
-[tool.uv.sources]
-torch = [
-  { index = "pytorch-cpu", extra = "cpu" },
-]
-torchvision = [
-  { index = "pytorch-cpu", extra = "cpu" },
-]
