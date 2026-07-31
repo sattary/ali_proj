@@ -207,3 +207,72 @@ def plot_f3_noise_grid(
     fig.tight_layout(rect=[0, 0.1, 1, 0.95])
 
     return fig
+@publication_plot
+def plot_f3_dual_panel(
+    severity_results: dict[str, list[float]],
+    snr_results: dict[str, list[float]],
+    filepath: str | None = None,
+) -> plt.Figure:
+    """
+    Two-panel noise robustness figure.
+
+    **Panel (a)** — Curriculum noise severity (``NoiseAug`` pipeline, 0–1 scale).
+    **Panel (b)** — Gaussian additive noise (SNR in dB, 5–40 + clean baseline).
+
+    Both panels show mean TopoMAE with ±1σ shaded band.
+    """
+    palette = create_nature_palette(6)
+    fig, (ax1, ax2) = plt.subplots(
+        1, 2, figsize=(DOUBLE_COL, DOUBLE_COL * 0.45), width_ratios=[1, 1.2]
+    )
+
+    # ------------------------------------------------------------------
+    # Panel (a): Curriculum Noise Severity
+    # ------------------------------------------------------------------
+    sev_mask = [not math.isinf(s) for s in severity_results["snr_db"]]
+    sev_x = [s for s, m in zip(severity_results["snr_db"], sev_mask) if m]
+    sev_y = [m for m, mask in zip(severity_results["mae"], sev_mask) if mask]
+    sev_std = [s for s, mask in zip(severity_results["std"], sev_mask) if mask]
+
+    sns.lineplot(x=sev_x, y=sev_y, ax=ax1, color=palette[0],
+                 marker="o", linewidth=2, markersize=7)
+    ax1.fill_between(sev_x,
+                     np.array(sev_y) - np.array(sev_std),
+                     np.array(sev_y) + np.array(sev_std),
+                     alpha=0.2, color=palette[0])
+    ax1.set_xlabel("Noise Severity", fontsize=9)
+    ax1.set_ylabel("TopoMAE [rad]", fontsize=9)
+    ax1.set_title("Curriculum Noise", fontsize=10)
+    ax1.grid(True, alpha=0.3, axis="y")
+
+    # ------------------------------------------------------------------
+    # Panel (b): Gaussian SNR
+    # ------------------------------------------------------------------
+    noisy_mask = [not math.isinf(s) for s in snr_results["snr_db"]]
+    snr_x = [s for s, m in zip(snr_results["snr_db"], noisy_mask) if m]
+    snr_y = [m for m, mask in zip(snr_results["mae"], noisy_mask) if mask]
+    snr_std = [s for s, mask in zip(snr_results["std"], noisy_mask) if mask]
+
+    sns.lineplot(x=snr_x, y=snr_y, ax=ax2, color=palette[0],
+                 marker="o", linewidth=2, markersize=7)
+    ax2.fill_between(snr_x,
+                     np.array(snr_y) - np.array(snr_std),
+                     np.array(snr_y) + np.array(snr_std),
+                     alpha=0.2, color=palette[0])
+
+    # Clean baseline as horizontal dashed line
+    if any(not m for m in noisy_mask):
+        clean_idx = [i for i, m in enumerate(noisy_mask) if not m][0]
+        clean_mae = snr_results["mae"][clean_idx]
+        ax2.axhline(clean_mae, color=palette[2], linestyle="--", linewidth=2,
+                    label=f"Clean ({clean_mae:.3f})")
+        ax2.legend(fontsize=7)
+
+    ax2.set_xlabel("SNR [dB]", fontsize=9)
+    ax2.set_ylabel("TopoMAE [rad]", fontsize=9)
+    ax2.set_title("Gaussian Noise", fontsize=10)
+    ax2.grid(True, alpha=0.3)
+
+    label_panels([ax1, ax2])
+    fig.tight_layout()
+    return fig

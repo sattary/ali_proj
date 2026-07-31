@@ -39,6 +39,13 @@ def _make_run(tmp: Path) -> Path:
             "0.0": {"TopoMAE": 0.10}, "0.25": {"TopoMAE": 0.14},
             "0.5": {"TopoMAE": 0.21}, "0.75": {"TopoMAE": 0.30}, "1.0": {"TopoMAE": 0.42},
         },
+        "test_by_snr": {
+            "5.0": {"TopoMAE": 0.85}, "10.0": {"TopoMAE": 0.55},
+            "15.0": {"TopoMAE": 0.35}, "20.0": {"TopoMAE": 0.22},
+            "25.0": {"TopoMAE": 0.16}, "30.0": {"TopoMAE": 0.13},
+            "35.0": {"TopoMAE": 0.11}, "40.0": {"TopoMAE": 0.10},
+            "inf": {"TopoMAE": 0.09},
+        },
     }))
     return run
 

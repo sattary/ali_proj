@@ -4,6 +4,7 @@ Training loop for absolute phase reconstruction.
 
 from __future__ import annotations
 
+import math
 import hashlib
 import json
 import os
@@ -124,6 +125,95 @@ def run_eval(
     return {k: sums[k] / n for k in sums}
 
 
+@torch.no_grad()
+def _run_eval_snr(
+    model: torch.nn.Module,
+    loader: DataLoader | None,
+    device: torch.device,
+    use_amp: bool,
+    sobel: FixedSobel,
+    snr_db: float,
+    noise_seed: int = 0,
+) -> Dict[str, float]:
+    """Evaluate model on test set with additive Gaussian noise at a given SNR (dB).
+
+    Reuses the same metric pipeline as ``run_eval`` but replaces the curriculum
+    ``NoiseAug`` pipeline with standard Gaussian noise.  ``snr_db=inf`` means
+    clean (no noise added).
+    """
+    if loader is None:
+        return {k: float("nan") for k in ["AbsMAE", "TopoMAE", "RMSE", "SSIM", "PSNR", "MaxErr", "GradMAE"]}
+
+    sums: Dict[str, float] = {k: 0.0 for k in ["AbsMAE", "TopoMAE", "RMSE", "SSIM", "PSNR", "MaxErr", "GradMAE"]}
+    n = 0
+
+    noise_generator = torch.Generator(device=device)
+    noise_generator.manual_seed(noise_seed)
+
+    pbar = tqdm(loader, desc=f"SNR={snr_db}" if not math.isinf(snr_db) else "SNR=clean", leave=False, dynamic_ncols=True)
+    for batch in pbar:
+        I_raw, phi_gt, grad_phi2 = (x.to(device, non_blocking=True) for x in batch[:3])
+        bs = I_raw.size(0)
+
+        # Add Gaussian noise at the requested SNR (dB)
+        if math.isinf(snr_db):
+            I_noisy = I_raw
+        else:
+            signal_power = I_raw.square().mean(dim=(-2, -1), keepdim=True)
+            snr_linear = 10.0 ** (snr_db / 10.0)
+            noise_power = signal_power / snr_linear
+            noise = torch.randn_like(I_raw) * noise_power.sqrt()
+            I_noisy = I_raw + noise
+
+        I_input = normalize_intensity(I_noisy)
+
+        with autocast(device_type=device.type, enabled=use_amp):
+            phi_abs, _, _, _, _ = model(
+                I_input,
+                grad_phi2
+                if getattr(model, "reference_mode", "reference_free") == "calibrated"
+                else None,
+            )
+
+        phi_aligned, _ = piston_align(phi_abs, phi_gt)
+
+        m_abs = compute_metrics(phi_abs, phi_gt)
+        m_topo = compute_metrics(phi_aligned, phi_gt)
+        sums["AbsMAE"] += float(m_abs["MAE"]) * bs
+        sums["TopoMAE"] += float(m_topo["MAE"]) * bs
+        sums["RMSE"] += float(m_topo["RMSE"]) * bs
+
+        max_err = (phi_aligned - phi_gt).abs().amax(dim=(1, 2, 3)).mean()
+        sums["MaxErr"] += float(max_err) * bs
+
+        pgx, pgy = sobel(phi_aligned)
+        tgx, tgy = sobel(phi_gt)
+        grad_mae = ((pgx - tgx).abs() + (pgy - tgy).abs()).mean()
+        sums["GradMAE"] += float(grad_mae) * bs
+
+        gt_min = phi_gt.amin(dim=(1, 2, 3), keepdim=True)
+        gt_max = phi_gt.amax(dim=(1, 2, 3), keepdim=True)
+        data_range = (gt_max - gt_min).clamp_min(1e-6)
+        pred_norm = (phi_aligned - gt_min) / data_range
+        gt_norm = (phi_gt - gt_min) / data_range
+        ssim_val = ssim_fn(pred_norm, gt_norm, data_range=1.0)
+        sums["SSIM"] += float(ssim_val) * bs
+
+        mse = ((phi_aligned - phi_gt) ** 2).mean()
+        data_range_mean = data_range.mean()
+        psnr = 10.0 * torch.log10(data_range_mean**2 / mse.clamp_min(1e-12))
+        sums["PSNR"] += float(psnr) * bs
+
+        n += bs
+
+    if n == 0:
+        return {k: float("nan") for k in sums}
+    return {k: sums[k] / n for k in sums}
+
+
+# ---------------------------------------------------------------------------
+# Learning rate scheduler
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 # Learning rate scheduler
 # ---------------------------------------------------------------------------
@@ -526,6 +616,19 @@ def train(
             )
             for s in cfg.aug.fixed_severities
         }
+        # Gaussian SNR sweep (standard metric, runs in seconds on GPU)
+        snr_levels = [5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0]
+        test_by_snr: dict[float, dict[str, float]] = {}
+        for snr_db in snr_levels + [float("inf")]:
+            test_by_snr[snr_db] = _run_eval_snr(
+                ema.m,
+                test_loader,
+                device,
+                use_amp,
+                eval_sobel,
+                snr_db=snr_db,
+                noise_seed=cfg.data.noise_seed + 2,
+            )
         test_stats = test_by_severity[0.0]
         print(
             f"[TEST] AbsMAE={test_stats.get('AbsMAE', 0):.4f} "
@@ -534,6 +637,11 @@ def train(
             f"SSIM={test_stats.get('SSIM', 0):.4f} "
             f"PSNR={test_stats.get('PSNR', 0):.2f} "
         )
+        # Print SNR sweep summary
+        print("  SNR sweep (TopoMAE):")
+        for snr_db, stats in test_by_snr.items():
+            label = "clean" if math.isinf(snr_db) else f"{snr_db:.0f} dB"
+            print(f"    {label:>8s}  TopoMAE={stats.get('TopoMAE', 0):.4f}")
         test_path = os.path.join(run_dir, "test_metrics.csv")
         test_csv_logger = CSVLogger(
             test_path,
@@ -561,6 +669,7 @@ def train(
             "sample_id_next": getattr(train_loader, "next_sample_id", None),
             "noise": vars(cfg.aug),
             "test_by_severity": {str(k): v for k, v in test_by_severity.items()},
+            "test_by_snr": {str(k): v for k, v in test_by_snr.items()},
             "checkpoint_sha256": _hash_file(best_path)
             if os.path.exists(best_path)
             else None,

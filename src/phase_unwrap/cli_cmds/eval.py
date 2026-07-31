@@ -35,34 +35,6 @@ def eval_baselines_cmd(
         )
 
 
-@EvalApp.command("noise")
-def eval_noise_cmd(
-    checkpoint: str = typer.Option(..., "--checkpoint", help="Trained model checkpoint."),
-    data_dir: Optional[str] = typer.Option(None, "--data-dir", help="Override dataset directory."),
-    out: str = typer.Option("results/figs/noise_robustness.png", "--out", help="Output figure path."),
-    snr_min: float = typer.Option(5.0, "--snr-min", help="Minimum SNR in dB."),
-    snr_max: float = typer.Option(40.0, "--snr-max", help="Maximum SNR in dB."),
-    n_steps: int = typer.Option(8, "--n-steps", help="Number of SNR levels."),
-    n_samples: int = typer.Option(100, "--n-samples", help="Number of evaluation samples."),
-    device: str = typer.Option("auto", "--device", help="Device for inference."),
-    config: Optional[str] = typer.Option(None, "--config", help="Config file."),
-) -> None:
-    """Evaluate model robustness across SNR levels."""
-    from phase_unwrap.analysis.noise_sweep import compute_noise_robustness
-    from phase_unwrap.plots.fig3_noise_robustness import plot_f3_noise_sweep as plot_noise_sweep
-
-    results, all_maes_by_snr = compute_noise_robustness(
-        checkpoint,
-        data_dir=data_dir,
-        snr_range=(snr_min, snr_max),
-        n_snr_steps=n_steps,
-        n_samples=n_samples,
-        device_str=device,
-        config_path=config,
-    )
-    plot_noise_sweep(results, all_maes_by_snr, filepath=out)
-
-
 @EvalApp.command("benchmark")
 def eval_benchmark_cmd(
     checkpoint: str = typer.Option(..., "--checkpoint", help="Trained model checkpoint."),

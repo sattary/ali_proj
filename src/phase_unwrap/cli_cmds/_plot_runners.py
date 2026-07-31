@@ -23,7 +23,7 @@ from ..data.augmentation import NoiseAug, normalize_intensity
 from ..model import build_model
 from ..plots.fig1_architecture import plot_f1_architecture
 from ..plots.fig2_baseline_comparison import plot_f2_baseline_comparison
-from ..plots.fig3_noise_robustness import plot_f3_noise_sweep
+from ..plots.fig3_noise_robustness import plot_f3_dual_panel
 from ..plots.fig4_ablation import plot_f4_multiseed, plot_f4_radar
 from ..plots.fig5_diagnostics import plot_f5_diagnostics
 from ..plots.fig6_physics_zernike import plot_f6_physics_zernike
@@ -105,21 +105,29 @@ def run_f2(run_dir: str, out_dir: str, n_samples: int = 3, device: str = "auto",
 def run_f3(run_dir: str, out_dir: str, **_):
     rj = json.loads(Path(run_dir, "result.json").read_text())
     sev = rj.get("test_by_severity", {})
+    snr = rj.get("test_by_snr", {})
     if not sev:
         print("fig3: no test_by_severity in result.json, skipping")
         return
-    items = sorted((float(k), v) for k, v in sev.items())
-    results = {
-        "snr_db": [k for k, _ in items],
-        "mae": [v.get("TopoMAE", float("nan")) for _, v in items],
-        "std": [0.0] * len(items),
-    }
-    plot_f3_noise_sweep(
-        results,
-        None,
+    if not snr:
+        print("fig3: no test_by_snr in result.json, skipping")
+        return
+
+    def _to_results(data):
+        items = sorted((float(k), v) for k, v in data.items())
+        return {
+            "snr_db": [k for k, _ in items],
+            "mae": [v.get("TopoMAE", float("nan")) for _, v in items],
+            "std": [0.0] * len(items),
+        }
+
+    severity_results = _to_results(sev)
+    snr_results = _to_results(snr)
+
+    plot_f3_dual_panel(
+        severity_results,
+        snr_results,
         filepath=str(Path(out_dir) / "fig3_noise_robustness.png"),
-        x_label="Noise Severity",
-        level_fmt=lambda v: "Clean" if v == 0.0 else f"{v:.2f}",
     )
 
 
