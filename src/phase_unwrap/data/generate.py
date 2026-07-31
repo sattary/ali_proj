@@ -103,15 +103,20 @@ def generate_sample(
 
     # Add optional multiplicative laser speckle
     if speckle_noise > 0.0:
-        speckle = rng.gamma(shape=1.0 / speckle_noise, scale=speckle_noise, size=interferogram.shape)
+        speckle = rng.gamma(
+            shape=1.0 / speckle_noise, scale=speckle_noise, size=interferogram.shape
+        )
         interferogram = interferogram * speckle
 
     # ---- ground truth unwrapped phase ----
     dp = phi1 - phi2
     dphi = dp - dp.min()
 
-    return interferogram.astype(np.float32), dphi.astype(np.float32), (grad_phi2_x, grad_phi2_y)
-
+    return (
+        interferogram.astype(np.float32),
+        dphi.astype(np.float32),
+        (grad_phi2_x, grad_phi2_y),
+    )
 
 
 def _generate_shard_worker(args: Tuple[int, int, int, Path]) -> int:
@@ -119,26 +124,25 @@ def _generate_shard_worker(args: Tuple[int, int, int, Path]) -> int:
     rng = np.random.default_rng(seed)
     x, y, r2 = _build_grid()
 
-    I_buf = np.empty((n_in_shard, 1, NY, NX), dtype=np.float32)
-    phi_buf = np.empty((n_in_shard, 1, NY, NX), dtype=np.float32)
-    grad_buf = np.empty((n_in_shard, 2, NY, NX), dtype=np.float32)
-
-    for local in range(n_in_shard):
-        I_sample, dphi_sample, (g2x, g2y) = generate_sample(x, y, r2, rng)
-        I_buf[local, 0] = I_sample
-        phi_buf[local, 0] = dphi_sample
-        grad_buf[local, 0] = g2x
-        grad_buf[local, 1] = g2y
+    samples = [generate_sample(x, y, r2, rng) for _ in range(n_in_shard)]
+    I_buf = np.stack([s[0] for s in samples])[:, None]
+    phi_buf = np.stack([s[1] for s in samples])[:, None]
+    grad_buf = np.stack([np.stack(s[2]) for s in samples])
 
     shard_name = out_path / f"train_shard_{shard_idx:03d}.h5"
     chunk_n = min(128, n_in_shard)
     with h5py.File(shard_name, "w") as f:
-        f.create_dataset("I", data=I_buf, chunks=(chunk_n, 1, NY, NX), compression="lzf")
-        f.create_dataset("phi", data=phi_buf, chunks=(chunk_n, 1, NY, NX), compression="lzf")
-        f.create_dataset("grad_phi2", data=grad_buf, chunks=(chunk_n, 2, NY, NX), compression="lzf")
+        f.create_dataset(
+            "I", data=I_buf, chunks=(chunk_n, 1, NY, NX), compression="lzf"
+        )
+        f.create_dataset(
+            "phi", data=phi_buf, chunks=(chunk_n, 1, NY, NX), compression="lzf"
+        )
+        f.create_dataset(
+            "grad_phi2", data=grad_buf, chunks=(chunk_n, 2, NY, NX), compression="lzf"
+        )
 
     return n_in_shard
-
 
 
 def generate_to_h5(
@@ -203,24 +207,3 @@ def generate_to_h5(
     with open(config_path, "w") as f:
         yaml.dump(data_config, f, default_flow_style=False)
     print(f"Saved data config: {config_path}")
-
-
-# ---------------------------------------------------------------------------
-# Standalone entry point
-# ---------------------------------------------------------------------------
-if __name__ == "__main__":
-    import argparse
-
-    p = argparse.ArgumentParser(description="Generate synthetic interferogram data.")
-    p.add_argument("--num-samples", type=int, default=180_000)
-    p.add_argument("--shard-size", type=int, default=1000)
-    p.add_argument("--out-dir", type=str, default="data/full")
-    p.add_argument("--seed", type=int, default=1337)
-    args = p.parse_args()
-
-    generate_to_h5(
-        out_dir=args.out_dir,
-        num_samples=args.num_samples,
-        shard_size=args.shard_size,
-        seed=args.seed,
-    )

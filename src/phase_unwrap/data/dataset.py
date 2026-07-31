@@ -14,6 +14,7 @@ import h5py
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, Sampler
+from .simulator import MatlabSimulator
 
 from ..core.config import DataConfig, TrainConfig
 
@@ -324,3 +325,29 @@ def build_dataloaders(
         else None
     )
     return train_loader, val_loader, test_loader
+
+
+class OTFLoader:
+    """Small DataLoader-compatible iterable for device-resident simulation."""
+    def __init__(self, simulator, batch_size, batches, generator, first_sample_id=0, fixed=False):
+        self.simulator, self.batch_size, self.batches = simulator, batch_size, batches
+        self.generator, self.next_sample_id, self.fixed = generator, first_sample_id, fixed
+        self._state, self._first_sample_id = generator.get_state(), first_sample_id
+    def __len__(self): return self.batches
+    def __iter__(self):
+        if self.fixed:
+            self.generator.set_state(self._state); self.next_sample_id = self._first_sample_id
+        for _ in range(self.batches):
+            b = self.simulator.sample(self.batch_size, generator=self.generator, first_sample_id=self.next_sample_id)
+            self.next_sample_id += self.batch_size
+            yield b.I_clean, b.phi_gt, b.grad_phi2, b.sample_ids
+
+
+def build_otf_loaders(cfg, device):
+    sim = MatlabSimulator().to(device)
+    train_g = torch.Generator(device=device); train_g.manual_seed(cfg.data.train_seed)
+    val_g = torch.Generator(device=device); val_g.manual_seed(cfg.data.val_seed)
+    test_g = torch.Generator(device=device); test_g.manual_seed(cfg.data.test_seed)
+    return (OTFLoader(sim, cfg.optim.batch_size, cfg.data.steps_per_epoch, train_g),
+            OTFLoader(sim, cfg.optim.batch_size, cfg.data.val_batches, val_g, fixed=True),
+            OTFLoader(sim, cfg.optim.batch_size, cfg.data.test_batches, test_g, fixed=True))

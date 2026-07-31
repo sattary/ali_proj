@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import typer
 
-from .cli_cmds.data import DataApp
 from .cli_cmds.eval import EvalApp
 from .cli_cmds.export import ExportApp
 from .cli_cmds.infer import InferApp
@@ -19,8 +18,18 @@ app = typer.Typer(
     add_completion=False,
 )
 
-# Flat command registration (zero nested sub-app boilerplate)
-app.add_typer(DataApp)
+# Flattened commands
+@app.command("generate")
+def data_generate(
+    num_samples: int = typer.Option(180_000, "--num-samples", help="Total number of samples to generate."),
+    shard_size: int = typer.Option(1000, "--shard-size", help="Number of samples per HDF5 shard."),
+    out_dir: str = typer.Option("data/full", "--out-dir", help="Output directory for HDF5 shards."),
+    seed: int = typer.Option(1337, "--seed", help="Random seed for reproducibility."),
+) -> None:
+    """Generate synthetic interferogram data to HDF5 shards."""
+    from phase_unwrap.data.generate import generate_to_h5
+    generate_to_h5(out_dir=out_dir, num_samples=num_samples, shard_size=shard_size, seed=seed)
+
 app.add_typer(TrainApp)
 app.add_typer(EvalApp)
 app.add_typer(ExportApp)

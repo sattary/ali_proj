@@ -33,6 +33,14 @@ class DataConfig:
     persistent_workers: bool = False
     prefetch_factor: int = 4
     augment: bool = True
+    backend: str = "otf"
+    steps_per_epoch: int = 1000
+    val_batches: int = 32
+    test_batches: int = 64
+    train_seed: int = 1337
+    val_seed: int = 7331
+    test_seed: int = 9337
+    noise_seed: int = 12345
 
 
 @dataclass
@@ -49,6 +57,7 @@ class ModelConfig:
     use_coordconv: bool = True
     zero_reference_prior: bool = False
     unmasked_zernike: bool = False
+    reference_mode: str = "reference_free"
 
 
 @dataclass
@@ -110,6 +119,10 @@ class AugmentationConfig:
     gauss_std: float = 0.02
     speckle_std: float = 0.05
     poisson_scale: float = 0.0
+    photon_min: float = 256.0
+    photon_max: float = 4096.0
+    sensor_min: float = 0.0
+    sensor_max: float = 4.0
     lowfreq_amp: float = 0.05
     blur_prob: float = 0.2
     blur_min: float = 0.5
@@ -122,6 +135,10 @@ class AugmentationConfig:
     off_max: float = 0.05
     hint_std: float = 0.2
     hint_mode: str = "zero"
+    clean_probability: float = 0.2
+    mid_probability: float = 0.6
+    hard_probability: float = 0.2
+    fixed_severities: tuple = (0.0, 0.25, 0.5, 0.75, 1.0)
 
 
 @dataclass

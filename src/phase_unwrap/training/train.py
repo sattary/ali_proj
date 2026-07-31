@@ -7,6 +7,8 @@ from __future__ import annotations
 import os
 import time
 import warnings
+import hashlib
+import json
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -20,8 +22,9 @@ from ..core.config import TrainConfig, config_to_yaml
 from ..core.losses import PCLCNLoss, compute_metrics
 from ..core.ops import FixedSobel, piston_align
 from ..core.utils import ensure_dir, pick_device, set_seed
-from ..data import build_dataloaders
-from ..data.augmentation import NoiseAug, NoiseScheduler, prepare_batch
+from ..data import build_dataloaders, build_otf_loaders
+from ..data.augmentation import normalize_intensity
+from ..data.augmentation import NoiseAug
 from ..model import EMA, build_model
 from .callbacks import CSV_COLUMNS, CSVLogger, CheckpointManager, VisualizationDispatcher
 
@@ -50,6 +53,9 @@ def run_eval(
     use_amp: bool,
     sobel: FixedSobel,
     hint_mode: str = "zero",
+    noise_aug: NoiseAug | None = None,
+    severity: float = 0.0,
+    noise_seed: int = 0,
 ) -> Dict[str, float]:
     """
     Evaluate with Option-B inputs by default (zero hint).
@@ -68,6 +74,7 @@ def run_eval(
     }
     n = 0
 
+    noise_generator = torch.Generator(device=device); noise_generator.manual_seed(noise_seed)
     pbar = tqdm(loader, desc="Validating", leave=False, dynamic_ncols=True)
     for batch in pbar:
         I_raw, phi_gt, grad_phi2 = _unpack_batch(batch, device)
@@ -76,7 +83,8 @@ def run_eval(
         with autocast(device_type=device.type, enabled=use_amp):
             if grad_phi2 is None:
                 grad_phi2 = torch.zeros(bs, 2, I_raw.shape[2], I_raw.shape[3], device=device)
-            phi_abs, _, _, _, _ = model(I_raw, grad_phi2)
+            I_input = normalize_intensity(I_raw) if noise_aug is None else noise_aug(I_raw, severity, generator=noise_generator)[1]
+            phi_abs, _, _, _, _ = model(I_input, grad_phi2 if getattr(model, "reference_mode", "reference_free") == "calibrated" else None)
 
         # TopoMAE key retained for CSV compat; now offset-only (piston) aligned.
         phi_aligned, _ = piston_align(phi_abs, phi_gt)
@@ -166,17 +174,19 @@ def train(
     if not os.path.exists(config_snap_path):
         Path(config_snap_path).write_text(config_to_yaml(cfg))
 
-    train_loader, val_loader, test_loader = build_dataloaders(
-        cfg, device, seed=cfg.logging.seed
-    )
+    if getattr(cfg.data, "backend", "otf") == "otf":
+        train_loader, val_loader, test_loader = build_otf_loaders(cfg, device)
+    else:
+        train_loader, val_loader, test_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed)
     print(
         f"[data] dir={cfg.data.data_dir} pattern={cfg.data.pattern} | "
-        f"train={len(train_loader.dataset)} "
-        f"val={len(val_loader.dataset) if val_loader is not None else 0} "
-        f"test={len(test_loader.dataset) if test_loader is not None else 0}"
+        f"train={len(train_loader)} "
+        f"val={len(val_loader) if val_loader is not None else 0} "
+        f"test={len(test_loader) if test_loader is not None else 0}"
     )
 
     model = build_model(cfg.model).to(device=device)
+    model.reference_mode = cfg.model.reference_mode
     loss_fn = PCLCNLoss(
         w_phase=getattr(cfg.loss, "w_complex", 1.0),
         w_curl=getattr(cfg.loss, "w_curl", 0.1),
@@ -189,7 +199,7 @@ def train(
         weight_decay=cfg.optim.weight_decay,
     )
 
-    total_steps = cfg.optim.epochs * len(train_loader)
+    total_steps = cfg.optim.epochs * (cfg.data.steps_per_epoch if getattr(cfg.data, "backend", "otf") == "otf" else len(train_loader))
     warmup_steps = min(cfg.optim.warmup_steps, total_steps // 2)
     sched = _build_warmup_scheduler(
         opt, warmup_steps, total_steps - warmup_steps, cfg.optim.eta_min
@@ -207,6 +217,7 @@ def train(
 
     scaler = GradScaler(device=device.type, enabled=use_amp)
     ema = EMA(model, decay=cfg.model.ema_decay)
+    ema.m.reference_mode = cfg.model.reference_mode
 
     if cfg.optim.compile:
         print("[startup] torch.compile enabled")
@@ -215,13 +226,19 @@ def train(
 
     best_mae = float("inf")
     start_epoch = 1
+    noise_generator = torch.Generator(device=device)
+    noise_generator.manual_seed(getattr(cfg.data, "noise_seed", cfg.logging.seed + 1))
     
     if resume_path and os.path.exists(resume_path):
         print(f"[resume] Loading checkpoint from {resume_path}")
-        start_epoch, best_mae = CheckpointManager.load(
-            resume_path, model, ema, opt, sched, scaler, device
+        loaded = CheckpointManager.load(
+            resume_path, model, ema, opt, sched, scaler, device,
+            phase_generator=getattr(train_loader, "generator", None), noise_generator=noise_generator,
         )
-        
+        start_epoch, best_mae = loaded[:2]
+        if hasattr(train_loader, "next_sample_id"):
+            train_loader.next_sample_id = loaded[2]
+
         # Rationale (State Synchronization):
         # If the user explicitly overrides `--epochs` or `--batch-size` on a resumed run, 
         # the checkpoint's frozen scheduler state will physically overwrite the new `T_max` 
@@ -242,12 +259,15 @@ def train(
 
     # Initialize dynamic curriculum augmentation
     train_aug = None
-    noise_sched = None
     if getattr(cfg, "aug", None) and cfg.aug.enable:
         train_aug = NoiseAug(
             gauss_std=cfg.aug.gauss_std,
             speckle_std=cfg.aug.speckle_std,
             poisson_scale=cfg.aug.poisson_scale,
+            photon_min=cfg.aug.photon_min,
+            photon_max=cfg.aug.photon_max,
+            sensor_min=cfg.aug.sensor_min,
+            sensor_max=cfg.aug.sensor_max,
             lowfreq_amp=cfg.aug.lowfreq_amp,
             blur_prob=cfg.aug.blur_prob,
             blur_sigma=(cfg.aug.blur_min, cfg.aug.blur_max),
@@ -255,17 +275,8 @@ def train(
             s_and_p_prob=cfg.aug.sap_prob,
             gain_jitter=(cfg.aug.gain_min, cfg.aug.gain_max),
             offset_jitter=(cfg.aug.off_min, cfg.aug.off_max),
-            hint_offset_std=cfg.aug.hint_std,
             enable=True,
-        )
-        noise_sched = NoiseScheduler(
-            warmup_ratio=cfg.aug.warmup_ratio,
-            full_ratio=cfg.aug.full_ratio,
-            profile=cfg.aug.profile,
-            cycles=cfg.aug.cycles,
-            stochastic_std=cfg.aug.stochastic_std,
-        )
-        noise_sched.set_total_epochs(cfg.optim.epochs)
+        ).to(device)
 
     vis_batch = None
     if train_loader is not None:
@@ -273,10 +284,10 @@ def train(
 
     for epoch in range(start_epoch, cfg.optim.epochs + 1):
         partial_epoch = False
-        if noise_sched is not None and train_aug is not None:
-            lvl = noise_sched.level(epoch)
-            train_aug.set_level(lvl)
-            print(f"[noise] epoch={epoch} level={lvl:.3f}")
+        current_noise_level = min(1.0, (epoch - 1) / max(1, cfg.optim.epochs - 1))
+
+        if train_aug is not None:
+            print(f"[noise] epoch={epoch} level={current_noise_level:.3f}")
 
         t0 = time.time()
         model.train()
@@ -291,11 +302,30 @@ def train(
             I_raw, phi_gt, grad_phi2 = _unpack_batch(batch, device)
             opt.zero_grad(set_to_none=True)
 
+            if train_aug is not None:
+                progress = global_step / max(1, total_steps)
+                if progress < 0.05:
+                    step_severity = 0.0
+                else:
+                    u = float(torch.rand((), device=device, generator=noise_generator))
+                    if u < cfg.aug.clean_probability:
+                        step_severity = 0.0
+                    elif u < cfg.aug.clean_probability + cfg.aug.mid_probability:
+                        step_severity = float(torch.empty((), device=device).uniform_(0.05, 0.75, generator=noise_generator))
+                    else:
+                        step_severity = float(torch.empty((), device=device).uniform_(0.75, 1.0, generator=noise_generator))
+                I_raw_noisy, I_norm_noisy = train_aug(I_raw, step_severity, generator=noise_generator)
+            else:
+                I_raw_noisy = I_raw
+                mean = I_raw.mean(dim=(-2, -1), keepdim=True)
+                std = I_raw.std(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
+                I_norm_noisy = (I_raw - mean) / std
+
             try:
                 with autocast(device_type=device.type, enabled=use_amp):
                     if grad_phi2 is None:
                         grad_phi2 = torch.zeros(I_raw.size(0), 2, I_raw.shape[2], I_raw.shape[3], device=device)
-                    phi_final, gx_tilde, gy_tilde, c_zernike, phi_zernike = model(I_raw, grad_phi2)
+                    phi_final, gx_tilde, gy_tilde, c_zernike, phi_zernike = model(I_norm_noisy, grad_phi2 if cfg.model.reference_mode == "calibrated" else None)
                     L_phase, parts = loss_fn(phi_final, phi_gt, gx_tilde, gy_tilde)
                     loss = cfg.loss.w_data * L_phase
 
@@ -324,72 +354,9 @@ def train(
 
             except RuntimeError as e:
                 if "out of memory" in str(e).lower():
-                    # Rationale (Architecture - Resiliency):
-                    # We implement dynamic batch-size halving on CUDA OOM. Deep networks like UNet 
-                    # can occasionally spike VRAM on exceptionally noisy/complex gradients. 
-                    # Instead of instantly killing a 48-hour unattended training run, we catch the OOM, 
-                    # flush the VRAM, automatically slash the batch size, and seamlessly rebuild the 
-                    # dataloaders to resume execution cleanly.
-                    print(
-                        "| WARNING | CUDA OOM Exception caught! Attempting dynamic recovery..."
-                    )
-                    torch.cuda.empty_cache()
-                    opt.zero_grad(set_to_none=True)
-
-                    if cfg.optim.batch_size <= 1:
-                        raise RuntimeError(
-                            "Fatal CUDA OOM: Batch size is already 1."
-                        ) from e
-
-                    cfg.optim.batch_size = max(1, cfg.optim.batch_size // 2)
-                    print(
-                        f"| RECOVER | Reduced dynamic batch size to {cfg.optim.batch_size}. Re-building DataLoaders..."
-                    )
-
-                    # Rebuild the dataloaders immediately to apply the new batch size
-                    train_loader, val_loader, test_loader = build_dataloaders(
-                        cfg, device, seed=cfg.logging.seed
-                    )
-
-                    # Rationale (State Synchronization):
-                    # 1. Update `config_effective.yaml` so anyone resuming or reproducing this run 
-                    # doesn't crash on the old toxic batch size. We don't overwrite config.yaml 
-                    # to preserve the original intent.
-                    effective_snap_path = os.path.join(run_dir, "config_effective.yaml")
-                    Path(effective_snap_path).write_text(config_to_yaml(cfg))
-                    
-                    recovery_log_path = os.path.join(run_dir, "recovery.log")
-                    with open(recovery_log_path, "a") as f:
-                        f.write(f"epoch={epoch} global_step={global_step} old_bs={cfg.optim.batch_size*2} new_bs={cfg.optim.batch_size}\\n")
-
-                    # 2. Rebuild the LR scheduler. Because batch size halved, `len(train_loader)` 
-                    # just doubled! The pre-computed CosineAnnealingLR max steps are now violently 
-                    # out of sync. We must recalculate the total steps and fast-forward the new 
-                    # scheduler back to the exact current `global_step` to prevent math corruption.
-                    # Note: We do NOT add +1 to epochs because the current epoch loop breaks immediately.
-                    # Note (Reproducibility): `new_total_steps` changes the `T_max` of the cosine schedule,
-                    # so the LR trajectory will stretch and deviate from the original shape.
-                    new_total_steps = global_step + (cfg.optim.epochs - epoch) * len(train_loader)
-                    new_warmup = min(cfg.optim.warmup_steps, new_total_steps // 2)
-                    sched = _build_warmup_scheduler(
-                        opt, new_warmup, new_total_steps - new_warmup, cfg.optim.eta_min
-                    )
-                    for _ in range(global_step):
-                        sched.step()
-
-                    # If noise is enabled, immediately re-sync the level since we created a new loader
-                    if noise_sched is not None and train_aug is not None:
-                        lvl = noise_sched.level(epoch)
-                        train_aug.set_level(lvl)
-
-                    # Break the current inner epoch loop. The outer 'for epoch' loop will advance
-                    # naturally and restart the progress bar on the next sequence with the smaller batch size,
-                    # abandoning the current poisoned epoch cleanly rather than dying.
-                    print(
-                        "| RECOVER | Epoch aborted gracefully. Resuming at next epoch boundary."
-                    )
-                    partial_epoch = True
-                    break
+                    raise RuntimeError(
+                        f"CUDA OOM at batch_size={cfg.optim.batch_size}; reduce batch_size and restart the scientific run."
+                    ) from e
                 raise
 
             bs = I_raw.size(0)
@@ -418,44 +385,42 @@ def train(
 
         eval_stats: Dict[str, float] = {}
         if (not partial_epoch) and (epoch % cfg.logging.val_interval == 0) and (val_loader is not None):
-            eval_stats = run_eval(
-                ema.m,
-                val_loader,
-                device,
-                use_amp,
-                eval_sobel,
-                hint_mode=cfg.aug.hint_mode,
-            )
+            severity_stats = {
+                s: run_eval(ema.m, val_loader, device, use_amp, eval_sobel,
+                            hint_mode=cfg.aug.hint_mode, noise_aug=train_aug,
+                            severity=s, noise_seed=cfg.data.noise_seed)
+                for s in cfg.aug.fixed_severities
+            }
+            eval_stats = severity_stats[0.0]
 
             try:
                 # Get visualization data from cached vis_batch
                 if vis_batch is not None:
-                    I_raw_v, phi_gt_v = vis_batch
+                    I_raw_v, phi_gt_v, grad_phi2_v = _unpack_batch(vis_batch, device)
                 else:
-                    I_raw_v, phi_gt_v = next(iter(train_loader))
-                I_raw_v = I_raw_v.to(device, non_blocking=True)
-                phi_gt_v = phi_gt_v.to(device, non_blocking=True)
+                    I_raw_v, phi_gt_v, grad_phi2_v = _unpack_batch(next(iter(train_loader)), device)
 
-                I_input_v, phi_gt_v, I_raw_n_v, I_raw_c_v = prepare_batch(
-                    I_raw_v,
-                    phi_gt_v,
-                    noise_aug=train_aug,
-                    hint_mode=cfg.aug.hint_mode,
-                )
+                if train_aug is not None:
+                    I_raw_n_v, I_input_v = train_aug(I_raw_v, current_noise_level, generator=noise_generator)
+                else:
+                    I_raw_n_v = I_raw_v
+                    mean = I_raw_v.mean(dim=(-2, -1), keepdim=True)
+                    std = I_raw_v.std(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
+                    I_input_v = (I_raw_v - mean) / std
+
+                I_raw_c_v = I_raw_v.clone()
 
                 I_input_v = I_input_v.contiguous(memory_format=torch.channels_last)
                 phi_gt_v = phi_gt_v.contiguous(memory_format=torch.channels_last)
 
                 with autocast(device_type=device.type, enabled=use_amp):
-                    phi_raw_v, k_off_v = ema.m(I_input_v)
-                    phi_abs_v = phi_raw_v + k_off_v
+                    if grad_phi2_v is None:
+                        grad_phi2_v = torch.zeros(I_raw_v.size(0), 2, I_raw_v.shape[2], I_raw_v.shape[3], device=device)
+                    phi_abs_v, _, _, _, _ = ema.m(I_input_v, grad_phi2_v if cfg.model.reference_mode == "calibrated" else None)
+
                 # Epoch PNGs: piston-only (same as metrics); affine_align remains for other plots
                 phi_aligned_v, _ = piston_align(phi_abs_v, phi_gt_v)
 
-                # Get current noise level for visualization
-                current_noise_level = 0.0
-                if noise_sched is not None:
-                    current_noise_level = noise_sched.level(epoch)
 
                 vis_dispatcher.dispatch(
                     epoch=epoch,
@@ -481,9 +446,10 @@ def train(
                 f"time={epoch_time:.1f}s"
             )
 
-            # Primary selection: raw AbsMAE (no GT scale/piston fit). TopoMAE is diagnostic.
-            if eval_stats.get("AbsMAE", float("inf")) < best_mae:
-                best_mae = eval_stats["AbsMAE"]
+            # Reference-free selection is piston aligned across clean/light/moderate.
+            selection_score = sum(severity_stats[s]["TopoMAE"] for s in (0.0, 0.25, 0.5)) / 3
+            if selection_score < best_mae:
+                best_mae = selection_score
                 ckpt_manager.save(
                     "best.pth",
                     epoch,
@@ -493,6 +459,9 @@ def train(
                     sched,
                     scaler,
                     best_mae,
+                    phase_generator=getattr(train_loader, "generator", None),
+                    noise_generator=noise_generator,
+                    next_sample_id=getattr(train_loader, "next_sample_id", 0),
                 )
         else:
             print(f"Epoch {epoch} | train={train_loss:.4f} | time={epoch_time:.1f}s")
@@ -506,15 +475,14 @@ def train(
             sched,
             scaler,
             best_mae,
+            phase_generator=getattr(train_loader, "generator", None),
+            noise_generator=noise_generator,
+            next_sample_id=getattr(train_loader, "next_sample_id", 0),
         )
 
         current_lr = opt.param_groups[0]["lr"]
         
-        # Get current noise level to log it
-        current_noise_level = 0.0
-        if noise_sched is not None:
-            current_noise_level = noise_sched.level(epoch)
-            
+
         csv_logger.log(
             {
                 "epoch": epoch,
@@ -537,14 +505,15 @@ def train(
         )
     if test_loader is not None:
         print("\n--- Final Evaluation on Held-Out Test Set ---")
-        test_stats = run_eval(
-            ema.m if ema else model,
-            test_loader,
-            device,
-            use_amp,
-            eval_sobel,
-            hint_mode=cfg.aug.hint_mode,
-        )
+        best_path = os.path.join(run_dir, "best.pth")
+        if os.path.exists(best_path):
+            best = torch.load(best_path, map_location=device, weights_only=True)
+            ema.m.load_state_dict(best.get("model_ema", best["model"]))
+        test_by_severity = {s: run_eval(ema.m, test_loader, device, use_amp, eval_sobel,
+                                        hint_mode=cfg.aug.hint_mode, noise_aug=train_aug,
+                                        severity=s, noise_seed=cfg.data.noise_seed + 1)
+                            for s in cfg.aug.fixed_severities}
+        test_stats = test_by_severity[0.0]
         print(
             f"[TEST] AbsMAE={test_stats.get('AbsMAE', 0):.4f} "
             f"TopoMAE(piston)={test_stats.get('TopoMAE', 0):.4f} "
@@ -568,5 +537,13 @@ def train(
                 "GradMAE": f"{test_stats.get('GradMAE', float('nan')):.6f}",
             }
         )
+        artifact = {
+            "generator": "MatlabSimulator.float64.v1", "reference_mode": cfg.model.reference_mode,
+            "seeds": {k: getattr(cfg.data, k) for k in ("train_seed", "val_seed", "test_seed", "noise_seed")},
+            "sample_id_next": getattr(train_loader, "next_sample_id", None),
+            "noise": vars(cfg.aug), "test_by_severity": {str(k): v for k, v in test_by_severity.items()},
+            "checkpoint_sha256": hashlib.sha256(Path(best_path).read_bytes()).hexdigest() if os.path.exists(best_path) else None,
+        }
+        Path(os.path.join(run_dir, "result.json")).write_text(json.dumps(artifact, indent=2, default=str))
 
     print(f"\nDone. Best Val AbsMAE: {best_mae:.4f}")

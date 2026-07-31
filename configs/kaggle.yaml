@@ -1,0 +1,53 @@
+# Kaggle / Linux GPU High-Throughput Configuration
+# Optimized for Kaggle 4-vCPU + T4 / P100 / L4 GPU environments.
+
+data:
+  data_dir: "/tmp/training_set"
+  pattern: "*.h5"
+  I_key: "I"
+  phi_key: "phi"
+  val_frac: 0.1
+  test_frac: 0.1
+  workers: 4
+  persistent_workers: true
+  prefetch_factor: 4
+  augment: true
+
+aug:
+  enable: true
+  warmup_ratio: 0.1
+  full_ratio: 0.4
+  profile: "cosine"
+  hint_mode: "zero"
+
+model:
+  base: 32
+  activation: "silu"
+  final_dropout: 0.3
+  ema_decay: 0.999
+  device: "auto"
+  use_amp: true
+
+optim:
+  epochs: 100
+  batch_size: 128
+  lr: 3.0e-4
+  eta_min: 1.0e-6
+  weight_decay: 1.0e-4
+  grad_clip: 5.0
+  warmup_steps: 500
+  compile: true
+
+loss:
+  w_mae: 1.0
+  w_grad: 0.1
+  int_wgrad: false
+  w_curv: 0.003
+  w_data: 1.0
+
+logging:
+  run_name: "kaggle_exp1"
+  runs_root: "runs"
+  vis_max: 8
+  val_interval: 1
+  seed: 1337

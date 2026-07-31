@@ -101,6 +101,9 @@ class CheckpointManager:
         scheduler: Any,
         scaler: torch.cuda.amp.GradScaler,
         best_mae: float,
+        phase_generator: Optional[torch.Generator] = None,
+        noise_generator: Optional[torch.Generator] = None,
+        next_sample_id: int = 0,
     ) -> None:
         import random
         import numpy as np
@@ -115,7 +118,12 @@ class CheckpointManager:
             "rng_python": random.getstate(),
             "rng_numpy": np.random.get_state(),
             "rng_torch": torch.random.get_rng_state(),
+            "next_sample_id": next_sample_id,
         }
+        if phase_generator is not None:
+            state["rng_phase"] = phase_generator.get_state()
+        if noise_generator is not None:
+            state["rng_noise"] = noise_generator.get_state()
         if torch.cuda.is_available():
             state["rng_cuda"] = torch.cuda.get_rng_state_all()
         torch.save(state, os.path.join(self.run_dir, filename))
@@ -129,7 +137,9 @@ class CheckpointManager:
         scheduler: Any,
         scaler: torch.cuda.amp.GradScaler,
         device: torch.device,
-    ) -> tuple[int, float]:
+        phase_generator: Optional[torch.Generator] = None,
+        noise_generator: Optional[torch.Generator] = None,
+    ) -> tuple[int, float, int]:
         import random
         import numpy as np
         ckpt = torch.load(path, map_location=device, weights_only=True)
@@ -147,8 +157,12 @@ class CheckpointManager:
             torch.random.set_rng_state(ckpt["rng_torch"])
         if "rng_cuda" in ckpt and torch.cuda.is_available():
             torch.cuda.set_rng_state_all(ckpt["rng_cuda"])
+        if phase_generator is not None and "rng_phase" in ckpt:
+            phase_generator.set_state(ckpt["rng_phase"])
+        if noise_generator is not None and "rng_noise" in ckpt:
+            noise_generator.set_state(ckpt["rng_noise"])
 
-        return ckpt.get("epoch", 0) + 1, ckpt.get("best_mae", float("inf"))
+        return ckpt.get("epoch", 0) + 1, ckpt.get("best_mae", float("inf")), ckpt.get("next_sample_id", 0)
 
 CSV_COLUMNS = [
     "epoch",

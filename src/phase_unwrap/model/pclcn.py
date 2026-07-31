@@ -101,7 +101,7 @@ class PCLCNModel(nn.Module):
     def forward(
         self,
         I_raw: torch.Tensor,
-        grad_phi2: torch.Tensor,
+        grad_phi2: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Args:
@@ -115,6 +115,8 @@ class PCLCNModel(nn.Module):
             c_zernike: [B, 15] Zernike coefficients.
             phi_zernike: [B, 1, H, W] Zernike surface.
         """
+        if grad_phi2 is None:
+            grad_phi2 = torch.zeros(I_raw.shape[0], 2, I_raw.shape[2], I_raw.shape[3], device=I_raw.device, dtype=I_raw.dtype)
         if self.zero_reference_prior:
             grad_phi2 = torch.zeros_like(grad_phi2)
 

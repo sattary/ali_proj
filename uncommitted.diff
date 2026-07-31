@@ -1,0 +1,1314 @@
+diff --git a/configs/default.yaml b/configs/default.yaml
+index c14ddf8..19c3448 100644
+--- a/configs/default.yaml
++++ b/configs/default.yaml
+@@ -2,12 +2,20 @@
+ # Prefer code defaults or runs/optuna/best_config.yaml for full experiments.
+ 
+ data:
++  backend: "otf"
++  steps_per_epoch: 1000
++  val_batches: 32
++  test_batches: 64
++  train_seed: 1337
++  val_seed: 7331
++  test_seed: 9337
++  noise_seed: 12345
+   data_dir: "data/smoke_test_6shard/"
+   pattern: "*.h5"
+   I_key: "I"
+   phi_key: "phi"
+   val_frac: 0.3
+-  workers: 4
++  workers: 0
+   persistent_workers: false
+   augment: true
+ 
+@@ -18,6 +26,7 @@ aug:
+   profile: "cosine"
+ 
+ model:
++  reference_mode: "reference_free"
+   base: 16
+   activation: "silu"
+   final_dropout: 0.3
+diff --git a/plans/README.md b/plans/README.md
+index c541114..1b25d74 100644
+--- a/plans/README.md
++++ b/plans/README.md
+@@ -1,10 +1,10 @@
+ # Implementation Plans
+ 
+-Generated and reconciled by the improve skill on 2026-07-30 (`60978bf`).
++Generated and reconciled by the improve skill on 2026-07-31 (`18c93f5`).
+ 
+ Each executor: read the plan fully before starting, honor STOP conditions, and update your row when done.
+ 
+-Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` | `REJECTED`
++Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` | `REJECTED` | `SUPERSEDED`
+ 
+ ---
+ 
+@@ -12,11 +12,14 @@ Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` | `REJECTED`
+ 
+ | Plan | Title | Priority | Effort | Depends on | Status |
+ |------|-------|----------|--------|------------|--------|
++| **001** | Data generator overhaul | P1 | L | 031 | SUPERSEDED (by 032) |
++| **002** | Discrete ambiguity network | P1 | M | 034 | SUPERSEDED (by 035) |
++| **003** | Evaluation and OOD | P1 | M | 034 | SUPERSEDED (by 034, 035, 037) |
+ | **015** | Option A reference-guided fallback (**future only**) | P3 | M–L | B stable + lab protocol | TODO |
+ | **019** | Fix gzip codec + dataloader throughput (GPU starvation) | P1 | S | none | DONE |
+-| **020** | Reference-Guided Dual-Sensor PINN & Calibration Pipeline | P1 | M–L | none | SUPERSEDED (by 022) |
+-| **021** | Physics State Space Network (PSSN) | P1 | M–L | 020 | SUPERSEDED (by 022) |
+-| **022** | Physics-Constrained Latent Corrector Network (PCLCN) | P1 | M–L | 020, 021 | DONE |
++| **020** | Reference-Guided Dual-Sensor PINN & Calibration Pipeline | P1 | M–L | none | SUPERSEDED (by 031–036) |
++| **021** | Physics State Space Network (PSSN) | P1 | M–L | 020 | SUPERSEDED (by 031–036) |
++| **022** | Physics-Constrained Latent Corrector Network (PCLCN) | P1 | M–L | 020, 021 | SUPERSEDED (by 031–036) |
+ | **023** | Integrate PCLCN Architecture Config & Model Dispatch | P1 | M | 022 | DONE |
+ | **024** | Unpack `grad_phi2` Batch Tuple in Training & Evaluation Loops | P1 | S | 023 | DONE |
+ | **025** | Fix Undefined `subset` Variable in Noise Comparison Grid | P2 | S | none | DONE |
+@@ -25,6 +28,14 @@ Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` | `REJECTED`
+ | **028** | Purge Legacy `UNetRes2` Models & Oracle Data Leaks from `src/` | P1 | M | none | DONE |
+ | **029** | Modernize PCLCN Ablation & Multi-Seed Framework (Fast Core Matrix) | P1 | M | 028 | DONE |
+ | **030** | Modernize & Refactor CLI with Flat Architecture & Purge Plot Clutter (Ponytail) | P1 | M | 029 | DONE |
++| **031** | Freeze the scientific contract and pass the identifiability gate | P1 | M | none | TODO |
++| **032** | Build a provenance-controlled generator and split benchmark | P1 | L | 031 | TODO |
++| **033** | Enforce one observation contract from training to deployment | P1 | M | 031, 032 | TODO |
++| **034** | Establish the locked baseline and evaluation protocol | P1 | M | 032, 033 | TODO |
++| **035** | Red-team discrete ambiguity and calibrated uncertainty | P1 | M | 034 | TODO |
++| **036** | Gate and ablate the physics-guided architecture | P1 | L | 034, 035 | TODO |
++| **037** | Calibrate robustness and transfer to real measurements | P1 | L | 032, 036 | TODO |
++| **038** | Produce reproducible multi-seed evidence and the Optics Express manuscript | P1 | M–L | 034, 036, 037 | TODO |
+ 
+ ---
+ 
+@@ -37,6 +48,11 @@ Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` | `REJECTED`
+ - **027** is an independent refactoring plan derived from the ponytail audit.
+ - **028** purges legacy baseline code (`UNetRes2`, `gt_center`) so `src/` contains PCLCN exclusively.
+ - **029** depends on **028** to modernize `ablation.py` and `multiseed.py` for Option 1 Fast Core PCLCN Matrix.
++- **031** is a hard scientific gate; do not implement a final architecture before its acquisition contract and red-team report are accepted.
++- **032–034** establish provenance, deployability, and evaluation before model novelty.
++- **035** is a falsifiable ambiguity/uncertainty spike and may end in rejection.
++- **036** is conditional on a measurable gap over the simple baseline; every physics module requires an ablation.
++- **037–038** are evidence and publication phases, not substitutes for an identifiable measurement.
+ 
+ ---
+ 
+@@ -44,6 +60,15 @@ Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` | `REJECTED`
+ 
+ - **TIE Loss Integration**: Rejected in Plan 022 because single-plane 2D interferometry lacks axial intensity derivative $\partial I / \partial z$.
+ - **$a_{\text{calib}}$ System Gain Fitting**: Purged as a data leak requiring ground-truth phase $\phi_{\text{gt}}$.
++- **Reference-free unrestricted single-frame phase recovery**: rejected as non-identifiable under $I=2+2\cos(\Delta\phi)$; only a constrained-prior or ambiguity-aware claim is permissible.
++- **Pixelwise sign/wrap classification as a complete solution**: rejected; it does not enforce spatial consistency and cannot resolve identical observations.
++- **Fixed-carrier Fourier demodulation on the current on-axis generator**: rejected until a measured carrier and sideband-separation test exist.
++- **Single-plane TIE loss**: rejected because $\partial I/\partial z$ is unavailable.
++- **Entropy without calibration**: rejected as a publishable uncertainty claim; require ECE/Brier/selective-risk evidence.
++
++## Recommended execution order
++
++Run **031 → 032 → 033 → 034** first. Only then run the **035** ambiguity spike. Promote **036** only if the spike and baselines identify a real, deployment-valid gap. Finish with **037 → 038**. Plans **020–022** remain historical design records and are superseded by this sequence; they must not be treated as scientific validation.
+ 
+ ---
+ 
+diff --git a/src/phase_unwrap/cli.py b/src/phase_unwrap/cli.py
+index d883fe0..59d7b4f 100644
+--- a/src/phase_unwrap/cli.py
++++ b/src/phase_unwrap/cli.py
+@@ -6,7 +6,6 @@ from __future__ import annotations
+ 
+ import typer
+ 
+-from .cli_cmds.data import DataApp
+ from .cli_cmds.eval import EvalApp
+ from .cli_cmds.export import ExportApp
+ from .cli_cmds.infer import InferApp
+@@ -19,8 +18,18 @@ app = typer.Typer(
+     add_completion=False,
+ )
+ 
+-# Flat command registration (zero nested sub-app boilerplate)
+-app.add_typer(DataApp)
++# Flattened commands
++@app.command("generate")
++def data_generate(
++    num_samples: int = typer.Option(180_000, "--num-samples", help="Total number of samples to generate."),
++    shard_size: int = typer.Option(1000, "--shard-size", help="Number of samples per HDF5 shard."),
++    out_dir: str = typer.Option("data/full", "--out-dir", help="Output directory for HDF5 shards."),
++    seed: int = typer.Option(1337, "--seed", help="Random seed for reproducibility."),
++) -> None:
++    """Generate synthetic interferogram data to HDF5 shards."""
++    from phase_unwrap.data.generate import generate_to_h5
++    generate_to_h5(out_dir=out_dir, num_samples=num_samples, shard_size=shard_size, seed=seed)
++
+ app.add_typer(TrainApp)
+ app.add_typer(EvalApp)
+ app.add_typer(ExportApp)
+diff --git a/src/phase_unwrap/cli_cmds/data.py b/src/phase_unwrap/cli_cmds/data.py
+deleted file mode 100644
+index 00c772a..0000000
+--- a/src/phase_unwrap/cli_cmds/data.py
++++ /dev/null
+@@ -1,33 +0,0 @@
+-import typer
+-
+-DataApp = typer.Typer(help="Data commands.")
+-
+-# ============================================================================
+-# DATA COMMANDS
+-# ============================================================================
+-
+-
+-@DataApp.command("generate")
+-def data_generate(
+-    num_samples: int = typer.Option(
+-        180_000, "--num-samples", help="Total number of samples to generate."
+-    ),
+-    shard_size: int = typer.Option(
+-        1000, "--shard-size", help="Number of samples per HDF5 shard."
+-    ),
+-    out_dir: str = typer.Option(
+-        "data/full", "--out-dir", help="Output directory for HDF5 shards."
+-    ),
+-    seed: int = typer.Option(1337, "--seed", help="Random seed for reproducibility."),
+-) -> None:
+-    """Generate synthetic interferogram data to HDF5 shards."""
+-    from phase_unwrap.data.generate import generate_to_h5
+-
+-    generate_to_h5(
+-        out_dir=out_dir,
+-        num_samples=num_samples,
+-        shard_size=shard_size,
+-        seed=seed,
+-    )
+-
+-
+diff --git a/src/phase_unwrap/core/config.py b/src/phase_unwrap/core/config.py
+index 24ffe3a..d0d0313 100644
+--- a/src/phase_unwrap/core/config.py
++++ b/src/phase_unwrap/core/config.py
+@@ -33,6 +33,14 @@ class DataConfig:
+     persistent_workers: bool = False
+     prefetch_factor: int = 4
+     augment: bool = True
++    backend: str = "otf"
++    steps_per_epoch: int = 1000
++    val_batches: int = 32
++    test_batches: int = 64
++    train_seed: int = 1337
++    val_seed: int = 7331
++    test_seed: int = 9337
++    noise_seed: int = 12345
+ 
+ 
+ @dataclass
+@@ -49,6 +57,7 @@ class ModelConfig:
+     use_coordconv: bool = True
+     zero_reference_prior: bool = False
+     unmasked_zernike: bool = False
++    reference_mode: str = "reference_free"
+ 
+ 
+ @dataclass
+@@ -110,6 +119,10 @@ class AugmentationConfig:
+     gauss_std: float = 0.02
+     speckle_std: float = 0.05
+     poisson_scale: float = 0.0
++    photon_min: float = 256.0
++    photon_max: float = 4096.0
++    sensor_min: float = 0.0
++    sensor_max: float = 4.0
+     lowfreq_amp: float = 0.05
+     blur_prob: float = 0.2
+     blur_min: float = 0.5
+@@ -122,6 +135,10 @@ class AugmentationConfig:
+     off_max: float = 0.05
+     hint_std: float = 0.2
+     hint_mode: str = "zero"
++    clean_probability: float = 0.2
++    mid_probability: float = 0.6
++    hard_probability: float = 0.2
++    fixed_severities: tuple = (0.0, 0.25, 0.5, 0.75, 1.0)
+ 
+ 
+ @dataclass
+diff --git a/src/phase_unwrap/data/__init__.py b/src/phase_unwrap/data/__init__.py
+index 2045ec1..51c1aa3 100644
+--- a/src/phase_unwrap/data/__init__.py
++++ b/src/phase_unwrap/data/__init__.py
+@@ -7,14 +7,22 @@ from .dataset import (
+     build_dataloaders,
+     discover_h5_shards,
+     smart_split,
++    build_otf_loaders,
+ )
+ from .generate import generate_sample, generate_to_h5
++from .simulator import MatlabSimulator, SimulationBatch
++from .augmentation import normalize_intensity, NoiseAug
+ 
+ __all__ = [
+     "H5ShardDataset",
+     "build_dataloaders",
+     "discover_h5_shards",
+     "smart_split",
++    "build_otf_loaders",
+     "generate_sample",
+     "generate_to_h5",
+-]
+\ No newline at end of file
++    "MatlabSimulator",
++    "SimulationBatch",
++    "normalize_intensity",
++    "NoiseAug",
++]
+diff --git a/src/phase_unwrap/data/augmentation.py b/src/phase_unwrap/data/augmentation.py
+index d96a917..2c516e6 100644
+--- a/src/phase_unwrap/data/augmentation.py
++++ b/src/phase_unwrap/data/augmentation.py
+@@ -1,305 +1,99 @@
+-"""
+-Optical curriculum noise augmentation module.
+-
+-Faithfully implements physical interferogram degradations (multiplicative speckle,
+-additive Gaussian noise, low-frequency biases, defocus blur, etc.) with a
+-scalar curriculum level schedule synced to the training epochs.
+-
+-Rationale: ARCHITECTURE
+-    Isolating this stochastic math inside `data/` instead of `training/train.py`
+-    allows the DataLoader's multiprocessing CPU threadpool to calculate the
+-    noise overlays asynchronously, avoiding a massive GPU serialization bottleneck.
+-"""
+-
++"""Physically ordered, explicitly seeded camera/noise augmentation."""
+ from __future__ import annotations
+-
+-
+-import multiprocessing as mp
+-import numpy as np
+ import torch
++import torch.nn as nn
+ import torch.nn.functional as F
+ 
+ 
+-class NoiseScheduler:
+-    """
+-    Piecewise noise level schedule relative to total epochs.
+-    warmup_ratio: noise=0 during [0 .. warmup_ratio * total_epochs]
+-    full_ratio:   reaches noise=1 by full_ratio * total_epochs
+-    profile: 'linear' or 'cosine'
+-    """
+-
+-    def __init__(
+-        self, 
+-        warmup_ratio: float = 0.1, 
+-        full_ratio: float = 0.4, 
+-        profile: str = "cosine",
+-        cycles: float = 2.0,
+-        stochastic_std: float = 0.05
+-    ):
+-        self.warmup_ratio = max(0.0, min(1.0, float(warmup_ratio)))
+-        self.full_ratio = max(self.warmup_ratio, min(1.0, float(full_ratio)))
+-        self.profile = profile
+-        self.cycles = max(0.0, float(cycles))
+-        self.stochastic_std = max(0.0, float(stochastic_std))
+-        self.total_epochs = 1
+-
+-    def set_total_epochs(self, total_epochs: int) -> None:
+-        self.total_epochs = max(1, total_epochs)
+-
+-    def level(self, epoch: int) -> float:
+-        """Calculate the normalized [0, 1] noise strength for the given epoch."""
+-        warmup_ep = self.warmup_ratio * self.total_epochs
+-        
+-        if epoch <= warmup_ep:
+-            base_l = 0.0
+-        else:
+-            if self.cycles > 0:
+-                # N-Cycle Warm Restarts
+-                active_epochs = self.total_epochs - warmup_ep
+-                if active_epochs <= 0:
+-                    base_l = 0.0
+-                else:
+-                    t = (epoch - warmup_ep) / active_epochs
+-                    if self.profile == "cosine":
+-                        # Bell curves peaking at 1.0 and returning to 0.0
+-                        base_l = 0.5 * (1 - np.cos(2 * np.pi * t * self.cycles))
+-                    else:
+-                        # Triangle wave
+-                        phase = (t * self.cycles) % 1.0
+-                        if phase < 0.5:
+-                            base_l = phase * 2.0
+-                        else:
+-                            base_l = 2.0 - (phase * 2.0)
+-            else:
+-                # Classic monotonically increasing mode
+-                full_ep = self.full_ratio * self.total_epochs
+-                if epoch >= full_ep or full_ep <= warmup_ep:
+-                    base_l = 1.0
+-                else:
+-                    t = (epoch - warmup_ep) / (full_ep - warmup_ep)
+-                    if self.profile == "cosine":
+-                        base_l = 0.5 * (1 - np.cos(np.pi * t))
+-                    else:
+-                        base_l = float(t)
+-
+-        # Apply Microscopic Stochastic Jitter
+-        if self.stochastic_std > 0 and epoch > warmup_ep:
+-            noisy_l = np.random.normal(loc=base_l, scale=self.stochastic_std)
+-            return float(max(0.0, min(1.0, noisy_l)))
+-            
+-        return float(max(0.0, min(1.0, base_l)))
+-
+-
+-class NoiseAug:
+-    """
+-    Input-only augmentation with a schedulable 'level' in [0,1].
+-    At level=0 -> no noise; at level=1 -> full configured strength.
+-    """
+-
+-    def __init__(
+-        self,
+-        gauss_std: float = 0.02,
+-        speckle_std: float = 0.05,
+-        poisson_scale: float = 0.0,
+-        lowfreq_amp: float = 0.05,
+-        blur_prob: float = 0.2,
+-        blur_sigma: tuple[float, float] = (0.5, 1.0),
+-        dropout_prob: float = 0.02,
+-        s_and_p_prob: float = 0.0,
+-        gain_jitter: tuple[float, float] = (0.9, 1.1),
+-        offset_jitter: tuple[float, float] = (-0.05, 0.05),
+-        hint_offset_std: float = 0.2,
+-        enable: bool = True,
+-    ):
+-        self.base = dict(
+-            gauss_std=gauss_std,
+-            speckle_std=speckle_std,
+-            poisson_scale=poisson_scale,
+-            lowfreq_amp=lowfreq_amp,
+-            blur_prob=blur_prob,
+-            blur_sigma=blur_sigma,
+-            dropout_prob=dropout_prob,
+-            s_and_p_prob=s_and_p_prob,
+-            gain_min=gain_jitter[0],
+-            gain_max=gain_jitter[1],
+-            off_min=offset_jitter[0],
+-            off_max=offset_jitter[1],
+-            hint_offset_std=hint_offset_std,
+-        )
+-        self.enable = enable
+-        # Use shared memory so persistent DataLoader workers reflect main process updates
+-        self._level = mp.Value("f", 0.0)
+-
+-    def set_level(self, level: float) -> None:
+-        """Manually push the curriculum strength."""
+-        self._level.value = float(min(1.0, max(0.0, level)))
++def normalize_intensity(x: torch.Tensor) -> torch.Tensor:
++    mean = x.mean(dim=(-2, -1), keepdim=True)
++    std = x.std(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
++    return (x - mean) / std
++
++
++class NoiseAug(nn.Module):
++    def __init__(self, gauss_std=0.02, speckle_std=0.05, poisson_scale=0.0,
++                 lowfreq_amp=0.05, blur_prob=0.2, blur_sigma=(0.5, 1.0),
++                 dropout_prob=0.02, s_and_p_prob=0.0, gain_jitter=(0.9, 1.1),
++                 offset_jitter=(-0.05, 0.05), photon_min=256.0, photon_max=4096.0,
++                 sensor_min=0.0, sensor_max=4.0, enable=True):
++        super().__init__()
++        self.gauss_std, self.speckle_std, self.lowfreq_amp = gauss_std, speckle_std, lowfreq_amp
++        self.blur_prob, self.blur_sigma = blur_prob, blur_sigma
++        self.dropout_prob, self.sap_prob = dropout_prob, s_and_p_prob
++        self.gain_min, self.gain_max = gain_jitter
++        self.off_min, self.off_max = offset_jitter
++        self.photon_min, self.photon_max = photon_min, photon_max
++        self.sensor_min, self.sensor_max, self.enable = sensor_min, sensor_max, enable
++        # Legacy poisson_scale is accepted but no longer controls photon counts.
++        self.poisson_scale = poisson_scale
+ 
+     @staticmethod
+-    def _gaussian_blur(x: torch.Tensor, sigma: float) -> torch.Tensor:
+-        if sigma <= 0:
+-            return x
+-        ksize = int(max(3, round(6 * sigma) // 2 * 2 + 1))
+-        t = torch.arange(ksize, device=x.device, dtype=x.dtype) - (ksize - 1) / 2
+-        g = torch.exp(-0.5 * (t / sigma) ** 2)
+-        g = g / g.sum()
+-        g1 = g.view(1, 1, 1, ksize)
+-        g2 = g.view(1, 1, ksize, 1)
+-        x = F.pad(x, (ksize // 2,) * 4, mode="reflect")
+-        x = F.conv2d(x, g1, groups=1)
+-        x = F.conv2d(x, g2, groups=1)
+-        return x
+-
+-    def __call__(
+-        self,
+-        I_raw: torch.Tensor,
+-        phi_hint: torch.Tensor | None = None,
+-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor]:
+-        """
+-        Apply physics-based optical noise to a batch [B, 1, H, W].
+-        Returns:
+-            I_raw_noisy: The raw physical intensity field (for snapshots).
+-            I_norm_noisy: The Z-scored input for the network.
+-            phi_hint: The corrupted phase piston hint.
+-            delta: The scalar phase shifts [B, 1, 1, 1] added to the hint.
+-        """
+-        B, _, H, W = I_raw.shape
+-        L = self._level.value
+-        device = I_raw.device
+-        dtype = I_raw.dtype
+-
+-        if not self.enable or L <= 0:
+-            mean = I_raw.mean(dim=(-2, -1), keepdim=True)
+-            std = I_raw.std(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
+-            return I_raw.clone(), (I_raw - mean) / std, phi_hint, torch.zeros(B, 1, 1, 1, device=device, dtype=dtype)
+-
+-        p = self.base
+-
+-        # Level-scaled magnitudes / probabilities
+-        gauss_std = p["gauss_std"] * L
+-        speckle_std = p["speckle_std"] * L
+-        poisson_sc = p["poisson_scale"] * L
+-        lowfreq_amp = p["lowfreq_amp"] * L
+-        blur_prob = p["blur_prob"] * L
+-        dropout_p = p["dropout_prob"] * L
+-        sap_p = p["s_and_p_prob"] * L
+-        hint_std = p["hint_offset_std"] * L
+-
+-        # Photometric jitter interpolate to identity at L=0
+-        gain_min = 1.0 + (p["gain_min"] - 1.0) * L  # type: ignore
+-        gain_max = 1.0 + (p["gain_max"] - 1.0) * L  # type: ignore
+-        off_min = 0.0 + p["off_min"] * L  # type: ignore
+-        off_max = 0.0 + p["off_max"] * L  # type: ignore
+-
+-        img = I_raw.clone()
+-
+-        # 1. Optical Defocus (Lens aberration) - Batch level blur
+-        if bool(torch.rand(1, device=device) < blur_prob):
+-            smin, smax = p["blur_sigma"]  # type: ignore
+-            sigma = float(torch.empty(1, device=device).uniform_(smin, smax))
+-            img = self._gaussian_blur(img, sigma)
+-
+-        # 2. Speckle (Laser physics - multiplicative)
+-        if speckle_std > 0:
+-            img = img * (1.0 + torch.randn_like(img) * speckle_std)  # type: ignore
+-
+-        # 3. Uneven Illumination (Slow sweeping beam profile)
+-        if lowfreq_amp > 0:
+-            lf = torch.randn(B, 1, 4, 4, device=device, dtype=dtype)
+-            lf = F.interpolate(lf, size=(H, W), mode='bicubic', align_corners=False)
+-            lf = lf / (lf.std(dim=(-2, -1), keepdim=True) + 1e-6) * lowfreq_amp
++    def _blur(x, sigma):
++        if sigma <= 0: return x
++        n = max(3, int(round(6 * sigma)) // 2 * 2 + 1)
++        t = torch.arange(n, device=x.device, dtype=x.dtype) - (n - 1) / 2
++        g = torch.exp(-0.5 * (t / sigma).square()); g = g / g.sum()
++        x = F.pad(x, (n // 2,) * 4, mode="reflect")
++        x = F.conv2d(x, g.view(1, 1, 1, n)); return F.conv2d(x, g.view(1, 1, n, 1))
++
++    def forward(self, I_clean, severity, *, generator=None):
++        if generator is None:
++            generator = torch.Generator(device=I_clean.device)
++            generator.manual_seed(0)
++        level = float(max(0.0, min(1.0, float(severity))))
++        if not self.enable or level == 0:
++            return I_clean.clone(), normalize_intensity(I_clean)
++        b, _, h, w = I_clean.shape
++        dev, dt = I_clean.device, I_clean.dtype
++        rand = lambda *shape: torch.rand(*shape, device=dev, dtype=dt, generator=generator)
++        normal = lambda *shape: torch.randn(*shape, device=dev, dtype=dt, generator=generator)
++        img = I_clean.clone()
++        # 1. nonnegative multiplicative speckle (unit-mean exponential mixture)
++        if self.speckle_std:
++            q = max(1e-3, self.speckle_std * level)
++            img = img * ((1.0 - q) + q * (-torch.log(rand(b, 1, h, w).clamp_min(1e-6))))
++        # 2. optical blur
++        if float(rand(1)) < self.blur_prob * level:
++            sigma = float(torch.empty((), device=dev).uniform_(*self.blur_sigma, generator=generator))
++            img = self._blur(img, sigma)
++        # 3. low-frequency illumination/background
++        if self.lowfreq_amp:
++            lf = F.interpolate(normal(b, 1, 4, 4), size=(h, w), mode="bicubic", align_corners=False)
++            lf = lf / lf.std(dim=(-2, -1), keepdim=True).clamp_min(1e-6) * self.lowfreq_amp * level
+             img = img + lf
+-
+-        # 4. Sensor Gain & Black Level Offset (Electronics)
+-        g = torch.empty(B, 1, 1, 1, device=device, dtype=dtype).uniform_(gain_min, gain_max)
+-        b = torch.empty(B, 1, 1, 1, device=device, dtype=dtype).uniform_(off_min, off_max)
+-        img = g * img + b
+-
+-        # 5. Poisson Shot Noise (Quantum counting)
+-        if poisson_sc > 0:
+-            img_min = img.amin(dim=(-2, -1), keepdim=True)
+-            img_max = img.amax(dim=(-2, -1), keepdim=True)
+-            lam = (img - img_min) / (img_max - img_min + 1e-6) * poisson_sc
+-            lam = lam.clamp_min(0.0)
+-            img = torch.poisson(lam) / (poisson_sc + 1e-6) * (img_max - img_min + 1e-6) + img_min
+-
+-        # 6. Additive Gaussian (Sensor thermal noise)
+-        if gauss_std > 0:
+-            stdI = img.std(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
+-            img = img + torch.randn_like(img) * (gauss_std * stdI)
+-
+-        # 7. Sensor Defects (Dead / Saturated pixels)
+-        if dropout_p > 0:
+-            mask = (torch.rand_like(img) > dropout_p).float()
+-            img_min = img.amin(dim=(-2, -1), keepdim=True)
+-            img = torch.where(mask == 0.0, img_min, img)
+-
+-        if sap_p > 0:
+-            r = torch.rand_like(img)
+-            img_min = img.amin(dim=(-2, -1), keepdim=True)
+-            img_max = img.amax(dim=(-2, -1), keepdim=True)
+-            img = torch.where(r < sap_p / 2, img_min, img)  # type: ignore
+-            img = torch.where(r > 1 - sap_p / 2, img_max, img)  # type: ignore
+-
+-        # Corrupt the hint with a global radian shift
+-        delta_val = torch.zeros(B, 1, 1, 1, device=device, dtype=dtype)
+-        if phi_hint is not None and hint_std > 0:
+-            delta_val = torch.randn(B, 1, 1, 1, device=device, dtype=dtype) * hint_std
+-            phi_hint = phi_hint + delta_val
+-
+-        # Re-normalize for network input
+-        mean_final = img.mean(dim=(-2, -1), keepdim=True)
+-        std_final = img.std(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
+-        I_norm_noisy = (img - mean_final) / std_final
+-
+-        return img, I_norm_noisy, phi_hint, delta_val
+-
+-
+-def build_phi_hint(
+-    ref: torch.Tensor,
+-    phi_gt: torch.Tensor | None = None,
+-    hint_mode: str = "zero",
+-) -> torch.Tensor:
+-    """Build the second model input channel [B, 1, H, W] (Option B zero anchor)."""
+-    B, _, H, W = ref.shape
+-    return torch.zeros(B, 1, H, W, device=ref.device, dtype=ref.dtype)
+-
+-
+-def prepare_batch(
+-    I_raw: torch.Tensor,
+-    phi_gt: torch.Tensor,
+-    noise_aug: NoiseAug | None = None,
+-    hint_mode: str = "zero",
+-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+-    """
+-    Prepare a batch [B, 1, H, W] for training or evaluation.
+-
+-    1. Builds phi_hint from ``hint_mode`` (default zero = Option B).
+-    2. Applies optical noise augmentation (if enabled).
+-    3. Concatenates into I_input [B, 2, H, W].
+-
+-    When hint_mode is ``zero``, hint_std piston jitter is not applied (would
+-    reintroduce a random absolute channel and defeat reference-free training).
+-    """
+-    phi_hint = build_phi_hint(I_raw, phi_gt=phi_gt, hint_mode=hint_mode)
+-
+-    I_raw_clean = I_raw.clone()
+-
+-    if noise_aug is not None:
+-        # Option B: do not couple a free absolute channel into labels via delta.
+-        if hint_mode == "zero":
+-            I_raw_noisy, I_norm_noisy, _, _ = noise_aug(I_raw, phi_hint=None)
+-            delta = torch.zeros(
+-                I_raw.shape[0], 1, 1, 1, device=I_raw.device, dtype=I_raw.dtype
+-            )
+-            phi_hint = build_phi_hint(I_raw_noisy, phi_gt=None, hint_mode="zero")
+-        else:
+-            I_raw_noisy, I_norm_noisy, phi_hint, delta = noise_aug(I_raw, phi_hint)
+-            phi_gt = phi_gt + delta
++        # 4. gain/black level
++        gain = torch.empty(b, 1, 1, 1, device=dev, dtype=dt).uniform_(1 + (self.gain_min - 1) * level, 1 + (self.gain_max - 1) * level, generator=generator)
++        off = torch.empty(b, 1, 1, 1, device=dev, dtype=dt).uniform_(self.off_min * level, self.off_max * level, generator=generator)
++        img = gain * img + off
++        # 5. Poisson shot noise: severity means fewer photons
++        photons = self.photon_max + (self.photon_min - self.photon_max) * level
++        rates = (img.clamp_min(self.sensor_min) / max(self.sensor_max, 1e-6) * photons).clamp_min(0)
++        img = torch.poisson(rates, generator=generator) / photons * self.sensor_max
++        # 6. Gaussian read noise
++        img = img + normal(b, 1, h, w) * (self.gauss_std * level * self.sensor_max)
++        # 7. saturation/quantization and defective pixels
++        img = img.clamp(self.sensor_min, self.sensor_max)
++        if self.dropout_prob * level:
++            img = torch.where(rand(b, 1, h, w) < self.dropout_prob * level, torch.zeros_like(img), img)
++        if self.sap_prob * level:
++            q = rand(b, 1, h, w); img = torch.where(q < self.sap_prob * level / 2, self.sensor_min, img)
++            img = torch.where(q > 1 - self.sap_prob * level / 2, self.sensor_max, img)
++        img = torch.round(img / self.sensor_max * 255) / 255 * self.sensor_max
++        return img, normalize_intensity(img)
++
++    def __call__(self, I_clean, severity=0.0, *args, generator=None, **kwargs):
++        # Keep the historical ``aug(images, level)`` call contract.
++        return super().__call__(I_clean, severity, generator=generator)
++
++
++def build_phi_hint(ref, phi_gt=None, hint_mode="zero"):
++    return torch.zeros_like(ref)
++
++
++def prepare_batch(I_raw, phi_gt, noise_aug=None, hint_mode="zero"):
++    if noise_aug is None:
++        noisy, normalized = I_raw, normalize_intensity(I_raw)
+     else:
+-        I_raw_noisy = I_raw
+-        mean = I_raw.mean(dim=(-2, -1), keepdim=True)
+-        std = I_raw.std(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
+-        I_norm_noisy = (I_raw - mean) / std
+-
+-    I_input = torch.cat([I_norm_noisy, phi_hint], dim=1)
+-    return I_input, phi_gt, I_raw_noisy, I_raw_clean
++        noisy, normalized = noise_aug(I_raw, 1.0)
++    return torch.cat([normalized, build_phi_hint(normalized)], 1), phi_gt, noisy, I_raw.clone()
+diff --git a/src/phase_unwrap/data/dataset.py b/src/phase_unwrap/data/dataset.py
+index cc8b92f..7d910d8 100644
+--- a/src/phase_unwrap/data/dataset.py
++++ b/src/phase_unwrap/data/dataset.py
+@@ -14,6 +14,7 @@ import h5py
+ import numpy as np
+ import torch
+ from torch.utils.data import DataLoader, Dataset, Sampler
++from .simulator import MatlabSimulator
+ 
+ from ..core.config import DataConfig, TrainConfig
+ 
+@@ -324,3 +325,29 @@ def build_dataloaders(
+         else None
+     )
+     return train_loader, val_loader, test_loader
++
++
++class OTFLoader:
++    """Small DataLoader-compatible iterable for device-resident simulation."""
++    def __init__(self, simulator, batch_size, batches, generator, first_sample_id=0, fixed=False):
++        self.simulator, self.batch_size, self.batches = simulator, batch_size, batches
++        self.generator, self.next_sample_id, self.fixed = generator, first_sample_id, fixed
++        self._state, self._first_sample_id = generator.get_state(), first_sample_id
++    def __len__(self): return self.batches
++    def __iter__(self):
++        if self.fixed:
++            self.generator.set_state(self._state); self.next_sample_id = self._first_sample_id
++        for _ in range(self.batches):
++            b = self.simulator.sample(self.batch_size, generator=self.generator, first_sample_id=self.next_sample_id)
++            self.next_sample_id += self.batch_size
++            yield b.I_clean, b.phi_gt, b.grad_phi2, b.sample_ids
++
++
++def build_otf_loaders(cfg, device):
++    sim = MatlabSimulator().to(device)
++    train_g = torch.Generator(device=device); train_g.manual_seed(cfg.data.train_seed)
++    val_g = torch.Generator(device=device); val_g.manual_seed(cfg.data.val_seed)
++    test_g = torch.Generator(device=device); test_g.manual_seed(cfg.data.test_seed)
++    return (OTFLoader(sim, cfg.optim.batch_size, cfg.data.steps_per_epoch, train_g),
++            OTFLoader(sim, cfg.optim.batch_size, cfg.data.val_batches, val_g, fixed=True),
++            OTFLoader(sim, cfg.optim.batch_size, cfg.data.test_batches, test_g, fixed=True))
+diff --git a/src/phase_unwrap/data/generate.py b/src/phase_unwrap/data/generate.py
+index 1923aa5..4146ce7 100644
+--- a/src/phase_unwrap/data/generate.py
++++ b/src/phase_unwrap/data/generate.py
+@@ -103,15 +103,20 @@ def generate_sample(
+ 
+     # Add optional multiplicative laser speckle
+     if speckle_noise > 0.0:
+-        speckle = rng.gamma(shape=1.0 / speckle_noise, scale=speckle_noise, size=interferogram.shape)
++        speckle = rng.gamma(
++            shape=1.0 / speckle_noise, scale=speckle_noise, size=interferogram.shape
++        )
+         interferogram = interferogram * speckle
+ 
+     # ---- ground truth unwrapped phase ----
+     dp = phi1 - phi2
+     dphi = dp - dp.min()
+ 
+-    return interferogram.astype(np.float32), dphi.astype(np.float32), (grad_phi2_x, grad_phi2_y)
+-
++    return (
++        interferogram.astype(np.float32),
++        dphi.astype(np.float32),
++        (grad_phi2_x, grad_phi2_y),
++    )
+ 
+ 
+ def _generate_shard_worker(args: Tuple[int, int, int, Path]) -> int:
+@@ -119,28 +124,27 @@ def _generate_shard_worker(args: Tuple[int, int, int, Path]) -> int:
+     rng = np.random.default_rng(seed)
+     x, y, r2 = _build_grid()
+ 
+-    I_buf = np.empty((n_in_shard, 1, NY, NX), dtype=np.float32)
+-    phi_buf = np.empty((n_in_shard, 1, NY, NX), dtype=np.float32)
+-    grad_buf = np.empty((n_in_shard, 2, NY, NX), dtype=np.float32)
+-
+-    for local in range(n_in_shard):
+-        I_sample, dphi_sample, (g2x, g2y) = generate_sample(x, y, r2, rng)
+-        I_buf[local, 0] = I_sample
+-        phi_buf[local, 0] = dphi_sample
+-        grad_buf[local, 0] = g2x
+-        grad_buf[local, 1] = g2y
++    samples = [generate_sample(x, y, r2, rng) for _ in range(n_in_shard)]
++    I_buf = np.stack([s[0] for s in samples])[:, None]
++    phi_buf = np.stack([s[1] for s in samples])[:, None]
++    grad_buf = np.stack([np.stack(s[2]) for s in samples])
+ 
+     shard_name = out_path / f"train_shard_{shard_idx:03d}.h5"
+     chunk_n = min(128, n_in_shard)
+     with h5py.File(shard_name, "w") as f:
+-        f.create_dataset("I", data=I_buf, chunks=(chunk_n, 1, NY, NX), compression="lzf")
+-        f.create_dataset("phi", data=phi_buf, chunks=(chunk_n, 1, NY, NX), compression="lzf")
+-        f.create_dataset("grad_phi2", data=grad_buf, chunks=(chunk_n, 2, NY, NX), compression="lzf")
++        f.create_dataset(
++            "I", data=I_buf, chunks=(chunk_n, 1, NY, NX), compression="lzf"
++        )
++        f.create_dataset(
++            "phi", data=phi_buf, chunks=(chunk_n, 1, NY, NX), compression="lzf"
++        )
++        f.create_dataset(
++            "grad_phi2", data=grad_buf, chunks=(chunk_n, 2, NY, NX), compression="lzf"
++        )
+ 
+     return n_in_shard
+ 
+ 
+-
+ def generate_to_h5(
+     out_dir: str | Path,
+     num_samples: int = 180_000,
+@@ -203,24 +207,3 @@ def generate_to_h5(
+     with open(config_path, "w") as f:
+         yaml.dump(data_config, f, default_flow_style=False)
+     print(f"Saved data config: {config_path}")
+-
+-
+-# ---------------------------------------------------------------------------
+-# Standalone entry point
+-# ---------------------------------------------------------------------------
+-if __name__ == "__main__":
+-    import argparse
+-
+-    p = argparse.ArgumentParser(description="Generate synthetic interferogram data.")
+-    p.add_argument("--num-samples", type=int, default=180_000)
+-    p.add_argument("--shard-size", type=int, default=1000)
+-    p.add_argument("--out-dir", type=str, default="data/full")
+-    p.add_argument("--seed", type=int, default=1337)
+-    args = p.parse_args()
+-
+-    generate_to_h5(
+-        out_dir=args.out_dir,
+-        num_samples=args.num_samples,
+-        shard_size=args.shard_size,
+-        seed=args.seed,
+-    )
+\ No newline at end of file
+diff --git a/src/phase_unwrap/model/factory.py b/src/phase_unwrap/model/factory.py
+index 3310686..67c0b5c 100644
+--- a/src/phase_unwrap/model/factory.py
++++ b/src/phase_unwrap/model/factory.py
+@@ -14,6 +14,6 @@ def build_model(cfg: ModelConfig) -> PCLCNModel:
+         height=128,
+         width=128,
+         base=cfg.base,
+-        zero_reference_prior=getattr(cfg, "zero_reference_prior", False),
++        zero_reference_prior=(getattr(cfg, "reference_mode", "reference_free") == "reference_free") or getattr(cfg, "zero_reference_prior", False),
+         unmasked_zernike=getattr(cfg, "unmasked_zernike", False),
+     )
+diff --git a/src/phase_unwrap/model/pclcn.py b/src/phase_unwrap/model/pclcn.py
+index 92d614f..b707c41 100644
+--- a/src/phase_unwrap/model/pclcn.py
++++ b/src/phase_unwrap/model/pclcn.py
+@@ -101,7 +101,7 @@ class PCLCNModel(nn.Module):
+     def forward(
+         self,
+         I_raw: torch.Tensor,
+-        grad_phi2: torch.Tensor,
++        grad_phi2: torch.Tensor | None = None,
+     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+         """
+         Args:
+@@ -115,6 +115,8 @@ class PCLCNModel(nn.Module):
+             c_zernike: [B, 15] Zernike coefficients.
+             phi_zernike: [B, 1, H, W] Zernike surface.
+         """
++        if grad_phi2 is None:
++            grad_phi2 = torch.zeros(I_raw.shape[0], 2, I_raw.shape[2], I_raw.shape[3], device=I_raw.device, dtype=I_raw.dtype)
+         if self.zero_reference_prior:
+             grad_phi2 = torch.zeros_like(grad_phi2)
+ 
+diff --git a/src/phase_unwrap/training/callbacks.py b/src/phase_unwrap/training/callbacks.py
+index b5ba284..5a224ae 100644
+--- a/src/phase_unwrap/training/callbacks.py
++++ b/src/phase_unwrap/training/callbacks.py
+@@ -101,6 +101,9 @@ class CheckpointManager:
+         scheduler: Any,
+         scaler: torch.cuda.amp.GradScaler,
+         best_mae: float,
++        phase_generator: Optional[torch.Generator] = None,
++        noise_generator: Optional[torch.Generator] = None,
++        next_sample_id: int = 0,
+     ) -> None:
+         import random
+         import numpy as np
+@@ -115,7 +118,12 @@ class CheckpointManager:
+             "rng_python": random.getstate(),
+             "rng_numpy": np.random.get_state(),
+             "rng_torch": torch.random.get_rng_state(),
++            "next_sample_id": next_sample_id,
+         }
++        if phase_generator is not None:
++            state["rng_phase"] = phase_generator.get_state()
++        if noise_generator is not None:
++            state["rng_noise"] = noise_generator.get_state()
+         if torch.cuda.is_available():
+             state["rng_cuda"] = torch.cuda.get_rng_state_all()
+         torch.save(state, os.path.join(self.run_dir, filename))
+@@ -129,7 +137,9 @@ class CheckpointManager:
+         scheduler: Any,
+         scaler: torch.cuda.amp.GradScaler,
+         device: torch.device,
+-    ) -> tuple[int, float]:
++        phase_generator: Optional[torch.Generator] = None,
++        noise_generator: Optional[torch.Generator] = None,
++    ) -> tuple[int, float, int]:
+         import random
+         import numpy as np
+         ckpt = torch.load(path, map_location=device, weights_only=True)
+@@ -147,8 +157,12 @@ class CheckpointManager:
+             torch.random.set_rng_state(ckpt["rng_torch"])
+         if "rng_cuda" in ckpt and torch.cuda.is_available():
+             torch.cuda.set_rng_state_all(ckpt["rng_cuda"])
++        if phase_generator is not None and "rng_phase" in ckpt:
++            phase_generator.set_state(ckpt["rng_phase"])
++        if noise_generator is not None and "rng_noise" in ckpt:
++            noise_generator.set_state(ckpt["rng_noise"])
+ 
+-        return ckpt.get("epoch", 0) + 1, ckpt.get("best_mae", float("inf"))
++        return ckpt.get("epoch", 0) + 1, ckpt.get("best_mae", float("inf")), ckpt.get("next_sample_id", 0)
+ 
+ CSV_COLUMNS = [
+     "epoch",
+diff --git a/src/phase_unwrap/training/train.py b/src/phase_unwrap/training/train.py
+index 137ab47..e8c7a2a 100644
+--- a/src/phase_unwrap/training/train.py
++++ b/src/phase_unwrap/training/train.py
+@@ -7,6 +7,8 @@ from __future__ import annotations
+ import os
+ import time
+ import warnings
++import hashlib
++import json
+ from pathlib import Path
+ from typing import Dict, Optional
+ 
+@@ -20,8 +22,9 @@ from ..core.config import TrainConfig, config_to_yaml
+ from ..core.losses import PCLCNLoss, compute_metrics
+ from ..core.ops import FixedSobel, piston_align
+ from ..core.utils import ensure_dir, pick_device, set_seed
+-from ..data import build_dataloaders
+-from ..data.augmentation import NoiseAug, NoiseScheduler, prepare_batch
++from ..data import build_dataloaders, build_otf_loaders
++from ..data.augmentation import normalize_intensity
++from ..data.augmentation import NoiseAug
+ from ..model import EMA, build_model
+ from .callbacks import CSV_COLUMNS, CSVLogger, CheckpointManager, VisualizationDispatcher
+ 
+@@ -50,6 +53,9 @@ def run_eval(
+     use_amp: bool,
+     sobel: FixedSobel,
+     hint_mode: str = "zero",
++    noise_aug: NoiseAug | None = None,
++    severity: float = 0.0,
++    noise_seed: int = 0,
+ ) -> Dict[str, float]:
+     """
+     Evaluate with Option-B inputs by default (zero hint).
+@@ -68,6 +74,7 @@ def run_eval(
+     }
+     n = 0
+ 
++    noise_generator = torch.Generator(device=device); noise_generator.manual_seed(noise_seed)
+     pbar = tqdm(loader, desc="Validating", leave=False, dynamic_ncols=True)
+     for batch in pbar:
+         I_raw, phi_gt, grad_phi2 = _unpack_batch(batch, device)
+@@ -76,7 +83,8 @@ def run_eval(
+         with autocast(device_type=device.type, enabled=use_amp):
+             if grad_phi2 is None:
+                 grad_phi2 = torch.zeros(bs, 2, I_raw.shape[2], I_raw.shape[3], device=device)
+-            phi_abs, _, _, _, _ = model(I_raw, grad_phi2)
++            I_input = normalize_intensity(I_raw) if noise_aug is None else noise_aug(I_raw, severity, generator=noise_generator)[1]
++            phi_abs, _, _, _, _ = model(I_input, grad_phi2 if getattr(model, "reference_mode", "reference_free") == "calibrated" else None)
+ 
+         # TopoMAE key retained for CSV compat; now offset-only (piston) aligned.
+         phi_aligned, _ = piston_align(phi_abs, phi_gt)
+@@ -166,17 +174,19 @@ def train(
+     if not os.path.exists(config_snap_path):
+         Path(config_snap_path).write_text(config_to_yaml(cfg))
+ 
+-    train_loader, val_loader, test_loader = build_dataloaders(
+-        cfg, device, seed=cfg.logging.seed
+-    )
++    if getattr(cfg.data, "backend", "otf") == "otf":
++        train_loader, val_loader, test_loader = build_otf_loaders(cfg, device)
++    else:
++        train_loader, val_loader, test_loader = build_dataloaders(cfg, device, seed=cfg.logging.seed)
+     print(
+         f"[data] dir={cfg.data.data_dir} pattern={cfg.data.pattern} | "
+-        f"train={len(train_loader.dataset)} "
+-        f"val={len(val_loader.dataset) if val_loader is not None else 0} "
+-        f"test={len(test_loader.dataset) if test_loader is not None else 0}"
++        f"train={len(train_loader)} "
++        f"val={len(val_loader) if val_loader is not None else 0} "
++        f"test={len(test_loader) if test_loader is not None else 0}"
+     )
+ 
+     model = build_model(cfg.model).to(device=device)
++    model.reference_mode = cfg.model.reference_mode
+     loss_fn = PCLCNLoss(
+         w_phase=getattr(cfg.loss, "w_complex", 1.0),
+         w_curl=getattr(cfg.loss, "w_curl", 0.1),
+@@ -189,7 +199,7 @@ def train(
+         weight_decay=cfg.optim.weight_decay,
+     )
+ 
+-    total_steps = cfg.optim.epochs * len(train_loader)
++    total_steps = cfg.optim.epochs * (cfg.data.steps_per_epoch if getattr(cfg.data, "backend", "otf") == "otf" else len(train_loader))
+     warmup_steps = min(cfg.optim.warmup_steps, total_steps // 2)
+     sched = _build_warmup_scheduler(
+         opt, warmup_steps, total_steps - warmup_steps, cfg.optim.eta_min
+@@ -207,6 +217,7 @@ def train(
+ 
+     scaler = GradScaler(device=device.type, enabled=use_amp)
+     ema = EMA(model, decay=cfg.model.ema_decay)
++    ema.m.reference_mode = cfg.model.reference_mode
+ 
+     if cfg.optim.compile:
+         print("[startup] torch.compile enabled")
+@@ -215,13 +226,19 @@ def train(
+ 
+     best_mae = float("inf")
+     start_epoch = 1
++    noise_generator = torch.Generator(device=device)
++    noise_generator.manual_seed(getattr(cfg.data, "noise_seed", cfg.logging.seed + 1))
+     
+     if resume_path and os.path.exists(resume_path):
+         print(f"[resume] Loading checkpoint from {resume_path}")
+-        start_epoch, best_mae = CheckpointManager.load(
+-            resume_path, model, ema, opt, sched, scaler, device
++        loaded = CheckpointManager.load(
++            resume_path, model, ema, opt, sched, scaler, device,
++            phase_generator=getattr(train_loader, "generator", None), noise_generator=noise_generator,
+         )
+-        
++        start_epoch, best_mae = loaded[:2]
++        if hasattr(train_loader, "next_sample_id"):
++            train_loader.next_sample_id = loaded[2]
++
+         # Rationale (State Synchronization):
+         # If the user explicitly overrides `--epochs` or `--batch-size` on a resumed run, 
+         # the checkpoint's frozen scheduler state will physically overwrite the new `T_max` 
+@@ -242,12 +259,15 @@ def train(
+ 
+     # Initialize dynamic curriculum augmentation
+     train_aug = None
+-    noise_sched = None
+     if getattr(cfg, "aug", None) and cfg.aug.enable:
+         train_aug = NoiseAug(
+             gauss_std=cfg.aug.gauss_std,
+             speckle_std=cfg.aug.speckle_std,
+             poisson_scale=cfg.aug.poisson_scale,
++            photon_min=cfg.aug.photon_min,
++            photon_max=cfg.aug.photon_max,
++            sensor_min=cfg.aug.sensor_min,
++            sensor_max=cfg.aug.sensor_max,
+             lowfreq_amp=cfg.aug.lowfreq_amp,
+             blur_prob=cfg.aug.blur_prob,
+             blur_sigma=(cfg.aug.blur_min, cfg.aug.blur_max),
+@@ -255,17 +275,8 @@ def train(
+             s_and_p_prob=cfg.aug.sap_prob,
+             gain_jitter=(cfg.aug.gain_min, cfg.aug.gain_max),
+             offset_jitter=(cfg.aug.off_min, cfg.aug.off_max),
+-            hint_offset_std=cfg.aug.hint_std,
+             enable=True,
+-        )
+-        noise_sched = NoiseScheduler(
+-            warmup_ratio=cfg.aug.warmup_ratio,
+-            full_ratio=cfg.aug.full_ratio,
+-            profile=cfg.aug.profile,
+-            cycles=cfg.aug.cycles,
+-            stochastic_std=cfg.aug.stochastic_std,
+-        )
+-        noise_sched.set_total_epochs(cfg.optim.epochs)
++        ).to(device)
+ 
+     vis_batch = None
+     if train_loader is not None:
+@@ -273,10 +284,10 @@ def train(
+ 
+     for epoch in range(start_epoch, cfg.optim.epochs + 1):
+         partial_epoch = False
+-        if noise_sched is not None and train_aug is not None:
+-            lvl = noise_sched.level(epoch)
+-            train_aug.set_level(lvl)
+-            print(f"[noise] epoch={epoch} level={lvl:.3f}")
++        current_noise_level = min(1.0, (epoch - 1) / max(1, cfg.optim.epochs - 1))
++
++        if train_aug is not None:
++            print(f"[noise] epoch={epoch} level={current_noise_level:.3f}")
+ 
+         t0 = time.time()
+         model.train()
+@@ -291,11 +302,30 @@ def train(
+             I_raw, phi_gt, grad_phi2 = _unpack_batch(batch, device)
+             opt.zero_grad(set_to_none=True)
+ 
++            if train_aug is not None:
++                progress = global_step / max(1, total_steps)
++                if progress < 0.05:
++                    step_severity = 0.0
++                else:
++                    u = float(torch.rand((), device=device, generator=noise_generator))
++                    if u < cfg.aug.clean_probability:
++                        step_severity = 0.0
++                    elif u < cfg.aug.clean_probability + cfg.aug.mid_probability:
++                        step_severity = float(torch.empty((), device=device).uniform_(0.05, 0.75, generator=noise_generator))
++                    else:
++                        step_severity = float(torch.empty((), device=device).uniform_(0.75, 1.0, generator=noise_generator))
++                I_raw_noisy, I_norm_noisy = train_aug(I_raw, step_severity, generator=noise_generator)
++            else:
++                I_raw_noisy = I_raw
++                mean = I_raw.mean(dim=(-2, -1), keepdim=True)
++                std = I_raw.std(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
++                I_norm_noisy = (I_raw - mean) / std
++
+             try:
+                 with autocast(device_type=device.type, enabled=use_amp):
+                     if grad_phi2 is None:
+                         grad_phi2 = torch.zeros(I_raw.size(0), 2, I_raw.shape[2], I_raw.shape[3], device=device)
+-                    phi_final, gx_tilde, gy_tilde, c_zernike, phi_zernike = model(I_raw, grad_phi2)
++                    phi_final, gx_tilde, gy_tilde, c_zernike, phi_zernike = model(I_norm_noisy, grad_phi2 if cfg.model.reference_mode == "calibrated" else None)
+                     L_phase, parts = loss_fn(phi_final, phi_gt, gx_tilde, gy_tilde)
+                     loss = cfg.loss.w_data * L_phase
+ 
+@@ -324,72 +354,9 @@ def train(
+ 
+             except RuntimeError as e:
+                 if "out of memory" in str(e).lower():
+-                    # Rationale (Architecture - Resiliency):
+-                    # We implement dynamic batch-size halving on CUDA OOM. Deep networks like UNet 
+-                    # can occasionally spike VRAM on exceptionally noisy/complex gradients. 
+-                    # Instead of instantly killing a 48-hour unattended training run, we catch the OOM, 
+-                    # flush the VRAM, automatically slash the batch size, and seamlessly rebuild the 
+-                    # dataloaders to resume execution cleanly.
+-                    print(
+-                        "| WARNING | CUDA OOM Exception caught! Attempting dynamic recovery..."
+-                    )
+-                    torch.cuda.empty_cache()
+-                    opt.zero_grad(set_to_none=True)
+-
+-                    if cfg.optim.batch_size <= 1:
+-                        raise RuntimeError(
+-                            "Fatal CUDA OOM: Batch size is already 1."
+-                        ) from e
+-
+-                    cfg.optim.batch_size = max(1, cfg.optim.batch_size // 2)
+-                    print(
+-                        f"| RECOVER | Reduced dynamic batch size to {cfg.optim.batch_size}. Re-building DataLoaders..."
+-                    )
+-
+-                    # Rebuild the dataloaders immediately to apply the new batch size
+-                    train_loader, val_loader, test_loader = build_dataloaders(
+-                        cfg, device, seed=cfg.logging.seed
+-                    )
+-
+-                    # Rationale (State Synchronization):
+-                    # 1. Update `config_effective.yaml` so anyone resuming or reproducing this run 
+-                    # doesn't crash on the old toxic batch size. We don't overwrite config.yaml 
+-                    # to preserve the original intent.
+-                    effective_snap_path = os.path.join(run_dir, "config_effective.yaml")
+-                    Path(effective_snap_path).write_text(config_to_yaml(cfg))
+-                    
+-                    recovery_log_path = os.path.join(run_dir, "recovery.log")
+-                    with open(recovery_log_path, "a") as f:
+-                        f.write(f"epoch={epoch} global_step={global_step} old_bs={cfg.optim.batch_size*2} new_bs={cfg.optim.batch_size}\\n")
+-
+-                    # 2. Rebuild the LR scheduler. Because batch size halved, `len(train_loader)` 
+-                    # just doubled! The pre-computed CosineAnnealingLR max steps are now violently 
+-                    # out of sync. We must recalculate the total steps and fast-forward the new 
+-                    # scheduler back to the exact current `global_step` to prevent math corruption.
+-                    # Note: We do NOT add +1 to epochs because the current epoch loop breaks immediately.
+-                    # Note (Reproducibility): `new_total_steps` changes the `T_max` of the cosine schedule,
+-                    # so the LR trajectory will stretch and deviate from the original shape.
+-                    new_total_steps = global_step + (cfg.optim.epochs - epoch) * len(train_loader)
+-                    new_warmup = min(cfg.optim.warmup_steps, new_total_steps // 2)
+-                    sched = _build_warmup_scheduler(
+-                        opt, new_warmup, new_total_steps - new_warmup, cfg.optim.eta_min
+-                    )
+-                    for _ in range(global_step):
+-                        sched.step()
+-
+-                    # If noise is enabled, immediately re-sync the level since we created a new loader
+-                    if noise_sched is not None and train_aug is not None:
+-                        lvl = noise_sched.level(epoch)
+-                        train_aug.set_level(lvl)
+-
+-                    # Break the current inner epoch loop. The outer 'for epoch' loop will advance
+-                    # naturally and restart the progress bar on the next sequence with the smaller batch size,
+-                    # abandoning the current poisoned epoch cleanly rather than dying.
+-                    print(
+-                        "| RECOVER | Epoch aborted gracefully. Resuming at next epoch boundary."
+-                    )
+-                    partial_epoch = True
+-                    break
++                    raise RuntimeError(
++                        f"CUDA OOM at batch_size={cfg.optim.batch_size}; reduce batch_size and restart the scientific run."
++                    ) from e
+                 raise
+ 
+             bs = I_raw.size(0)
+@@ -418,44 +385,42 @@ def train(
+ 
+         eval_stats: Dict[str, float] = {}
+         if (not partial_epoch) and (epoch % cfg.logging.val_interval == 0) and (val_loader is not None):
+-            eval_stats = run_eval(
+-                ema.m,
+-                val_loader,
+-                device,
+-                use_amp,
+-                eval_sobel,
+-                hint_mode=cfg.aug.hint_mode,
+-            )
++            severity_stats = {
++                s: run_eval(ema.m, val_loader, device, use_amp, eval_sobel,
++                            hint_mode=cfg.aug.hint_mode, noise_aug=train_aug,
++                            severity=s, noise_seed=cfg.data.noise_seed)
++                for s in cfg.aug.fixed_severities
++            }
++            eval_stats = severity_stats[0.0]
+ 
+             try:
+                 # Get visualization data from cached vis_batch
+                 if vis_batch is not None:
+-                    I_raw_v, phi_gt_v = vis_batch
++                    I_raw_v, phi_gt_v, grad_phi2_v = _unpack_batch(vis_batch, device)
+                 else:
+-                    I_raw_v, phi_gt_v = next(iter(train_loader))
+-                I_raw_v = I_raw_v.to(device, non_blocking=True)
+-                phi_gt_v = phi_gt_v.to(device, non_blocking=True)
+-
+-                I_input_v, phi_gt_v, I_raw_n_v, I_raw_c_v = prepare_batch(
+-                    I_raw_v,
+-                    phi_gt_v,
+-                    noise_aug=train_aug,
+-                    hint_mode=cfg.aug.hint_mode,
+-                )
++                    I_raw_v, phi_gt_v, grad_phi2_v = _unpack_batch(next(iter(train_loader)), device)
++
++                if train_aug is not None:
++                    I_raw_n_v, I_input_v = train_aug(I_raw_v, current_noise_level, generator=noise_generator)
++                else:
++                    I_raw_n_v = I_raw_v
++                    mean = I_raw_v.mean(dim=(-2, -1), keepdim=True)
++                    std = I_raw_v.std(dim=(-2, -1), keepdim=True).clamp_min(1e-6)
++                    I_input_v = (I_raw_v - mean) / std
++
++                I_raw_c_v = I_raw_v.clone()
+ 
+                 I_input_v = I_input_v.contiguous(memory_format=torch.channels_last)
+                 phi_gt_v = phi_gt_v.contiguous(memory_format=torch.channels_last)
+ 
+                 with autocast(device_type=device.type, enabled=use_amp):
+-                    phi_raw_v, k_off_v = ema.m(I_input_v)
+-                    phi_abs_v = phi_raw_v + k_off_v
++                    if grad_phi2_v is None:
++                        grad_phi2_v = torch.zeros(I_raw_v.size(0), 2, I_raw_v.shape[2], I_raw_v.shape[3], device=device)
++                    phi_abs_v, _, _, _, _ = ema.m(I_input_v, grad_phi2_v if cfg.model.reference_mode == "calibrated" else None)
++
+                 # Epoch PNGs: piston-only (same as metrics); affine_align remains for other plots
+                 phi_aligned_v, _ = piston_align(phi_abs_v, phi_gt_v)
+ 
+-                # Get current noise level for visualization
+-                current_noise_level = 0.0
+-                if noise_sched is not None:
+-                    current_noise_level = noise_sched.level(epoch)
+ 
+                 vis_dispatcher.dispatch(
+                     epoch=epoch,
+@@ -481,9 +446,10 @@ def train(
+                 f"time={epoch_time:.1f}s"
+             )
+ 
+-            # Primary selection: raw AbsMAE (no GT scale/piston fit). TopoMAE is diagnostic.
+-            if eval_stats.get("AbsMAE", float("inf")) < best_mae:
+-                best_mae = eval_stats["AbsMAE"]
++            # Reference-free selection is piston aligned across clean/light/moderate.
++            selection_score = sum(severity_stats[s]["TopoMAE"] for s in (0.0, 0.25, 0.5)) / 3
++            if selection_score < best_mae:
++                best_mae = selection_score
+                 ckpt_manager.save(
+                     "best.pth",
+                     epoch,
+@@ -493,6 +459,9 @@ def train(
+                     sched,
+                     scaler,
+                     best_mae,
++                    phase_generator=getattr(train_loader, "generator", None),
++                    noise_generator=noise_generator,
++                    next_sample_id=getattr(train_loader, "next_sample_id", 0),
+                 )
+         else:
+             print(f"Epoch {epoch} | train={train_loss:.4f} | time={epoch_time:.1f}s")
+@@ -506,15 +475,14 @@ def train(
+             sched,
+             scaler,
+             best_mae,
++            phase_generator=getattr(train_loader, "generator", None),
++            noise_generator=noise_generator,
++            next_sample_id=getattr(train_loader, "next_sample_id", 0),
+         )
+ 
+         current_lr = opt.param_groups[0]["lr"]
+         
+-        # Get current noise level to log it
+-        current_noise_level = 0.0
+-        if noise_sched is not None:
+-            current_noise_level = noise_sched.level(epoch)
+-            
++
+         csv_logger.log(
+             {
+                 "epoch": epoch,
+@@ -537,14 +505,15 @@ def train(
+         )
+     if test_loader is not None:
+         print("\n--- Final Evaluation on Held-Out Test Set ---")
+-        test_stats = run_eval(
+-            ema.m if ema else model,
+-            test_loader,
+-            device,
+-            use_amp,
+-            eval_sobel,
+-            hint_mode=cfg.aug.hint_mode,
+-        )
++        best_path = os.path.join(run_dir, "best.pth")
++        if os.path.exists(best_path):
++            best = torch.load(best_path, map_location=device, weights_only=True)
++            ema.m.load_state_dict(best.get("model_ema", best["model"]))
++        test_by_severity = {s: run_eval(ema.m, test_loader, device, use_amp, eval_sobel,
++                                        hint_mode=cfg.aug.hint_mode, noise_aug=train_aug,
++                                        severity=s, noise_seed=cfg.data.noise_seed + 1)
++                            for s in cfg.aug.fixed_severities}
++        test_stats = test_by_severity[0.0]
+         print(
+             f"[TEST] AbsMAE={test_stats.get('AbsMAE', 0):.4f} "
+             f"TopoMAE(piston)={test_stats.get('TopoMAE', 0):.4f} "
+@@ -568,5 +537,13 @@ def train(
+                 "GradMAE": f"{test_stats.get('GradMAE', float('nan')):.6f}",
+             }
+         )
++        artifact = {
++            "generator": "MatlabSimulator.float64.v1", "reference_mode": cfg.model.reference_mode,
++            "seeds": {k: getattr(cfg.data, k) for k in ("train_seed", "val_seed", "test_seed", "noise_seed")},
++            "sample_id_next": getattr(train_loader, "next_sample_id", None),
++            "noise": vars(cfg.aug), "test_by_severity": {str(k): v for k, v in test_by_severity.items()},
++            "checkpoint_sha256": hashlib.sha256(Path(best_path).read_bytes()).hexdigest() if os.path.exists(best_path) else None,
++        }
++        Path(os.path.join(run_dir, "result.json")).write_text(json.dumps(artifact, indent=2, default=str))
+ 
+     print(f"\nDone. Best Val AbsMAE: {best_mae:.4f}")
