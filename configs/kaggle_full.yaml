@@ -18,7 +18,7 @@ data:
   prefetch_factor: 4                   # batches prefetched per worker
   augment: true                        # geometric flips/rotations on train
   backend: "otf"                       # "otf" = GPU on-the-fly, "h5" = HDF5 shards
-  steps_per_epoch: 1000                # batches per epoch
+  steps_per_epoch: 300                # batches per epoch (~3.2 min/epoch on T4)
   val_batches: 32                      # validation batches per epoch
   test_batches: 64                     # test batches at end of training
   train_seed: 1337
@@ -47,7 +47,7 @@ optim:
   weight_decay: 1.0e-4
   grad_clip: 5.0
   warmup_steps: 500
-  compile: true                        # torch.compile (faster, requires PyTorch 2.x)
+  compile: false                       # torch.compile gains nothing (complex ops fall back to eager)
 
 loss:
   w_mae: 1.0
