@@ -35,12 +35,6 @@ warnings.filterwarnings("ignore", message=".*spectral_angle_mapper.*")
 # Metrics CSV
 # ---------------------------------------------------------------------------
 
-def _unpack_batch(batch: tuple, device: torch.device):
-    I_raw = batch[0].to(device, non_blocking=True)
-    phi_gt = batch[1].to(device, non_blocking=True)
-    grad_phi2 = batch[2].to(device, non_blocking=True) if len(batch) > 2 else None
-    return I_raw, phi_gt, grad_phi2
-
 
 # ---------------------------------------------------------------------------
 # Extended evaluation
@@ -77,7 +71,7 @@ def run_eval(
     noise_generator = torch.Generator(device=device); noise_generator.manual_seed(noise_seed)
     pbar = tqdm(loader, desc="Validating", leave=False, dynamic_ncols=True)
     for batch in pbar:
-        I_raw, phi_gt, grad_phi2 = _unpack_batch(batch, device)
+        I_raw, phi_gt, grad_phi2 = (x.to(device, non_blocking=True) for x in batch[:3])
         bs = I_raw.size(0)
 
         with autocast(device_type=device.type, enabled=use_amp):
@@ -299,7 +293,7 @@ def train(
 
         pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{cfg.optim.epochs}", leave=False)
         for batch in pbar:
-            I_raw, phi_gt, grad_phi2 = _unpack_batch(batch, device)
+            I_raw, phi_gt, grad_phi2 = (x.to(device, non_blocking=True) for x in batch[:3])
             opt.zero_grad(set_to_none=True)
 
             if train_aug is not None:
@@ -396,9 +390,9 @@ def train(
             try:
                 # Get visualization data from cached vis_batch
                 if vis_batch is not None:
-                    I_raw_v, phi_gt_v, grad_phi2_v = _unpack_batch(vis_batch, device)
+                    I_raw_v, phi_gt_v, grad_phi2_v = (x.to(device, non_blocking=True) for x in vis_batch[:3])
                 else:
-                    I_raw_v, phi_gt_v, grad_phi2_v = _unpack_batch(next(iter(train_loader)), device)
+                    I_raw_v, phi_gt_v, grad_phi2_v = (x.to(device, non_blocking=True) for x in next(iter(train_loader))[:3])
 
                 if train_aug is not None:
                     I_raw_n_v, I_input_v = train_aug(I_raw_v, current_noise_level, generator=noise_generator)
