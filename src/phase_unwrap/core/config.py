@@ -9,10 +9,11 @@ fields falling back to built-in defaults.
 from __future__ import annotations
 
 import json
-import yaml
 from dataclasses import asdict, dataclass, field, fields, is_dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any
+
+import yaml
 
 
 @dataclass
@@ -131,7 +132,7 @@ class AugmentationConfig:
     clean_probability: float = 0.2
     mid_probability: float = 0.6
     hard_probability: float = 0.2
-    fixed_severities: tuple = (0.0, 0.25, 0.5, 0.75, 1.0)
+    fixed_severities: list = field(default_factory=lambda: [0.0, 0.25, 0.5, 0.75, 1.0])
 
 
 @dataclass
@@ -146,10 +147,10 @@ class TrainConfig:
     aug: AugmentationConfig = field(default_factory=AugmentationConfig)
 
 
-ConfigPath = Union[str, Path]
+ConfigPath = str | Path
 
 
-def _update_dataclass(dc: Any, values: Dict[str, Any]) -> Any:
+def _update_dataclass(dc: Any, values: dict[str, Any]) -> Any:
     """Recursively update a dataclass instance from a nested mapping."""
     if not is_dataclass(dc):
         return dc
@@ -165,7 +166,7 @@ def _update_dataclass(dc: Any, values: Dict[str, Any]) -> Any:
     return dc
 
 
-def _load_mapping(path: Path) -> Dict[str, Any]:
+def _load_mapping(path: Path) -> dict[str, Any]:
     """Load a configuration mapping from JSON or YAML."""
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
@@ -175,7 +176,7 @@ def _load_mapping(path: Path) -> Dict[str, Any]:
     return yaml.safe_load(text) or {}
 
 
-def load_train_config(path: Optional[ConfigPath] = None) -> TrainConfig:
+def load_train_config(path: ConfigPath | None = None) -> TrainConfig:
     """Load a TrainConfig from an optional JSON/YAML file."""
     cfg = TrainConfig()
     if path is None:

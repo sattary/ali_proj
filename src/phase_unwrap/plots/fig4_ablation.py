@@ -9,6 +9,7 @@ Stateless implementations for:
 from __future__ import annotations
 
 import math
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -19,8 +20,8 @@ from .style import (
     annotate_significance,
     compute_statistical_test,
     create_nature_palette,
-    publication_plot,
     label_panels,
+    publication_plot,
 )
 
 
@@ -51,7 +52,8 @@ def plot_f4_multiseed(
             continue
 
         sns.boxenplot(
-            data=plot_df, x="method", y="value", ax=ax, palette=palette
+            data=plot_df, x="method", y="value", ax=ax, palette=palette,
+            hue="method", legend=False,
         )
         sns.stripplot(
             data=plot_df, x="method", y="value", ax=ax, color="black", alpha=0.3, size=3

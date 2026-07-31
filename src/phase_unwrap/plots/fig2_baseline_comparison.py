@@ -9,16 +9,9 @@ from __future__ import annotations
 
 import matplotlib.pyplot as plt
 import numpy as np
-import seaborn as sns
 
-from .style import (
-    CMAP_INTENSITY,
-    DOUBLE_COL,
-    add_colorbar,
-    create_nature_palette,
-    publication_plot,
-    label_panels,
-)
+from .style import DOUBLE_COL, create_nature_palette, label_panels, publication_plot
+from .utils import draw_intensity_panel, draw_phase_panel
 
 
 @publication_plot
@@ -43,7 +36,6 @@ def plot_f2_baseline_comparison(
     n_samples = raw_i_np.shape[0]
 
     palette = create_nature_palette()
-    phase_cmap = sns.color_palette("viridis", as_cmap=True)
 
     fig, axes = plt.subplots(
         n_samples,
@@ -71,51 +63,12 @@ def plot_f2_baseline_comparison(
         vmin_phase = gt_img.min()
         vmax_phase = gt_img.max()
 
-        im0 = axes[row, 0].imshow(I_img, cmap=CMAP_INTENSITY, aspect="equal")
-        add_colorbar(axes[row, 0], im0)
+        draw_intensity_panel(axes[row, 0], I_img, "")
+        draw_phase_panel(axes[row, 1], gt_img, "", vmin=vmin_phase, vmax=vmax_phase)
+        draw_phase_panel(axes[row, 2], itoh_img, "", vmin=vmin_phase, vmax=vmax_phase)
+        draw_phase_panel(axes[row, 3], lsq_img, "", vmin=vmin_phase, vmax=vmax_phase)
+        draw_phase_panel(axes[row, 4], unet_img, "", vmin=vmin_phase, vmax=vmax_phase)
 
-        im1 = axes[row, 1].imshow(
-            gt_img,
-            cmap=phase_cmap,
-            aspect="equal",
-            vmin=vmin_phase,
-            vmax=vmax_phase,
-        )
-        add_colorbar(axes[row, 1], im1, label="[rad]")
-
-        im2 = axes[row, 2].imshow(
-            itoh_img,
-            cmap=phase_cmap,
-            aspect="equal",
-            vmin=vmin_phase,
-            vmax=vmax_phase,
-        )
-        add_colorbar(axes[row, 2], im2, label="[rad]")
-
-        im3 = axes[row, 3].imshow(
-            lsq_img,
-            cmap=phase_cmap,
-            aspect="equal",
-            vmin=vmin_phase,
-            vmax=vmax_phase,
-        )
-        add_colorbar(axes[row, 3], im3, label="[rad]")
-
-        im4 = axes[row, 4].imshow(
-            unet_img,
-            cmap=phase_cmap,
-            aspect="equal",
-            vmin=vmin_phase,
-            vmax=vmax_phase,
-        )
-        add_colorbar(axes[row, 4], im4, label="[rad]")
-
-        for col in range(5):
-            axes[row, col].set_xticks([])
-            axes[row, col].set_yticks([])
-            axes[row, col].spines[:].set_visible(False)
-
-        # Annotate MAEs for the models
         def ann_mae(ax, pred):
             mae = np.abs(pred - gt_img).mean()
             ax.text(
