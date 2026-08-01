@@ -127,9 +127,9 @@ class PCLCNModel(nn.Module):
         if self.zero_reference_prior:
             grad_phi2 = torch.zeros_like(grad_phi2)
 
-        # Diagnostic mode receives the signed wrapped phase directly, proving
-        # unwrapping separately from single-frame phase extraction.
-        if getattr(self, "observation_mode", "intensity") == "wrapped_dp":
+        # Diagnostic / two-frame modes receive the signed wrapped phase directly,
+        # bypassing the FFT carrier-demodulation stem.
+        if getattr(self, "observation_mode", "intensity") in ("wrapped_dp", "two_frame"):
             wrapped_phase = I_raw
             amplitude = torch.ones_like(I_raw)
         else:

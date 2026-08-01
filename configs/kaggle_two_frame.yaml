@@ -1,0 +1,44 @@
+data:
+  backend: "otf"
+  observation: "two_frame"
+  steps_per_epoch: 300
+  val_batches: 32
+  test_batches: 64
+  workers: 0
+  train_seed: 1337
+  val_seed: 7331
+  test_seed: 9337
+  noise_seed: 12345
+
+model:
+  arch: "pclcn"
+  base: 32
+  reference_mode: "reference_free"
+  device: "auto"
+  use_amp: true
+  ema_decay: 0.999
+
+optim:
+  epochs: 100
+  batch_size: 128
+  lr: 3.0e-4
+  eta_min: 1.0e-6
+  weight_decay: 1.0e-4
+  grad_clip: 5.0
+  warmup_steps: 500
+  compile: false
+
+loss:
+  w_complex: 0.1
+  w_curl: 0.1
+  w_grad_curv: 0.01
+
+aug:
+  enable: false
+
+logging:
+  run_name: "pclcn_two_frame"
+  runs_root: "runs"
+  vis_max: 8
+  val_interval: 1
+  seed: 1337

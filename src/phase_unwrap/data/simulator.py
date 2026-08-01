@@ -11,7 +11,8 @@ import torch.nn.functional as F
 
 @dataclass
 class SimulationBatch:
-    I_clean: torch.Tensor
+    I1: torch.Tensor
+    I2: torch.Tensor
     phi_gt: torch.Tensor
     wrapped_dp: torch.Tensor
     piston_gt: torch.Tensor
@@ -50,7 +51,7 @@ class MatlabSimulator(nn.Module):
     ) -> SimulationBatch:
         device = self.x.device
         h, w = self.x.shape
-        clean, target, wrapped, pistons, grads = [], [], [], [], []
+        clean, I2_list, target, wrapped, pistons, grads = [], [], [], [], [], []
         with torch.autocast(device_type=device.type, enabled=False):
             x, y, r2, k = self.x, self.y, self.r2, self.k
             for _ in range(batch_size):
@@ -81,13 +82,17 @@ class MatlabSimulator(nn.Module):
                 dp = phi1 - phi2
                 piston = dp.amin()
                 dphi = dp - piston
-                clean.append(2.0 + 2.0 * torch.cos(dp))
+                I1 = 2.0 + 2.0 * torch.cos(dp)
+                I2 = 2.0 + 2.0 * torch.cos(dp + math.pi / 2.0)
                 target.append(dphi)
                 wrapped.append(torch.remainder(dp + math.pi, 2.0 * math.pi) - math.pi)
                 pistons.append(piston)
                 grads.append(torch.stack((k * alpha * x / r2, k * alpha * y / r2)))
+                clean.append(I1)
+                I2_list.append(I2)
         return SimulationBatch(
             torch.stack(clean)[:, None].float(),
+            torch.stack(I2_list)[:, None].float(),
             torch.stack(target)[:, None].float(),
             torch.stack(wrapped)[:, None].float(),
             torch.stack(pistons)[:, None, None, None],

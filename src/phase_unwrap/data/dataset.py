@@ -338,7 +338,12 @@ class OTFLoader:
                 first_sample_id=self.next_sample_id,
             )
             self.next_sample_id += self.batch_size
-            x = b.wrapped_dp if self.observation == "wrapped_dp" else b.I_clean
+            if self.observation == "wrapped_dp":
+                x = b.wrapped_dp
+            elif self.observation == "two_frame":
+                x = torch.atan2(2.0 - b.I2, b.I1 - 2.0)
+            else:
+                x = b.I1
             yield x, b.phi_gt, b.grad_phi2, b.sample_ids
 
 

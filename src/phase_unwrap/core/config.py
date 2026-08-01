@@ -31,7 +31,7 @@ class DataConfig:
     prefetch_factor: int = 4
     augment: bool = True
     backend: str = "otf"
-    observation: str = "intensity"  # "intensity" | "wrapped_dp" (diagnostic)
+    observation: str = "intensity"  # "intensity" | "wrapped_dp" | "two_frame"
     steps_per_epoch: int = 1000
     val_batches: int = 32
     test_batches: int = 64

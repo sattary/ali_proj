@@ -78,7 +78,7 @@ def run_eval(
         bs = I_raw.size(0)
 
         with autocast(device_type=device.type, enabled=use_amp):
-            if observation == "wrapped_dp":
+            if observation in {"wrapped_dp", "two_frame"}:
                 I_input = I_raw
             else:
                 I_input = (
@@ -252,13 +252,13 @@ def train(
     use_cuda = device.type == "cuda"
     use_amp = bool(use_cuda and cfg.model.use_amp)
     observation = getattr(cfg.data, "observation", "intensity")
-    if observation not in {"intensity", "wrapped_dp"}:
+    if observation not in {"intensity", "wrapped_dp", "two_frame"}:
         raise ValueError(f"Unknown data.observation: {observation}")
-    if observation == "wrapped_dp":
+    if observation in {"wrapped_dp", "two_frame"}:
         if getattr(cfg.data, "backend", "otf") != "otf":
-            raise ValueError("data.observation=wrapped_dp requires data.backend=otf")
+            raise ValueError(f"data.observation={observation} requires data.backend=otf")
         if getattr(cfg, "aug", None) and cfg.aug.enable:
-            raise ValueError("Disable aug for the wrapped_dp diagnostic")
+            raise ValueError(f"Disable aug for the {observation} diagnostic")
 
     run_dir = cfg.logging.run_dir
     vis_dir = cfg.logging.vis_dir
@@ -411,7 +411,7 @@ def train(
             )
             opt.zero_grad(set_to_none=True)
 
-            if observation == "wrapped_dp":
+            if observation in {"wrapped_dp", "two_frame"}:
                 I_norm_noisy = I_raw
             elif train_aug is not None:
                 progress = global_step / max(1, total_steps)
@@ -446,7 +446,7 @@ def train(
                 )
                 phi_for_loss = (
                     piston_align(phi_final, phi_gt)[0]
-                    if observation == "wrapped_dp"
+                    if observation in {"wrapped_dp", "two_frame"}
                     else phi_final
                 )
                 L_phase, parts = loss_fn(
@@ -503,7 +503,9 @@ def train(
             and (val_loader is not None)
         ):
             eval_severities = (
-                [0.0] if observation == "wrapped_dp" else cfg.aug.fixed_severities
+                [0.0]
+                if observation in {"wrapped_dp", "two_frame"}
+                else cfg.aug.fixed_severities
             )
             severity_stats = {
                 s: run_eval(
@@ -527,7 +529,7 @@ def train(
                     x.to(device, non_blocking=True) for x in vis_batch[:3]
                 )
 
-                if observation == "wrapped_dp":
+                if observation in {"wrapped_dp", "two_frame"}:
                     I_raw_n_v = I_raw_v
                     I_input_v = I_raw_v
                 elif train_aug is not None:
@@ -575,7 +577,7 @@ def train(
             # Selection based on piston-aligned MAE across noise levels
             selection_score = (
                 eval_stats["TopoMAE"]
-                if observation == "wrapped_dp"
+                if observation in {"wrapped_dp", "two_frame"}
                 else sum(
                     severity_stats[s]["TopoMAE"] for s in (0.0, 0.25, 0.5)
                 )
@@ -640,7 +642,9 @@ def train(
             best = torch.load(best_path, map_location=device, weights_only=True)
             ema.m.load_state_dict(best.get("model_ema", best["model"]))
         test_severities = (
-            [0.0] if observation == "wrapped_dp" else cfg.aug.fixed_severities
+            [0.0]
+            if observation in {"wrapped_dp", "two_frame"}
+            else cfg.aug.fixed_severities
         )
         test_by_severity = {
             s: run_eval(
