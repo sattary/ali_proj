@@ -38,7 +38,7 @@ def run_infer_cmd(
         outputs = run_otf_two_frame_inference(
             checkpoint, num_samples, seed, device, config
         )
-        save_inference_outputs(outputs, out)
+        save_inference_outputs(outputs, out, mode="otf")
         return
     if mode == "two_frame":
         if not input_i1 or not input_i2:
@@ -46,12 +46,11 @@ def run_infer_cmd(
         outputs = run_two_frame_inference(
             input_i1, input_i2, checkpoint, device, config
         )
-        save_inference_outputs(outputs, out)
+        save_inference_outputs(outputs, out, mode="two_frame")
         return
     if mode != "intensity" or not input_path:
         raise typer.BadParameter("intensity mode requires --input")
     from phase_unwrap.analysis.inference import run_inference
 
     phi_pred, _, _ = run_inference(input_path, checkpoint, device, config)
-    save_inference_outputs({"prediction": phi_pred[None]}, out)
-
+    save_inference_outputs({"prediction": phi_pred[None]}, out, mode="intensity")
