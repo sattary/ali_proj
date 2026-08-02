@@ -49,16 +49,18 @@ def save_epoch_visuals(
 ) -> None:
     """Save quick per-sample visualizations during training.
 
-    Refactored to a 1-row layout per sample:
-    [Noisy Input] | [GT Phase] | [Wrapped Phase] | [Pred Phase] | [Error Map]
+    Two-frame noisy batches show clean/noisy I1 and I2, the observed wrapped
+    phase seen by the model, the clean wrapped target, GT, prediction, and error.
     """
     ensure_dir(out_dir)
 
     B = min(I_input.shape[0], max_items)
+    if I_raw_clean is not None and I_raw_clean.shape[1] >= 2:
+        samples_per_file = 1
     n_files = (B + samples_per_file - 1) // samples_per_file
 
     # Get model input
-    # Channel 0 of I_input is ALWAYS the normalized (Z-scored) input.
+    # I_input is the actual tensor passed to the model.
     I_noisy = (
         to_numpy(I_raw_noisy) if I_raw_noisy is not None else to_numpy(I_input[:, 0:1])
     )
@@ -76,40 +78,60 @@ def save_epoch_visuals(
         end_idx = min(start_idx + samples_per_file, B)
         current_batch_size = end_idx - start_idx
 
-        fig, axes = plt.subplots(
-            current_batch_size,
-            6,
-            figsize=(18, 3.5 * current_batch_size),
-            squeeze=False,
-        )
+        n_panels = 9 if I_clean is not None and I_clean.shape[1] >= 2 else 6
+        if n_panels == 9:
+            fig, axes = plt.subplots(
+                current_batch_size * 3,
+                3,
+                figsize=(12, 12 * current_batch_size),
+                squeeze=False,
+            )
+        else:
+            fig, axes = plt.subplots(
+                current_batch_size,
+                n_panels,
+                figsize=(4 * n_panels, 3.5 * current_batch_size),
+                squeeze=False,
+            )
 
         for local_idx, i in enumerate(range(start_idx, end_idx)):
-            # Panel 1: Clean Input (Pristine physics)
-            ax = axes[local_idx, 0]
-            if I_clean is not None:
-                draw_intensity_panel(ax, I_clean[i, 0], "Clean Input", colorbar=False)
-            else:
-                ax.axis("off")
-                ax.text(
-                    0.5, 0.5, "No Clean\nData", ha="center", va="center", fontsize=8
-                )
-
-            # Panel 2: Noisy Input (What model sees)
-            ax = axes[local_idx, 1]
-            noise_text = (
-                f"Noisy Input (L:{noise_level:.2f})"
-                if noise_level > 0
-                else "Input (Clean)"
+            panel = (
+                lambda number: axes[local_idx * 3 + number // 3, number % 3]
+                if n_panels == 9
+                else lambda number: axes[local_idx, number]
             )
-            draw_intensity_panel(ax, I_noisy[i, 0], noise_text, colorbar=False)
+            if n_panels == 9:
+                draw_intensity_panel(panel(0), I_clean[i, 0], "Clean I1", colorbar=False)
+                draw_intensity_panel(panel(1), I_noisy[i, 0], f"Noisy I1 (L:{noise_level:.2f})", colorbar=False)
+                draw_intensity_panel(panel(2), I_clean[i, 1], "Clean I2", colorbar=False)
+                draw_intensity_panel(panel(3), I_noisy[i, 1], f"Noisy I2 (L:{noise_level:.2f})", colorbar=False)
+                draw_phase_panel(
+                    panel(4),
+                    to_numpy(I_input[i, 0]),
+                    "Observed Wrapped",
+                    cmap="twilight",
+                    vmin=-np.pi,
+                    vmax=np.pi,
+                )
+                phase_col = 5
+            else:
+                ax = panel(0)
+                if I_clean is not None:
+                    draw_intensity_panel(ax, I_clean[i, 0], "Clean Input", colorbar=False)
+                else:
+                    ax.axis("off")
+                    ax.text(0.5, 0.5, "No Clean\nData", ha="center", va="center", fontsize=8)
+                noise_text = f"Noisy Input (L:{noise_level:.2f})" if noise_level > 0 else "Input (Clean)"
+                draw_intensity_panel(panel(1), I_noisy[i, 0], noise_text, colorbar=False)
+                phase_col = 2
 
-            # Panel 3: GT Phase
-            ax = axes[local_idx, 2]
+            # GT Phase
+            ax = panel(phase_col)
             gt_np = to_numpy(gt_rad[i, 0])
             draw_phase_panel(ax, gt_np, "GT Phase")
 
             # Panel 4: Wrapped Phase
-            ax = axes[local_idx, 3]
+            ax = panel(phase_col + 1)
             draw_phase_panel(
                 ax,
                 wrap_phase(gt_np),
@@ -120,12 +142,12 @@ def save_epoch_visuals(
             )
 
             # Panel 5: Predicted Phase
-            ax = axes[local_idx, 4]
+            ax = panel(phase_col + 2)
             pred_np = to_numpy(pred_rad[i, 0])
             draw_phase_panel(ax, pred_np, "Prediction")
 
             # Panel 6: Error Map
-            ax = axes[local_idx, 5]
+            ax = panel(phase_col + 3)
             err_raw = pred_rad[i] - gt_rad[i]
             mae = float(err_raw.abs().mean().item())
             rmse = float(torch.sqrt((err_raw**2).mean()).item())

@@ -559,8 +559,8 @@ def train(
                     I1_v, I2_v = I_raw_v[:, 0:1], I_raw_v[:, 1:2]
                     I1_n_v, _ = train_aug(I1_v, current_noise_level, generator=noise_generator)
                     I2_n_v, _ = train_aug(I2_v, current_noise_level, generator=noise_generator)
-                    I_raw_n_v = torch.atan2(2.0 - I2_n_v, I1_n_v - 2.0)
-                    I_input_v = I_raw_n_v
+                    I_raw_n_v = torch.cat((I1_n_v, I2_n_v), dim=1)
+                    I_input_v = torch.atan2(2.0 - I2_n_v, I1_n_v - 2.0)
                 elif train_aug is not None:
                     I_raw_n_v, I_input_v = train_aug(
                         I_raw_v, current_noise_level, generator=noise_generator
