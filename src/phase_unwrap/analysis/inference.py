@@ -151,17 +151,19 @@ def run_two_frame_inference(
     """Predict a calibrated pair of physical I1/I2 .npy frames."""
     i1 = np.asarray(np.load(input_i1), dtype=np.float32)
     i2 = np.asarray(np.load(input_i2), dtype=np.float32)
-    if i1.shape != i2.shape or i1.ndim != 2:
-        raise ValueError("I1 and I2 must be matching 2-D .npy arrays")
+    if i1.shape != i2.shape or i1.ndim not in (2, 3):
+        raise ValueError("I1 and I2 must be matching 2-D or 3-D .npy arrays")
+    if i1.ndim == 2:
+        i1, i2 = i1[None], i2[None]
     device = pick_device(device_str)
     model, cfg = _load_model(checkpoint_path, config_path, device)
-    t1 = torch.from_numpy(i1)[None, None].to(device)
-    t2 = torch.from_numpy(i2)[None, None].to(device)
+    t1 = torch.from_numpy(i1)[:, None].to(device)
+    t2 = torch.from_numpy(i2)[:, None].to(device)
     wrapped = torch.atan2(2.0 - t2, t1 - 2.0)
     with torch.autocast(device_type=device.type, enabled=cfg.model.use_amp):
         prediction, *_ = model(wrapped, None)
     prediction = prediction - prediction.amin(dim=(-2, -1), keepdim=True)
     return {
-        "I1": i1[None], "I2": i2[None], "wrapped": wrapped[0, 0].cpu().numpy(),
-        "prediction": prediction[0, 0].float().cpu().numpy(),
+        "I1": i1, "I2": i2, "wrapped": wrapped[:, 0].cpu().numpy(),
+        "prediction": prediction[:, 0].float().cpu().numpy(),
     }
