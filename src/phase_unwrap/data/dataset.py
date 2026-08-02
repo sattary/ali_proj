@@ -342,6 +342,8 @@ class OTFLoader:
                 x = b.wrapped_dp
             elif self.observation == "two_frame":
                 x = torch.atan2(2.0 - b.I2, b.I1 - 2.0)
+            elif self.observation == "two_frame_noisy":
+                x = torch.cat((b.I1, b.I2), dim=1)
             else:
                 x = b.I1
             yield x, b.phi_gt, b.grad_phi2, b.sample_ids

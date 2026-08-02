@@ -80,6 +80,11 @@ def run_eval(
         with autocast(device_type=device.type, enabled=use_amp):
             if observation in {"wrapped_dp", "two_frame"}:
                 I_input = I_raw
+            elif observation == "two_frame_noisy":
+                I1, I2 = I_raw[:, 0:1], I_raw[:, 1:2]
+                I1_noisy, _ = noise_aug(I1, severity, generator=noise_generator)
+                I2_noisy, _ = noise_aug(I2, severity, generator=noise_generator)
+                I_input = torch.atan2(2.0 - I2_noisy, I1_noisy - 2.0)
             else:
                 I_input = (
                     normalize_intensity(I_raw)
@@ -252,13 +257,15 @@ def train(
     use_cuda = device.type == "cuda"
     use_amp = bool(use_cuda and cfg.model.use_amp)
     observation = getattr(cfg.data, "observation", "intensity")
-    if observation not in {"intensity", "wrapped_dp", "two_frame"}:
+    if observation not in {"intensity", "wrapped_dp", "two_frame", "two_frame_noisy"}:
         raise ValueError(f"Unknown data.observation: {observation}")
     if observation in {"wrapped_dp", "two_frame"}:
         if getattr(cfg.data, "backend", "otf") != "otf":
             raise ValueError(f"data.observation={observation} requires data.backend=otf")
         if getattr(cfg, "aug", None) and cfg.aug.enable:
             raise ValueError(f"Disable aug for the {observation} diagnostic")
+    if observation == "two_frame_noisy" and not getattr(cfg.aug, "enable", False):
+        raise ValueError("data.observation=two_frame_noisy requires aug.enable=true")
 
     run_dir = cfg.logging.run_dir
     vis_dir = cfg.logging.vis_dir
@@ -293,7 +300,7 @@ def train(
 
     model = build_model(cfg.model).to(device=device)
     model.reference_mode = cfg.model.reference_mode
-    model.observation_mode = observation
+    model.observation_mode = "two_frame" if observation == "two_frame_noisy" else observation
     loss_fn = PCLCNLoss(
         w_phase=getattr(cfg.loss, "w_complex", 1.0),
         w_curl=getattr(cfg.loss, "w_curl", 0.1),
@@ -326,7 +333,7 @@ def train(
     scaler = GradScaler(device=device.type, enabled=use_amp)
     ema = EMA(model, decay=cfg.model.ema_decay)
     ema.m.reference_mode = cfg.model.reference_mode
-    ema.m.observation_mode = observation
+    ema.m.observation_mode = model.observation_mode
 
     if cfg.optim.compile:
         print("[startup] torch.compile enabled")
@@ -413,6 +420,26 @@ def train(
 
             if observation in {"wrapped_dp", "two_frame"}:
                 I_norm_noisy = I_raw
+            elif observation == "two_frame_noisy":
+                I1, I2 = I_raw[:, 0:1], I_raw[:, 1:2]
+                progress = global_step / max(1, total_steps)
+                if progress < 0.05:
+                    step_severity = 0.0
+                else:
+                    u = float(torch.rand((), device=device, generator=noise_generator))
+                    if u < cfg.aug.clean_probability:
+                        step_severity = 0.0
+                    elif u < cfg.aug.clean_probability + cfg.aug.mid_probability:
+                        step_severity = float(torch.empty((), device=device).uniform_(
+                            0.05, 0.75, generator=noise_generator
+                        ))
+                    else:
+                        step_severity = float(torch.empty((), device=device).uniform_(
+                            0.75, 1.0, generator=noise_generator
+                        ))
+                I1_noisy, _ = train_aug(I1, step_severity, generator=noise_generator)
+                I2_noisy, _ = train_aug(I2, step_severity, generator=noise_generator)
+                I_norm_noisy = torch.atan2(2.0 - I2_noisy, I1_noisy - 2.0)
             elif train_aug is not None:
                 progress = global_step / max(1, total_steps)
                 if progress < 0.05:
@@ -446,7 +473,7 @@ def train(
                 )
                 phi_for_loss = (
                     piston_align(phi_final, phi_gt)[0]
-                    if observation in {"wrapped_dp", "two_frame"}
+                    if observation in {"wrapped_dp", "two_frame", "two_frame_noisy"}
                     else phi_final
                 )
                 L_phase, parts = loss_fn(
@@ -502,11 +529,7 @@ def train(
             (epoch % cfg.logging.val_interval == 0)
             and (val_loader is not None)
         ):
-            eval_severities = (
-                [0.0]
-                if observation in {"wrapped_dp", "two_frame"}
-                else cfg.aug.fixed_severities
-            )
+            eval_severities = [0.0] if observation in {"wrapped_dp", "two_frame"} else cfg.aug.fixed_severities
             severity_stats = {
                 s: run_eval(
                     ema.m,
@@ -532,6 +555,12 @@ def train(
                 if observation in {"wrapped_dp", "two_frame"}:
                     I_raw_n_v = I_raw_v
                     I_input_v = I_raw_v
+                elif observation == "two_frame_noisy":
+                    I1_v, I2_v = I_raw_v[:, 0:1], I_raw_v[:, 1:2]
+                    I1_n_v, _ = train_aug(I1_v, current_noise_level, generator=noise_generator)
+                    I2_n_v, _ = train_aug(I2_v, current_noise_level, generator=noise_generator)
+                    I_raw_n_v = torch.atan2(2.0 - I2_n_v, I1_n_v - 2.0)
+                    I_input_v = I_raw_n_v
                 elif train_aug is not None:
                     I_raw_n_v, I_input_v = train_aug(
                         I_raw_v, current_noise_level, generator=noise_generator
@@ -573,6 +602,20 @@ def train(
                 f"MaxErr={eval_stats.get('MaxErr', 0):.4f} | "
                 f"time={epoch_time:.1f}s"
             )
+            if observation == "two_frame_noisy":
+                print(
+                    "[val-noise] "
+                    + " ".join(
+                        f"{name}={severity_stats[level]['TopoMAE']:.4f}"
+                        for name, level in (
+                            ("clean", 0.0),
+                            ("light", 0.25),
+                            ("moderate", 0.5),
+                            ("hard", 0.75),
+                            ("extreme", 1.0),
+                        )
+                    )
+                )
 
             # Selection based on piston-aligned MAE across noise levels
             selection_score = (
@@ -641,11 +684,7 @@ def train(
         if os.path.exists(best_path):
             best = torch.load(best_path, map_location=device, weights_only=True)
             ema.m.load_state_dict(best.get("model_ema", best["model"]))
-        test_severities = (
-            [0.0]
-            if observation in {"wrapped_dp", "two_frame"}
-            else cfg.aug.fixed_severities
-        )
+        test_severities = [0.0] if observation in {"wrapped_dp", "two_frame"} else cfg.aug.fixed_severities
         test_by_severity = {
             s: run_eval(
                 ema.m,

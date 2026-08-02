@@ -1,0 +1,70 @@
+# Two-frame OTF training with camera noise applied to raw I1 and I2.
+# Usage: uv run phun train -c configs/kaggle_two_frame_noise.yaml
+
+data:
+  backend: "otf"
+  observation: "two_frame_noisy"
+  steps_per_epoch: 300
+  val_batches: 32
+  test_batches: 64
+  workers: 0
+  train_seed: 1337
+  val_seed: 7331
+  test_seed: 9337
+  noise_seed: 12345
+
+model:
+  arch: "pclcn"
+  base: 32
+  reference_mode: "reference_free"
+  unmasked_zernike: true
+  device: "auto"
+  use_amp: true
+  ema_decay: 0.999
+
+optim:
+  epochs: 100
+  batch_size: 128
+  lr: 3.0e-4
+  eta_min: 1.0e-6
+  weight_decay: 1.0e-4
+  grad_clip: 5.0
+  warmup_steps: 500
+  compile: false
+
+loss:
+  w_mae: 1.0
+  w_data: 1.0
+  w_curl: 0.1
+  w_complex: 0.1
+  w_curv: 0.01
+
+aug:
+  enable: true
+  gauss_std: 0.02
+  speckle_std: 0.05
+  photon_min: 256.0
+  photon_max: 4096.0
+  sensor_min: 0.0
+  sensor_max: 4.0
+  lowfreq_amp: 0.05
+  blur_prob: 0.2
+  blur_min: 0.5
+  blur_max: 1.0
+  dropout_prob: 0.02
+  sap_prob: 0.0
+  gain_min: 0.9
+  gain_max: 1.1
+  off_min: -0.05
+  off_max: 0.05
+  clean_probability: 0.2
+  mid_probability: 0.6
+  hard_probability: 0.2
+  fixed_severities: [0.0, 0.25, 0.5, 0.75, 1.0]
+
+logging:
+  run_name: "pclcn_two_frame_noise"
+  runs_root: "runs"
+  vis_max: 8
+  val_interval: 1
+  seed: 1337
